@@ -70,7 +70,7 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 *   **True Redaction Engine:** Ensure the redaction actually removes the underlying text paths using `pymupdf`, which outperforms `pdf-lib` for this.
 *   **Redaction Reversal / Audit Tool:** Build a parser that scans incoming PDFs for "fake" redactions (hidden text layers under shapes) and alerts the user.
 *   **OCR Foundation:** Integrate `tesseract.js` for scanned PDFs, a table-stakes feature.
-*   **Accessibility:** Add offline **Read Aloud (TTS)** using `transformers.js` (e.g., Kokoro model).
+*   **Accessibility:** Add offline **Read Aloud (TTS)** using `transformers.js` (e.g., Kitten TTS `onnx-community/kitten-tts-nano-0.1-ONNX`).
 *   **Flatten Forms:** Add ability to remove interactive fields and burn content in.
 *   **PDF to Structured Notes:** Turn PDFs into Markdown/Obsidian files with heading hierarchy and annotations.
 
