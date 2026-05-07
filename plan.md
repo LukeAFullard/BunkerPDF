@@ -26,8 +26,8 @@ Used for immediate UI feedback and basic manipulations. Zero initialization time
 *   **`pdf-lib`:** Handling the commodity features instantly (Split, Merge, Rotate, Password Protect, Form Filling, Metadata Scrubbing).
 
 ### Engine B: The AI & NLP Layer (`transformers.js`)
-Used for intelligent text processing using WebGL/WebGPU acceleration directly in the browser, avoiding the need to boot a full Python environment for specific ML tasks.
-*   **Named Entity Recognition (NER):** Powering the Automated PII Scanner to find names, organizations, and ID numbers.
+Used for intelligent text processing using WebGL/WebGPU acceleration directly in the browser, avoiding the need to boot a full Python environment for specific ML tasks. *Note: Safari falls back to WebGL which is slower, requiring early testing.*
+*   **Named Entity Recognition (NER):** Powering the Automated PII Scanner to find names, organizations, and ID numbers. *Must default to a distilled, quantized model (~40MB) for fast first load to avoid shocking non-tech users with massive downloads, with heavier models (e.g., ~400MB) available as opt-in.*
 *   **Semantic Search:** Running lightweight embeddings for the Multi-PDF Local Search feature.
 
 ### Engine C: The Heavy Compute Layer (WASM / Pyodide)
@@ -35,7 +35,7 @@ Used for complex layout parsing, data extraction, and format conversions where P
 *   **`pdfplumber`:** For high-fidelity table extraction to CSV/DataFrames and text with positions.
 *   **`pymupdf` (fitz):** For true redaction, rendering, general extraction, and pairing with OCR.
 *   **`python-docx`:** For DOCX generation.
-*   **`pdf2docx`:** (Requires early validation/spike in Phase 3 as Pyodide compatibility is uncertain; may need custom wheel or fallback).
+*   **`pdf2docx`:** (Requires early validation/spike in Phase 1 as Pyodide compatibility is uncertain; explicit fallback plan: use `pymupdf` + `python-docx` to reconstruct DOCX manually from text blocks).
 *   *Note:* This engine is lazy-loaded. It only initializes in a Web Worker when a user requests a "Heavy" task.
 
 ### Engine D: Browser WASM (Not Pyodide)
@@ -55,17 +55,19 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 
 ### Phase 1: Foundation & "The Dropzone" (Months 1–3)
 **Objective:** Build the UI shell, establish the JavaScript processing pipeline, and launch the basic utilities.
-*   **Core UI:** Develop the Next.js/React frontend. Implement the "Massive Dropzone" welcome page, dark/light mode, and Zustand state management for handling files in memory.
-*   **Commodity Features:** Hook up `pdf-lib` for Combine, Split, Rotate, Reorder, Add Pages, Delete Pages, **Stamp / Watermark**, and **PDF compression/optimization** (metadata stripping + recompression).
+*   **Core UI:** Develop the Vite/React frontend (simpler and faster to ship than Next.js for a client-only app). Implement the "Massive Dropzone" welcome page, dark/light mode, and Zustand state management for handling files in memory.
+*   **Commodity Features:** Hook up `pdf-lib` for Combine, Split, Rotate, Reorder, Add Pages, Delete Pages, **Stamp / Watermark**, and **PDF compression/optimization** (metadata stripping + recompression using ghostscript via Pyodide or JS-native deflate pass).
 *   **Annotations & Signatures:** Basic highlight/draw tools and signature capture/placement.
-*   **Sharing:** Implement **Base64 URL sharing** (`#data=...`) with file-size warnings for zero-server instant sharing.
+*   **Undo/Redo System:** Implement a robust undo/redo stack (Cmd+Z) early on to prevent data loss on accidental page deletes or edits.
+*   **Sharing:** Implement **WebRTC/P2P sharing** (or Base64 URLs capped at tiny sizes < 20KB) for zero-server instant sharing.
 *   **Early Features:** Implement **Viewer Dark Mode** (CSS filter) and **QR & Barcode Decoder** (`@zxing/library`).
 *   **Basic Polish:** Implement standard metadata cleaning and password encryption.
+*   **Early Spikes:** Validate `pymupdf` + `pdf2docx` in Pyodide.
 *   **Outcome:** A lightning-fast, ad-free alternative to generic online PDF splitters.
 
 ### Phase 2: The Intelligent Security Hub (Months 4–9)
 **Objective:** Deploy the core differentiator—the Redaction Suite—using edge-native AI.
-*   **Transformers.js Integration:** Implement a lightweight NER model in the browser.
+*   **Transformers.js Integration:** Implement a lightweight NER model in the browser (target <50MB budget for first load).
 *   **Automated PII Scanner:** Build the UI to scan a document, flag sensitive entities (SSNs, names, emails), and present them in a sidebar for one-click redaction.
 *   **True Redaction Engine:** Ensure the redaction actually removes the underlying text paths using `pymupdf`, which outperforms `pdf-lib` for this.
 *   **Redaction Reversal / Audit Tool:** Build a parser that scans incoming PDFs for "fake" redactions (hidden text layers under shapes) and alerts the user.
@@ -76,11 +78,13 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 
 ### Phase 3: Data Extraction & Conversion (Months 10–16)
 **Objective:** Bring in the Pyodide/WASM engine to attract data workers, researchers, and administrators.
+*   **Monetization Strategy:** Define monetization model before releasing Phase 3 features (freemium/pro tier/enterprise).
 *   **Pyodide Web Worker:** Set up the background thread to load the Python environment without freezing the UI.
 *   **Table Extractor:** Implement `pdfplumber`. Build a UI where users can draw bounding boxes over tables in the `pdf.js` viewer, and output clean CSV or **Excel/XLSX**.
+*   **High-Value Utilities:** Add **Bookmark/Outline Editor**, **Image Extractor** (ZIP download), **Hyperlink Extractor**, **Crop/Resize Pages** (e.g., to A4/Letter), **Custom Page Numbering**, and **"Fast Web View" linearization**.
 *   **Legal Utilities:** Implement **Bates Numbering** for legal professionals.
 *   **HTML/Markdown Export:** Extract raw text and headers into developer-friendly formats.
-*   **The Office Bridge:** Validate `pdf2docx` as an early pre-requisite spike to ensure Pyodide compatibility; implement local PDF to DOCX and DOCX to PDF conversion.
+*   **The Office Bridge:** Implement local PDF to DOCX and DOCX to PDF conversion (using fallback to `pymupdf` + `python-docx` if needed based on Phase 1 spike).
 *   **Batch Operations:** Allow users to process a folder of PDFs at once (split all, redact all, etc).
 *   **Digital Signature Verification:** Enable checking signature validity, critical for legal/enterprise workflows.
 *   **True Dark PDF Export:** Use `pymupdf` to rewrite PDFs with a dark background and recolored text, while preserving images.
@@ -101,14 +105,15 @@ The interface must convey trust and premium quality. It should operate on a "Qui
 
 ### The Welcome Page Structure
 1.  **The Hero:** Bold statement: *"The Zero-Trust Document Suite."*
-2.  **The Dropzone:** A massive, central dashed area.
+2.  **The Dropzone / Open File:** A massive, central dashed area. *Includes a 3-step onboarding tooltip tour on first load ("Drop a file → Choose a tool → Download your result") for non-tech users.*
     *   *Visual Cue:* When a file is dropped, a brief "Processing locally..." animation plays, reinforcing the edge-native architecture.
-3.  **The Trust Badges:** Interactive "Trust Badges" featuring a live network monitor panel (via `performance.getEntriesByType('resource')`) to visually demonstrate zero outbound requests, rather than static icons stating "No Servers," "100% Browser-Based," and "Hardware Accelerated."
+3.  **The Trust Badges:** Interactive "Trust Badges" leading with plain language ("Your files never leave this device"). Features a *collapsed-by-default* live network monitor panel (via `performance.getEntriesByType('resource')`) to visually demonstrate zero outbound requests when expanded by curious users.
 4.  **The Feature Grid:** Categorized cards (Security, Data, Edit) using plain-language, task-oriented descriptions (e.g., "Extract Tables → Download as Excel" instead of "pdfplumber CSV export"). Clicking one without a file highlights the dropzone.
+5.  **Recent Files:** Store filenames + thumbnails in IndexedDB for returning users to quickly resume work.
 
 ### Pyodide Loading UX Spec
 Since loading Pyodide + dependencies is heavy (~60-100MB initial load):
-*   **Engine Status Pill:** Display a persistent corner indicator (e.g., "Instant ✅" / "AI Loading…" / "Heavy Loading…") so users know the current capability state.
+*   **Engine Status Pill:** Display a persistent corner indicator using human language (e.g., "Getting powerful tools ready…", "Preparing advanced features (first time only)") so users know the current capability state.
 *   **Background Pre-warming:** Start loading Pyodide in the background immediately upon first user interaction (like file drop), rather than waiting for a specific tool selection.
 *   **Caching via Service Worker + IDBFS:** Ensure all subsequent visits load instantly without re-downloading environments.
 
@@ -120,16 +125,21 @@ To prevent feature bloat as capabilities expand, the UI will employ Progressive 
 
 Once a document is loaded, the foundational layout is:
 *   **Left Sidebar:** Page thumbnails (rendered via `pdf.js`) for quick reordering and deletion.
-*   **Main Canvas:** The document viewer.
+*   **Main Canvas:** The document viewer. *All major transformations should feature a Split-pane preview (before/after) to build trust.*
 *   **Right Sidebar (Contextual):**
     *   **Document Health Panel:** A persistent panel showing page count, file size, OCR requirement (scanned PDF?), live text presence, AES encryption status, and hidden layers. This surfaces relevant tools automatically.
     *   If the user clicks "Redact," this panel shows the PII Scanner results.
     *   If the user clicks "Extract Data," this panel shows CSV/XLSX preview options.
 *   **Floating Action Bar:** Common actions (Save, Export, Print) pinned to the bottom.
 
+**Critical UX Safeguards & Usability:**
+*   **Destructive Action Confirmation:** Persistent "Working copy" indicator. Confirmation modals for irreversible operations (deleting pages, redactions, flattening forms).
+*   **Large File Warnings:** Before processing >100MB files, show a warning: *"This is a large file. Processing may take a moment and requires ~XMB of browser memory."*
+*   **Keyboard Shortcuts & Undo/Redo:** Power users expect shortcuts; tooltips will help discoverability. A comprehensive Undo/Redo stack (Cmd+Z) is essential to recover from accidental changes.
+
 ### Mobile Strategy
 While a drag-and-drop desktop paradigm is primary, mobile cannot be ignored:
-*   Implement a "tap to open file" path to ensure core functionality is accessible for mobile-first users.
+*   The primary CTA on mobile should be a large **"Open File"** button rather than a dashed drop area, as the dropzone pattern breaks on mobile.
 *   Ensure the UI layout adapts to smaller screens, even if advanced features (like side-by-side diffs) are simplified or deferred.
 
 ---
