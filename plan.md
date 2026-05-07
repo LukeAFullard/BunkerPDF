@@ -61,7 +61,7 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 * [ ] **Commodity Features:** Hook up `pdf-lib` for Combine, Split, Rotate, Reorder, Add Pages, Delete Pages, **Stamp / Watermark**, and **PDF compression/optimization** (metadata stripping + recompression using ghostscript via Pyodide or JS-native deflate pass).
 * [ ] **Annotations & Signatures:** Basic highlight/draw tools and signature capture/placement.
 * [ ] **Undo/Redo System:** Implement a robust undo/redo stack (Cmd+Z) early on to prevent data loss on accidental page deletes or edits.
-* [ ] **Sharing:** Implement **WebRTC/P2P sharing** (or Base64 URLs capped at tiny sizes < 20KB) for zero-server instant sharing.
+* [ ] **Sharing:** Implement **WebRTC/P2P sharing** (requiring a lightweight, privacy-preserving signaling mechanism like WebSockets/SSE or a public free STUN/TURN server to exchange connection offers). Alternatively, use Base64 URLs capped realistically around ~64KB max due to modern browser URI length limits for zero-server instant sharing.
 * [ ] **Early Features:** Implement **Viewer Dark Mode** (CSS filter) and **QR & Barcode Decoder** (`@zxing/library`).
 * [ ] **Mobile Foundation:** Tap-to-open file inputs properly formatted with `accept="application/pdf"` for iOS.
 * [ ] **Basic Polish:** Implement standard metadata cleaning and password encryption.
@@ -83,8 +83,8 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 
 ### Phase 3: Data Extraction & Conversion (Months 10–16)
 **Objective:** Bring in the Pyodide/WASM engine to attract data workers, researchers, and administrators.
-* [ ] **Monetization Strategy:** Define monetization model before releasing Phase 3 features (freemium/pro tier/enterprise).
-* [ ] **Pyodide Web Worker:** Set up the background thread to load the Python environment without freezing the UI.
+* [ ] **Monetization Strategy:** Define monetization model before releasing Phase 3 features (freemium/pro tier/enterprise). Determine how to securely gate client-side features without a persistent server (e.g., cryptographic license verification or offline key validation) since hosting costs are negligible.
+* [ ] **Pyodide Web Worker & Chunking:** Set up the background thread to load the Python environment without freezing the UI. Implement chunking strategies for large PDFs to explicitly prevent WASM Out-Of-Memory (OOM) errors before passing data to Engine C.
 * [ ] **Table Extraction (Sequential Fallback):** Default to `pdfplumber`. If the user is unsatisfied, provide a "Try the other engine" button to re-run with `pymupdf`. If automated extraction fails entirely, surface a manual bounding-box UI in the `pdf.js` viewer as the final fallback. Outputs to clean CSV or **Excel/XLSX**.
 * [ ] **High-Value Utilities:** Add **Bookmark/Outline Editor**, **Image Extractor** (ZIP download), **Hyperlink Extractor**, **Crop/Resize Pages** (e.g., to A4/Letter), **Custom Page Numbering**, and **"Fast Web View" linearization**.
 * [ ] **Cross-Document Page Reordering:** When multiple files are open, display thumbnail rails side-by-side to allow dragging pages directly between documents.
@@ -148,7 +148,7 @@ Every significant error needs a designed response, not a browser default:
 *   **OOM / File Too Large:** "This file is too large to process entirely in your browser. Try splitting it into smaller sections first." with a direct "Split first" button.
 *   **Corrupt PDF:** "We couldn't read this file. It may be damaged or in an unsupported format." with an offer to try OCR as fallback.
 *   **Password-Protected PDF:** Prompt for the password inline within the health panel—do not fail silently.
-*   **Pyodide Initialization Failure:** Gracefully degrade with a banner: "Advanced features couldn't load. Basic tools are still available."
+*   **Pyodide Initialization Failure (Strict CSPs):** If Pyodide fails to load (e.g., due to strict enterprise Content Security Policies preventing 'wasm-unsafe-eval'), gracefully degrade to Engine A/B with a clear downgrade path. Show a banner: "Advanced features couldn't load due to browser security settings. Basic tools and AI are still available."
 *   **OCR Failure:** "No readable text was detected. The document may already be text-based or the quality may be too low."
 
 ### The Working Interface & Progressive Complexity Modes
@@ -285,6 +285,7 @@ To begin executing this plan, the immediate priority is validating the foundatio
 1. [ ] **Repository Setup:** Initialize the frontend framework (e.g., Next.js) and configure the Webpack/Vite bundler to handle WASM files correctly.
 2. [ ] **Proof of Concept 1 (The Fast Lane):** Implement a simple drag-and-drop zone that uses `pdf-lib` to instantly merge two PDFs and trigger a local download.
 3. [ ] **Proof of Concept 2 (The AI Lane):** Instantiate `transformers.js` in a Web Worker, pass it a hardcoded string of text containing a name and an email, and log the NER extraction results to the console.
+4. [ ] **WASM Memory Profiling:** Implement strict memory profiling in the CI/CD pipeline to continuously monitor memory footprints and prevent WASM OOM crashes during heavy loads.
 
 By isolating the JS-native manipulation from the WebGPU-accelerated AI early on, you secure the two main pillars of the application before tackling the heavy Pyodide integrations.
 
