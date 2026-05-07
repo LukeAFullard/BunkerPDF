@@ -55,12 +55,15 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 
 ### Phase 1: Foundation & "The Dropzone" (Months 1–3)
 **Objective:** Build the UI shell, establish the JavaScript processing pipeline, and launch the basic utilities.
-*   **Core UI:** Develop the Vite/React frontend (simpler and faster to ship than Next.js for a client-only app). Implement the "Massive Dropzone" welcome page, dark/light mode, and Zustand state management for handling files in memory.
+*   **Core UI & File Session Model:** Develop the Vite/React frontend. Implement the "Massive Dropzone" welcome page, dark/light mode, and Zustand state management for handling files in memory. Implement the multi-file tab bar to manage multiple open documents.
+*   **UX/UI Priorities:** 3-step onboarding tooltip tour, explicit error states (OOM, corrupt files, passwords), human-readable loading stages with cancel buttons, thumbnail context menus (right-click to extract/delete), and smart output file naming (`[original-name]-[action]-[timestamp]`).
+*   **Accessibility Foundation:** Focus rings, keyboard operability, and ARIA live regions for engine status.
 *   **Commodity Features:** Hook up `pdf-lib` for Combine, Split, Rotate, Reorder, Add Pages, Delete Pages, **Stamp / Watermark**, and **PDF compression/optimization** (metadata stripping + recompression using ghostscript via Pyodide or JS-native deflate pass).
 *   **Annotations & Signatures:** Basic highlight/draw tools and signature capture/placement.
 *   **Undo/Redo System:** Implement a robust undo/redo stack (Cmd+Z) early on to prevent data loss on accidental page deletes or edits.
 *   **Sharing:** Implement **WebRTC/P2P sharing** (or Base64 URLs capped at tiny sizes < 20KB) for zero-server instant sharing.
 *   **Early Features:** Implement **Viewer Dark Mode** (CSS filter) and **QR & Barcode Decoder** (`@zxing/library`).
+*   **Mobile Foundation:** Tap-to-open file inputs properly formatted with `accept="application/pdf"` for iOS.
 *   **Basic Polish:** Implement standard metadata cleaning and password encryption.
 *   **Early Spikes:** Validate `pymupdf` + `pdf2docx` in Pyodide.
 *   **Outcome:** A lightning-fast, ad-free alternative to generic online PDF splitters.
@@ -73,6 +76,7 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 *   **Redaction Reversal / Audit Tool:** Build a parser that scans incoming PDFs for "fake" redactions (hidden text layers under shapes) and alerts the user.
 *   **OCR Foundation:** Integrate `tesseract.js` for scanned PDFs, a table-stakes feature.
 *   **Accessibility:** Add offline **Read Aloud (TTS)** using `transformers.js` (e.g., Kitten TTS `onnx-community/kitten-tts-nano-0.1-ONNX`).
+*   **Retention & Trust Features:** Add session continuity (resume unsaved work), Privacy Audit Log (timestamped history of local actions), contextual Progressive Mode promotion (e.g., suggest "Professional" mode if OCR is needed), per-tool time estimates, and dismissible in-workflow trust badges ("Processing in your browser").
 *   **Flatten Forms:** Add ability to remove interactive fields and burn content in.
 *   **PDF to Structured Notes:** Turn PDFs into Markdown/Obsidian files with heading hierarchy and annotations.
 
@@ -83,6 +87,7 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 *   **Table Extractor:** Implement `pdfplumber`. Build a UI where users can draw bounding boxes over tables in the `pdf.js` viewer, and output clean CSV or **Excel/XLSX**.
 *   **High-Value Utilities:** Add **Bookmark/Outline Editor**, **Image Extractor** (ZIP download), **Hyperlink Extractor**, **Crop/Resize Pages** (e.g., to A4/Letter), **Custom Page Numbering**, and **"Fast Web View" linearization**.
 *   **Legal Utilities:** Implement **Bates Numbering** for legal professionals.
+*   **Growth & Engagement UX:** Add deep-link shareable tool URLs (`/#tool=redact`), output quality feedback prompts (👍/👎 post-download), and early PWA install prompts for offline usage.
 *   **HTML/Markdown Export:** Extract raw text and headers into developer-friendly formats.
 *   **The Office Bridge:** Implement local PDF to DOCX and DOCX to PDF conversion (using fallback to `pymupdf` + `python-docx` if needed based on Phase 1 spike).
 *   **Batch Operations:** Allow users to process a folder of PDFs at once (split all, redact all, etc).
@@ -103,44 +108,82 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 
 The interface must convey trust and premium quality. It should operate on a "Quiet UI" principle—tools only appear when they are contextually relevant.
 
-### The Welcome Page Structure
-1.  **The Hero:** Bold statement: *"The Zero-Trust Document Suite."*
-2.  **The Dropzone / Open File:** A massive, central dashed area. *Includes a 3-step onboarding tooltip tour on first load ("Drop a file → Choose a tool → Download your result") for non-tech users.*
-    *   *Visual Cue:* When a file is dropped, a brief "Processing locally..." animation plays, reinforcing the edge-native architecture.
-3.  **The Trust Badges:** Interactive "Trust Badges" leading with plain language ("Your files never leave this device"). Features a *collapsed-by-default* live network monitor panel (via `performance.getEntriesByType('resource')`) to visually demonstrate zero outbound requests when expanded by curious users.
-4.  **The Feature Grid:** Categorized cards (Security, Data, Edit) using plain-language, task-oriented descriptions (e.g., "Extract Tables → Download as Excel" instead of "pdfplumber CSV export"). Clicking one without a file highlights the dropzone.
-5.  **Recent Files:** Store filenames + thumbnails in IndexedDB for returning users to quickly resume work.
+### First-Run & The Welcome Page Structure
+1.  **Onboarding:** A 3-step dismissible tooltip tour on first load ("Drop a file → Pick what to do → Download your result") stored in `localStorage`.
+2.  **The Hero:** Bold statement: *"The Zero-Trust Document Suite."*
+3.  **The Dropzone:** A massive, central dashed area.
+    *   *Visual Cue:* A visual pulse/glow on hover to clearly indicate the drop target.
+    *   *Trust Microcopy:* On file drop, a brief animation plays with the text: *"Your file never leaves this device — all processing happens in your browser."* (Shown once on first drop).
+    *   *Size Warning:* Pre-process check. If >80MB, show an immediate warning before attempting to load.
+4.  **The Trust Badges:** Two-tier layout. Lead with a plain-language headline (*"Nothing leaves your device"*), followed by a "See proof →" disclosure that expands a live network monitor panel to satisfy power users without confusing non-tech users.
+5.  **The Feature Grid:** Categorized cards (Security, Data, Edit) with color-coded headers.
+    *   *Microcopy:* Intentional empty states with descriptive microcopy (e.g., "Split PDF → Drag the divider between pages") beneath each action.
+    *   *Time Estimates:* Each card explicitly states processing time (e.g., "Instant", "~5 sec", "First use: ~30 sec, then instant").
+6.  **Returning User Surface:** When returning, show 3–5 recent file thumbnails with filenames and last action taken (stored in IndexedDB). One click to reload the file.
 
-### Pyodide Loading UX Spec
+### The File Session Model
+The application must handle the reality that users work across multiple documents and iterative steps.
+*   **Multi-File Tab Bar:** Dropping a second file opens it in a new tab (capped at ~8) rather than replacing the current document. Tabs display the thumbnail + filename.
+*   **Unsaved Work Warning:** If the file has a "dirty" state (edits applied) and the user attempts to close it or open a new file, prompt before discarding.
+*   **Smart Output Naming:** Output files use a convention like `[original-name]-[action]-[timestamp].pdf` instead of a generic "download.pdf".
+*   **Undo/Redo Stack:** A dedicated 10+ step history (Cmd+Z, plus visible buttons) for page deletions, reorders, redactions, and annotations.
+
+### Pyodide Loading UX Spec & Feedback States
 Since loading Pyodide + dependencies is heavy (~60-100MB initial load):
-*   **Engine Status Pill:** Display a persistent corner indicator using human language (e.g., "Getting powerful tools ready…", "Preparing advanced features (first time only)") so users know the current capability state.
-*   **Background Pre-warming:** Start loading Pyodide in the background immediately upon first user interaction (like file drop), rather than waiting for a specific tool selection.
-*   **Caching via Service Worker + IDBFS:** Ensure all subsequent visits load instantly without re-downloading environments.
+*   **Engine Status Pill:** Display persistent, human-readable states:
+    *   "Ready" (previously "Instant ✅")
+    *   "Preparing smart tools…" (previously "AI Loading…")
+    *   "Loading advanced features (first time only)" (previously "Heavy Loading…")
+    *   "All features ready"
+*   **Progress Bars:** For the Pyodide first-load, use an *inline progress bar with stages* ("Downloading tools (48MB)... Setting up... Ready.") rather than an ambiguous spinner.
+*   **Multi-Page Operations:** Operations like batch OCR need a page counter ("Processing 12 of 200"), an ETA, and crucially, a **Cancel button** so users are never trapped.
+
+### Error States
+Every significant error needs a designed response, not a browser default:
+*   **OOM / File Too Large:** "This file is too large to process entirely in your browser. Try splitting it into smaller sections first." with a direct "Split first" button.
+*   **Corrupt PDF:** "We couldn't read this file. It may be damaged or in an unsupported format." with an offer to try OCR as fallback.
+*   **Password-Protected PDF:** Prompt for the password inline within the health panel—do not fail silently.
+*   **Pyodide Initialization Failure:** Gracefully degrade with a banner: "Advanced features couldn't load. Basic tools are still available."
+*   **OCR Failure:** "No readable text was detected. The document may already be text-based or the quality may be too low."
 
 ### The Working Interface & Progressive Complexity Modes
-To prevent feature bloat as capabilities expand, the UI will employ Progressive Complexity Modes, switchable via a primary toggle:
-*   **Simple Mode:** Focuses entirely on commodity features (Merge, Split, Rotate, Compress, Stamp, Share). The interface is stripped down to large, friendly buttons.
-*   **Enhanced Mode:** Introduces the AI and Data workflows. Surrounds the canvas with the Document Health Panel, Redaction Scanner, OCR tools, and Structured Notes export.
-*   **Super User Mode:** Exposes complex legal/academic utilities (Bates Numbering, Regex-based extraction, PDF/A conversion, Context-Aware Diff).
+To prevent feature bloat, the UI will employ Progressive Complexity Modes ("Simple", "Enhanced", "**Professional**"), switchable via a primary toggle:
+*   **Mode Promotion:** Contextually smart toggles. If a user opens a scanned PDF in Simple mode, the health panel suggests switching to Enhanced mode for OCR. Switching modes reveals new tools without resetting active work.
 
 Once a document is loaded, the foundational layout is:
-*   **Left Sidebar:** Page thumbnails (rendered via `pdf.js`) for quick reordering and deletion.
+*   **Left Sidebar:** Page thumbnails. **Crucially, include a Context Menu** (Right-click / long-press): Delete page, Duplicate page, Extract as new file, Move to position.
 *   **Main Canvas:** The document viewer. *All major transformations should feature a Split-pane preview (before/after) to build trust.*
 *   **Right Sidebar (Contextual):**
-    *   **Document Health Panel:** A persistent panel showing page count, file size, OCR requirement (scanned PDF?), live text presence, AES encryption status, and hidden layers. This surfaces relevant tools automatically.
-    *   If the user clicks "Redact," this panel shows the PII Scanner results.
-    *   If the user clicks "Extract Data," this panel shows CSV/XLSX preview options.
-*   **Floating Action Bar:** Common actions (Save, Export, Print) pinned to the bottom.
+    *   *Top:* Persistent document metadata.
+    *   *Middle:* Active tool output (replaces when tool changes).
+    *   *Bottom:* Persistent "what else can I do?" suggestions.
+    *   **Document Health Panel:** Health flags link directly to their fix as 1-click actions (e.g., clicking "OCR required" triggers the OCR tool).
+*   **Floating Action Bar (Bottom):** Common actions. Must include:
+    *   Undo/Redo buttons with keystroke hints.
+    *   **Processing Chain Indicator:** A breadcrumb of applied actions (e.g., Redact + Compress) so the user can audit output before downloading.
+    *   Distinct **Save to session** vs **Download** buttons.
 
-**Critical UX Safeguards & Usability:**
-*   **Destructive Action Confirmation:** Persistent "Working copy" indicator. Confirmation modals for irreversible operations (deleting pages, redactions, flattening forms).
-*   **Large File Warnings:** Before processing >100MB files, show a warning: *"This is a large file. Processing may take a moment and requires ~XMB of browser memory."*
-*   **Keyboard Shortcuts & Undo/Redo:** Power users expect shortcuts; tooltips will help discoverability. A comprehensive Undo/Redo stack (Cmd+Z) is essential to recover from accidental changes.
+### Trust & Retention UX
+*   **In-workflow Trust Signals:** Briefly surface "Processing in your browser — not sent to any server" near the progress indicator during tool execution (dismissible after 3 uses).
+*   **Privacy Audit Log:** A timestamped list of every operation performed (explicitly stating no data was transmitted), accessible from the footer.
+*   **Session Continuity:** Save in-progress work to IndexedDB ("Welcome back — you were working on Contract.pdf. Continue?").
+*   **Shareable Tool Links:** Deep links (`/#tool=redact`) that pre-select a tool when a file is dropped.
+*   **PWA Install Prompt:** After a user's 3rd visit, surface a subtle prompt to install the app locally.
+*   **Output Quality Feedback:** A simple post-download prompt ("Did the output look right? 👍/👎").
 
 ### Mobile Strategy
 While a drag-and-drop desktop paradigm is primary, mobile cannot be ignored:
-*   The primary CTA on mobile should be a large **"Open File"** button rather than a dashed drop area, as the dropzone pattern breaks on mobile.
-*   Ensure the UI layout adapts to smaller screens, even if advanced features (like side-by-side diffs) are simplified or deferred.
+*   **Layout:** Full-screen viewer → bottom sheet for tools (swipe up to reveal). The right sidebar becomes a bottom drawer. The thumbnail rail moves to a horizontal strip below the viewer.
+*   **Interaction:** Primary CTA is a large **"Open File"** button. `input type="file"` must use `accept="application/pdf"`.
+*   **Touch Targets:** All interactive elements must be a minimum of 44×44px.
+*   **Batch Operations:** Reordering pages requires a designed long-press → drag interaction.
+
+### Accessibility Scope
+*   All interactive elements need focus rings and keyboard operability (`Tab`, `Enter`, `Escape`).
+*   The PDF viewer must expose page number and zoom level to screen readers.
+*   Drag-and-drop must have a keyboard-accessible alternative (file picker button).
+*   Color cannot be the only differentiator (e.g., for Document Health Panel status indicators).
+*   The Engine Status Pill needs an `aria-live` region so screen readers announce state changes.
 
 ---
 
