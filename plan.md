@@ -57,6 +57,7 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 **Objective:** Build the UI shell, establish the JavaScript processing pipeline, and launch the basic utilities.
 *   **Core UI:** Develop the Next.js/React frontend. Implement the "Massive Dropzone" welcome page, dark/light mode, and Zustand state management for handling files in memory.
 *   **Commodity Features:** Hook up `pdf-lib` for Combine, Split, Rotate, Reorder, Add Pages, Delete Pages, **Stamp / Watermark**, and **PDF compression/optimization** (metadata stripping + recompression).
+*   **Early Features:** Implement **Viewer Dark Mode** (CSS filter) and **QR & Barcode Decoder** (`@zxing/library`).
 *   **Basic Polish:** Implement standard metadata cleaning and password encryption.
 *   **Outcome:** A lightning-fast, ad-free alternative to generic online PDF splitters.
 
@@ -68,6 +69,7 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 *   **Redaction Reversal / Audit Tool:** Build a parser that scans incoming PDFs for "fake" redactions (hidden text layers under shapes) and alerts the user.
 *   **OCR Foundation:** Integrate `tesseract.js` for scanned PDFs, a table-stakes feature.
 *   **Flatten Forms:** Add ability to remove interactive fields and burn content in.
+*   **PDF to Structured Notes:** Turn PDFs into Markdown/Obsidian files with heading hierarchy and annotations.
 
 ### Phase 3: Data Extraction & Conversion (Months 10–16)
 **Objective:** Bring in the Pyodide/WASM engine to attract data workers, researchers, and administrators.
@@ -77,6 +79,7 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 *   **The Office Bridge:** Validate `pdf2docx` as an early pre-requisite spike to ensure Pyodide compatibility; implement local PDF to DOCX and DOCX to PDF conversion.
 *   **Batch Operations:** Allow users to process a folder of PDFs at once (split all, redact all, etc).
 *   **Digital Signature Verification:** Enable checking signature validity, critical for legal/enterprise workflows.
+*   **True Dark PDF Export:** Use `pymupdf` to rewrite PDFs with a dark background and recolored text, while preserving images.
 
 ### Phase 4: Professional Workflows & Scale (Months 17–24)
 **Objective:** Finalize the enterprise-tier features that ensure high retention.
@@ -122,7 +125,44 @@ While a drag-and-drop desktop paradigm is primary, mobile cannot be ignored:
 
 ---
 
-## 5. Next Strategic Steps
+## 5. Academic / Research Tools Feasibility
+
+For academic, scientific, and research users, the following tools have been evaluated for feasibility within the edge-native architecture:
+
+*   **Citation & Reference Extractor (Moderate - 7/10):** Uses regex to handle structured bibliographies (APA, MLA, Vancouver). `transformers.js` NER assists with author/journal disambiguation. Output to BibTeX/RIS is highly feasible once parsed.
+*   **Multi-column Reflow (Hard - 5/10 general, 7/10 standard 2-column):** `pdfplumber` and `pymupdf` expose text block X-coordinates, allowing column clustering. Works reliably for dominant IEEE/Elsevier formats, but degrades when figures span columns or layouts are highly unusual.
+*   **PDF Timeline (Moderate - 7/10):** Date regex combined with NER. Context windowing is required to disambiguate referenced dates from event dates.
+
+---
+
+## 6. Detailed Feature Plans
+
+### 6.1 Dark Mode PDF
+**Goal:** Produce a genuinely readable dark-mode PDF, not a naive CSS invert that turns photos negative.
+
+*   **Tier 1 — Viewer Dark Mode (Phase 1):** Instant preview using a CSS canvas filter (`invert(1) hue-rotate(180deg)`) applied to `pdf.js` render output. Zero processing overhead.
+*   **Tier 2 — True Dark PDF Export (Phase 3):** Uses `pymupdf` (Engine C) to rewrite the document. It paints a dark background, recolors text blocks (inverting black/dark text to near-white), and importantly, applies a brightness/contrast gamma correction to images rather than color-inverting them.
+*   **UX:** A toggle in the viewer toolbar (Sun ↔ Moon icon). An "Export Dark PDF" button for the true rewrite, featuring a split-screen before/after preview.
+
+### 6.2 PDF to Structured Notes
+**Goal:** Turn any PDF into a clean Markdown/Obsidian `.md` file with proper heading hierarchy and extracted annotations.
+
+*   **Processing Pipeline:** `pymupdf` extracts text blocks with font metadata (size, weight). A Heading Detector ranks font sizes to classify H1/H2/H3. `pdf.js` extracts highlights and sticky notes. Everything is assembled into Markdown with YAML frontmatter.
+*   **Obsidian Mode:** Adds `[[wikilinks]]` for proper nouns (via `transformers.js` NER), `#tags`, and a References section.
+*   **AI Summary (Optional):** Integration with an external API (like Claude) to generate per-section TL;DR summaries inserted as blockquotes. Opt-in only to preserve the privacy-first brand.
+*   **UX:** Live split-pane preview (PDF vs. Markdown). Options to toggle annotations, summaries, and Obsidian mode. Deep-link integration for Obsidian users.
+
+### 6.3 QR & Barcode Decoder
+**Goal:** Detect and decode every QR code and barcode on every page of a PDF.
+
+*   **Implementation:** Pure Engine A functionality using `@zxing/library` (supports QR, Data Matrix, PDF417, UPC, etc.).
+*   **Processing Pipeline:** `pdf.js` renders pages to canvas at 3x scale. The canvas image data is passed to ZXing. Pages are processed in parallel batches.
+*   **Smart Results:** The UI interprets results in a right sidebar (e.g., URLs get an "Open" button, ISBNs get a lookup link, vCards offer to save the contact).
+*   **UX:** A "Scan for Codes" toolbar button triggers an automatic scan of all pages, drawing bounding boxes over detected codes on thumbnails.
+
+---
+
+## 7. Next Strategic Steps
 
 To begin executing this plan, the immediate priority is validating the foundational technology stack to ensure the UX vision is possible.
 
