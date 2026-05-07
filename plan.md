@@ -57,6 +57,8 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 **Objective:** Build the UI shell, establish the JavaScript processing pipeline, and launch the basic utilities.
 *   **Core UI:** Develop the Next.js/React frontend. Implement the "Massive Dropzone" welcome page, dark/light mode, and Zustand state management for handling files in memory.
 *   **Commodity Features:** Hook up `pdf-lib` for Combine, Split, Rotate, Reorder, Add Pages, Delete Pages, **Stamp / Watermark**, and **PDF compression/optimization** (metadata stripping + recompression).
+*   **Annotations & Signatures:** Basic highlight/draw tools and signature capture/placement.
+*   **Sharing:** Implement **Base64 URL sharing** (`#data=...`) with file-size warnings for zero-server instant sharing.
 *   **Early Features:** Implement **Viewer Dark Mode** (CSS filter) and **QR & Barcode Decoder** (`@zxing/library`).
 *   **Basic Polish:** Implement standard metadata cleaning and password encryption.
 *   **Outcome:** A lightning-fast, ad-free alternative to generic online PDF splitters.
@@ -68,13 +70,15 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 *   **True Redaction Engine:** Ensure the redaction actually removes the underlying text paths using `pymupdf`, which outperforms `pdf-lib` for this.
 *   **Redaction Reversal / Audit Tool:** Build a parser that scans incoming PDFs for "fake" redactions (hidden text layers under shapes) and alerts the user.
 *   **OCR Foundation:** Integrate `tesseract.js` for scanned PDFs, a table-stakes feature.
+*   **Accessibility:** Add offline **Read Aloud (TTS)** using `transformers.js` (e.g., Kokoro model).
 *   **Flatten Forms:** Add ability to remove interactive fields and burn content in.
 *   **PDF to Structured Notes:** Turn PDFs into Markdown/Obsidian files with heading hierarchy and annotations.
 
 ### Phase 3: Data Extraction & Conversion (Months 10–16)
 **Objective:** Bring in the Pyodide/WASM engine to attract data workers, researchers, and administrators.
 *   **Pyodide Web Worker:** Set up the background thread to load the Python environment without freezing the UI.
-*   **Table Extractor:** Implement `pdfplumber`. Build a UI where users can draw bounding boxes over tables in the `pdf.js` viewer, and output clean CSV or Markdown.
+*   **Table Extractor:** Implement `pdfplumber`. Build a UI where users can draw bounding boxes over tables in the `pdf.js` viewer, and output clean CSV or **Excel/XLSX**.
+*   **Legal Utilities:** Implement **Bates Numbering** for legal professionals.
 *   **HTML/Markdown Export:** Extract raw text and headers into developer-friendly formats.
 *   **The Office Bridge:** Validate `pdf2docx` as an early pre-requisite spike to ensure Pyodide compatibility; implement local PDF to DOCX and DOCX to PDF conversion.
 *   **Batch Operations:** Allow users to process a folder of PDFs at once (split all, redact all, etc).
@@ -108,15 +112,20 @@ Since loading Pyodide + dependencies is heavy (~60-100MB initial load):
 *   **Background Pre-warming:** Start loading Pyodide in the background immediately upon first user interaction (like file drop), rather than waiting for a specific tool selection.
 *   **Caching via Service Worker + IDBFS:** Ensure all subsequent visits load instantly without re-downloading environments.
 
-### The Working Interface
-Once a document is loaded, the UI shifts:
+### The Working Interface & Progressive Complexity Modes
+To prevent feature bloat as capabilities expand, the UI will employ Progressive Complexity Modes, switchable via a primary toggle:
+*   **Simple Mode:** Focuses entirely on commodity features (Merge, Split, Rotate, Compress, Stamp, Share). The interface is stripped down to large, friendly buttons.
+*   **Enhanced Mode:** Introduces the AI and Data workflows. Surrounds the canvas with the Document Health Panel, Redaction Scanner, OCR tools, and Structured Notes export.
+*   **Super User Mode:** Exposes complex legal/academic utilities (Bates Numbering, Regex-based extraction, PDF/A conversion, Context-Aware Diff).
+
+Once a document is loaded, the foundational layout is:
 *   **Left Sidebar:** Page thumbnails (rendered via `pdf.js`) for quick reordering and deletion.
 *   **Main Canvas:** The document viewer.
 *   **Right Sidebar (Contextual):**
     *   **Document Health Panel:** A persistent panel showing page count, file size, OCR requirement (scanned PDF?), live text presence, AES encryption status, and hidden layers. This surfaces relevant tools automatically.
     *   If the user clicks "Redact," this panel shows the PII Scanner results.
-    *   If the user clicks "Extract Data," this panel shows CSV preview options.
-*   **Floating Action Bar:** Common actions (Save, Export to DOCX, Print) pinned to the bottom.
+    *   If the user clicks "Extract Data," this panel shows CSV/XLSX preview options.
+*   **Floating Action Bar:** Common actions (Save, Export, Print) pinned to the bottom.
 
 ### Mobile Strategy
 While a drag-and-drop desktop paradigm is primary, mobile cannot be ignored:
