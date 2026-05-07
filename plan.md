@@ -74,6 +74,7 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 *   **Automated PII Scanner:** Build the UI to scan a document, flag sensitive entities (SSNs, names, emails), and present them in a sidebar for one-click redaction.
 *   **True Redaction Engine:** Ensure the redaction actually removes the underlying text paths using `pymupdf`, which outperforms `pdf-lib` for this.
 *   **Redaction Reversal / Audit Tool:** Build a parser that scans incoming PDFs for "fake" redactions (hidden text layers under shapes) and alerts the user.
+*   **Sanitize & Send:** A one-click action that strips all metadata (author, history), removes hidden text/scripts, flattens forms/annotations, and verifies no fake redactions exist. On completion, it displays a dismissible, non-exportable in-app checklist of findings to build confidence without implying a legal guarantee.
 *   **OCR Foundation:** Integrate `tesseract.js` for scanned PDFs, a table-stakes feature.
 *   **Accessibility:** Add offline **Read Aloud (TTS)** using `transformers.js` (e.g., Kitten TTS `onnx-community/kitten-tts-nano-0.1-ONNX`).
 *   **Retention & Trust Features:** Add session continuity (resume unsaved work), Privacy Audit Log (timestamped history of local actions), contextual Progressive Mode promotion (e.g., suggest "Professional" mode if OCR is needed), per-tool time estimates, and dismissible in-workflow trust badges ("Processing in your browser").
@@ -84,8 +85,10 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 **Objective:** Bring in the Pyodide/WASM engine to attract data workers, researchers, and administrators.
 *   **Monetization Strategy:** Define monetization model before releasing Phase 3 features (freemium/pro tier/enterprise).
 *   **Pyodide Web Worker:** Set up the background thread to load the Python environment without freezing the UI.
-*   **Table Extractor:** Implement `pdfplumber`. Build a UI where users can draw bounding boxes over tables in the `pdf.js` viewer, and output clean CSV or **Excel/XLSX**.
+*   **Table Extraction (Sequential Fallback):** Default to `pdfplumber`. If the user is unsatisfied, provide a "Try the other engine" button to re-run with `pymupdf`. If automated extraction fails entirely, surface a manual bounding-box UI in the `pdf.js` viewer as the final fallback. Outputs to clean CSV or **Excel/XLSX**.
 *   **High-Value Utilities:** Add **Bookmark/Outline Editor**, **Image Extractor** (ZIP download), **Hyperlink Extractor**, **Crop/Resize Pages** (e.g., to A4/Letter), **Custom Page Numbering**, and **"Fast Web View" linearization**.
+*   **Cross-Document Page Reordering:** When multiple files are open, display thumbnail rails side-by-side to allow dragging pages directly between documents.
+*   **Workflow Recipes:** Allow users to save tool sequences (e.g., "OCR → Extract tables → Redact PII → Compress") locally to IndexedDB. One click applies a recipe. Exportable as JSON or shareable via URL to drive organic growth.
 *   **Legal Utilities:** Implement **Bates Numbering** for legal professionals.
 *   **Growth & Engagement UX:** Add deep-link shareable tool URLs (`/#tool=redact`), output quality feedback prompts (👍/👎 post-download), and early PWA install prompts for offline usage.
 *   **HTML/Markdown Export:** Extract raw text and headers into developer-friendly formats.
@@ -100,6 +103,7 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 *   **Multi-PDF Search:** Allow users to drop an entire folder of PDFs into the browser. Use `transformers.js` to create local embeddings, making the folder instantly searchable.
 *   **Reviewer Portal:** Extract annotations, comments, and highlights into an actionable checklist.
 *   **PDF/A Conversion:** Enable conversion to PDF/A for archival compliance.
+*   **Browser Extension:** Develop a Chrome/Firefox extension that adds "Open in BunkerPDF" to the right-click context menu on any PDF link, acting purely as a discovery launcher without requiring intrusive permissions.
 *   **Offline Mode:** Wrap the application in a Progressive Web App (PWA) manifest so users can install it locally and use it without an internet connection.
 
 ---
@@ -119,7 +123,8 @@ The interface must convey trust and premium quality. It should operate on a "Qui
 5.  **The Feature Grid:** Categorized cards (Security, Data, Edit) with color-coded headers.
     *   *Microcopy:* Intentional empty states with descriptive microcopy (e.g., "Split PDF → Drag the divider between pages") beneath each action.
     *   *Time Estimates:* Each card explicitly states processing time (e.g., "Instant", "~5 sec", "First use: ~30 sec, then instant").
-6.  **Returning User Surface:** When returning, show 3–5 recent file thumbnails with filenames and last action taken (stored in IndexedDB). One click to reload the file.
+6.  **Competitor Comparison Table:** A simple table near the bottom directly contrasting BunkerPDF with the three dominant alternatives: Server-based tools (privacy risks), subscription cloud tools (expensive), and desktop software (installation required, OS dependencies).
+7.  **Returning User Surface:** When returning, show 3–5 recent file thumbnails with filenames and last action taken (stored in IndexedDB). One click to reload the file.
 
 ### The File Session Model
 The application must handle the reality that users work across multiple documents and iterative steps.
@@ -166,7 +171,7 @@ Once a document is loaded, the foundational layout is:
 ### Trust & Retention UX
 *   **In-workflow Trust Signals:** Briefly surface "Processing in your browser — not sent to any server" near the progress indicator during tool execution (dismissible after 3 uses).
 *   **Privacy Audit Log:** A timestamped list of every operation performed (explicitly stating no data was transmitted), accessible from the footer.
-*   **Session Continuity:** Save in-progress work to IndexedDB ("Welcome back — you were working on Contract.pdf. Continue?").
+*   **Session Continuity & Memory:** Save in-progress work to IndexedDB ("Welcome back — you were working on Contract.pdf. Continue?"). Additionally, match returning files by filename and size hash to prompt with past actions (e.g., "You split this document in March. Split again?").
 *   **Shareable Tool Links:** Deep links (`/#tool=redact`) that pre-select a tool when a file is dropped.
 *   **PWA Install Prompt:** After a user's 3rd visit, surface a subtle prompt to install the app locally.
 *   **Output Quality Feedback:** A simple post-download prompt ("Did the output look right? 👍/👎").
