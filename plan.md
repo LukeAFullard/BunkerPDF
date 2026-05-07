@@ -6,8 +6,8 @@ This document outlines the end-to-end architecture, development roadmap, and fea
 
 ## 1. Product Vision & Core Tenets
 
-**The Pitch:** A professional-grade, browser-based document suite for legal, scientific, and administrative workflows.
-**The Differentiator:** 100% Edge-native processing. Zero server uploads. Total data privacy.
+**The Pitch:** "The privacy-first professional PDF workspace." A suite that provides professional PDF tools that never upload your documents.
+**The Differentiator:** 100% Edge-native processing. Zero server uploads. Total data privacy as the wedge, with advanced capabilities (AI, Extraction) as secondary surprises.
 
 *   **Trust as a Feature:** Users must feel and see that their data never leaves their machine.
 *   **Speed Over Everything:** Basic tasks must be instant. Heavy AI tasks must have beautiful loading states.
@@ -38,6 +38,12 @@ Used for complex layout parsing, data extraction, and format conversions where P
 *   **`pdf2docx`:** (Requires early validation/spike in Phase 1 as Pyodide compatibility is uncertain; explicit fallback plan: use `pymupdf` + `python-docx` to reconstruct DOCX manually from text blocks).
 *   *Note:* This engine is lazy-loaded. It only initializes in a Web Worker when a user requests a "Heavy" task.
 
+### Core Infrastructure: The Runtime Resource Manager
+To prevent Chrome tabs from crashing due to Out-Of-Memory (OOM) errors, a dedicated memory-budget architecture must be implemented:
+*   **Explicit Per-Engine Budgets:** e.g., `pdf.js` render cache (100–500MB), Pyodide runtime (200–400MB), OCR pages (300MB+).
+*   **WASM Threading & Execution Topology:** Dedicated worker pools, task priorities, queue scheduling, and cancellation propagation to prevent UI jank when running multiple heavy tasks (Pyodide + OCR + Rendering).
+*   **Memory Pressure Handling:** Lifecycle management, explicit disposal APIs, LRU cache eviction, canvas cleanup, object URL revocation, and page virtualization/render throttling for `pdf.js`.
+
 ### Engine D: Browser WASM (Not Pyodide)
 *   **`tesseract.js`:** For OCR on scanned PDFs.
 
@@ -46,6 +52,11 @@ Pyodide runs on an ephemeral virtual filesystem (MEMFS) by default. To solve the
 *   **Pip Cache:** Syncs pip packages to IndexedDB, saving ~50MB of re-downloads on every visit after the first load.
 *   **User Persistence:** Stores user files and output documents across sessions.
 *   **Model Weights:** Caches `transformers.js` weights to prevent repeated downloads.
+
+### The Storage Transparency Model
+Because persisting PDFs locally creates new privacy threat vectors, the application must provide absolute clarity on what is stored in IndexedDB:
+*   **Visibility:** Users must see what is cached (recent files, thumbnails, embeddings, audit logs), where it is, how large it is, and its retention duration.
+*   **Controls:** A "Clear All" control must be prominent. Options for "encrypted local storage", "auto-delete session mode", and "ephemeral/private mode" are essential to maintain trust, especially for legal/medical users.
 
 ---
 
@@ -72,7 +83,7 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 * [ ] **Accessibility Foundation:** Focus rings, keyboard operability, and ARIA live regions for engine status.
 * [ ] **Expanded Commodity Features:** Add Reorder, Add Pages, Delete Pages, **Stamp / Watermark**, and **PDF compression/optimization** (metadata stripping + recompression).
 * [ ] **Undo/Redo System:** Implement a robust undo/redo stack (Cmd+Z).
-* [ ] **Mobile Foundation:** Tap-to-open file inputs properly formatted with `accept="application/pdf"` for iOS.
+* [ ] **Mobile Scope (Lightweight Utility Mode):** Mobile is strictly a lightweight utility mode (Merge/Split), NOT full workstation parity. Due to RAM, thermal throttling, and Safari WASM limits, heavy processing (Pyodide, OCR, Large PDFs) is too risky for MVP mobile.
 * [ ] **Basic Polish:** Implement standard metadata cleaning and password encryption.
 * [ ] **Annotations & Signatures:** Basic highlight/draw tools and signature capture/placement.
 * [ ] **Sharing:** Implement **WebRTC/P2P sharing** or Base64 URL sharing.
@@ -104,6 +115,8 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 * [ ] **True Dark PDF Export:** Use `pymupdf` to rewrite PDFs with a dark background and recolored text, while preserving images.
 
 ### Phase 4: Professional Workflows & Scale (Months 19–24)
+* [ ] **Enterprise Air-Gapped Deployment:** Establish the ultimate business moat by packaging the static build for self-hosted, air-gapped, internal-only enterprise deployments.
+
 **Objective:** Finalize the enterprise-tier features that ensure high retention.
 * [ ] **Context-Aware Diff (Track Changes):** Build the semantic comparison tool for two PDF versions.
 * [ ] **Multi-PDF Search:** Allow users to drop an entire folder of PDFs into the browser. Use `transformers.js` to create local embeddings, making the folder instantly searchable.
@@ -119,7 +132,7 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 The interface must convey trust and premium quality. It should operate on a "Quiet UI" principle—tools only appear when they are contextually relevant.
 
 ### First-Run & The Welcome Page Structure
-1.  **Onboarding:** A 3-step dismissible tooltip tour on first load ("Drop a file → Pick what to do → Download your result") stored in `localStorage`.
+1.  **Onboarding & Quick Actions:** A 3-step dismissible tooltip tour on first load. Once a PDF loads, initially show *only* "Quick Actions" (Compress, Redact, Convert, Sign, Extract Tables) to avoid overwhelming non-tech users. Hide complex tools behind the progressive complexity toggles.
 2.  **The Hero:** Bold statement: *"The Zero-Trust Document Suite."*
 3.  **The Dropzone:** A massive, central dashed area.
     *   *Visual Cue:* A visual pulse/glow on hover to clearly indicate the drop target.
@@ -271,7 +284,7 @@ For academic, scientific, and research users, the following tools have been eval
 
 *   **Processing Pipeline:** `pymupdf` extracts text blocks with font metadata (size, weight). A Heading Detector ranks font sizes to classify H1/H2/H3. `pdf.js` extracts highlights and sticky notes. Everything is assembled into Markdown with YAML frontmatter.
 *   **Obsidian Mode:** Adds `[[wikilinks]]` for proper nouns (via `transformers.js` NER), `#tags`, and a References section.
-*   **AI Summary (Optional):** Integration with an external API (like Claude) to generate per-section TL;DR summaries inserted as blockquotes. Opt-in only to preserve the privacy-first brand.
+*   **AI Summary (Strict Opt-In / Cloud Assist Mode):** Integration with an external API (like Claude) to generate per-section TL;DR summaries. *Crucially*, this must NEVER silently mix local and remote AI. It must be gated behind an explicit "Cloud Assist Mode" with massive visual distinction and require confirmation every time initially to prevent trust ambiguity.
 *   **UX:** Live split-pane preview (PDF vs. Markdown). Options to toggle annotations, summaries, and Obsidian mode. Deep-link integration for Obsidian users.
 
 ### 7.3 QR & Barcode Decoder
@@ -302,6 +315,7 @@ By isolating the JS-native manipulation from the WebGPU-accelerated AI early on,
 While the tri-engine edge architecture provides massive privacy and cost benefits, it introduces browser-specific constraints that must be actively managed.
 
 *   **WASM Memory Limits (OOM Risk):** WebAssembly instances typically have a hard memory ceiling (historically 2GB, scaling towards 4GB in modern browsers). Loading, decoding, and processing massive PDFs (e.g., 500MB+ scanned documents) entirely in memory via Pyodide will crash the browser tab. The application must implement streaming where possible, or chunking strategies, and gracefully handle Out-Of-Memory (OOM) errors by warning users before processing large files.
+*   **PDF Rendering Bottlenecks:** `pdf.js` rendering (high zoom, large pages, many thumbnails, split comparisons) becomes expensive very quickly. The architecture must include aggressive viewport virtualization, render throttling, page-level invalidation, tile rendering for huge pages, and thumbnail lazy rendering.
 *   **Storage API Migration (OPFS vs. IDBFS):** While IDBFS (IndexedDB) is a functional starting point for caching Python wheels, it is relatively slow for heavy read/write operations (such as dumping hundreds of extracted high-res images). The architecture should plan a migration path to the **Origin Private File System (OPFS)**, which provides highly performant, synchronous file access within Web Workers, mimicking a native file system much more closely.
 *   **Cross-Origin Isolation (COOP/COEP):** To achieve maximum performance in Web Workers—specifically if the architecture eventually requires `SharedArrayBuffer` for multi-threading or rapid memory sharing between JS and WASM—the application must be served with strict Cross-Origin-Opener-Policy and Cross-Origin-Embedder-Policy headers. This makes loading external third-party resources (like remote fonts or external scripts) significantly more complex.
 *   **Content Security Policy (CSP):** Running Pyodide and dynamically compiling WASM requires specific CSP directives (such as `'wasm-unsafe-eval'`). Security policies must be carefully crafted to allow the engines to function without exposing the application to XSS vulnerabilities.
