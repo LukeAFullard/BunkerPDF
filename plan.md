@@ -55,56 +55,56 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 
 ### Phase 1: Foundation & "The Dropzone" (Months 1–3)
 **Objective:** Build the UI shell, establish the JavaScript processing pipeline, and launch the basic utilities.
-*   **Core UI & File Session Model:** Develop the Vite/React frontend. Implement the "Massive Dropzone" welcome page, dark/light mode, and Zustand state management for handling files in memory. Implement the multi-file tab bar to manage multiple open documents.
-*   **UX/UI Priorities:** 3-step onboarding tooltip tour, explicit error states (OOM, corrupt files, passwords), human-readable loading stages with cancel buttons, thumbnail context menus (right-click to extract/delete), and smart output file naming (`[original-name]-[action]-[timestamp]`).
-*   **Accessibility Foundation:** Focus rings, keyboard operability, and ARIA live regions for engine status.
-*   **Commodity Features:** Hook up `pdf-lib` for Combine, Split, Rotate, Reorder, Add Pages, Delete Pages, **Stamp / Watermark**, and **PDF compression/optimization** (metadata stripping + recompression using ghostscript via Pyodide or JS-native deflate pass).
-*   **Annotations & Signatures:** Basic highlight/draw tools and signature capture/placement.
-*   **Undo/Redo System:** Implement a robust undo/redo stack (Cmd+Z) early on to prevent data loss on accidental page deletes or edits.
-*   **Sharing:** Implement **WebRTC/P2P sharing** (or Base64 URLs capped at tiny sizes < 20KB) for zero-server instant sharing.
-*   **Early Features:** Implement **Viewer Dark Mode** (CSS filter) and **QR & Barcode Decoder** (`@zxing/library`).
-*   **Mobile Foundation:** Tap-to-open file inputs properly formatted with `accept="application/pdf"` for iOS.
-*   **Basic Polish:** Implement standard metadata cleaning and password encryption.
-*   **Early Spikes:** Validate `pymupdf` + `pdf2docx` in Pyodide.
-*   **Outcome:** A lightning-fast, ad-free alternative to generic online PDF splitters.
+* [ ] **Core UI & File Session Model:** Develop the Vite/React frontend. Implement the "Massive Dropzone" welcome page, dark/light mode, and Zustand state management for handling files in memory. Implement the multi-file tab bar to manage multiple open documents.
+* [ ] **UX/UI Priorities:** 3-step onboarding tooltip tour, explicit error states (OOM, corrupt files, passwords), human-readable loading stages with cancel buttons, thumbnail context menus (right-click to extract/delete), and smart output file naming (`[original-name]-[action]-[timestamp]`).
+* [ ] **Accessibility Foundation:** Focus rings, keyboard operability, and ARIA live regions for engine status.
+* [ ] **Commodity Features:** Hook up `pdf-lib` for Combine, Split, Rotate, Reorder, Add Pages, Delete Pages, **Stamp / Watermark**, and **PDF compression/optimization** (metadata stripping + recompression using ghostscript via Pyodide or JS-native deflate pass).
+* [ ] **Annotations & Signatures:** Basic highlight/draw tools and signature capture/placement.
+* [ ] **Undo/Redo System:** Implement a robust undo/redo stack (Cmd+Z) early on to prevent data loss on accidental page deletes or edits.
+* [ ] **Sharing:** Implement **WebRTC/P2P sharing** (or Base64 URLs capped at tiny sizes < 20KB) for zero-server instant sharing.
+* [ ] **Early Features:** Implement **Viewer Dark Mode** (CSS filter) and **QR & Barcode Decoder** (`@zxing/library`).
+* [ ] **Mobile Foundation:** Tap-to-open file inputs properly formatted with `accept="application/pdf"` for iOS.
+* [ ] **Basic Polish:** Implement standard metadata cleaning and password encryption.
+* [ ] **Early Spikes:** Validate `pymupdf` + `pdf2docx` in Pyodide.
+* [ ] **Outcome:** A lightning-fast, ad-free alternative to generic online PDF splitters.
 
 ### Phase 2: The Intelligent Security Hub (Months 4–9)
 **Objective:** Deploy the core differentiator—the Redaction Suite—using edge-native AI.
-*   **Transformers.js Integration:** Implement a lightweight NER model in the browser (target <50MB budget for first load).
-*   **Automated PII Scanner:** Build the UI to scan a document, flag sensitive entities (SSNs, names, emails), and present them in a sidebar for one-click redaction.
-*   **True Redaction Engine:** Ensure the redaction actually removes the underlying text paths using `pymupdf`, which outperforms `pdf-lib` for this.
-*   **Redaction Reversal / Audit Tool:** Build a parser that scans incoming PDFs for "fake" redactions (hidden text layers under shapes) and alerts the user.
-*   **Sanitize & Send:** A one-click action that strips all metadata (author, history), removes hidden text/scripts, flattens forms/annotations, and verifies no fake redactions exist. On completion, it displays a dismissible, non-exportable in-app checklist of findings to build confidence without implying a legal guarantee.
-*   **OCR Foundation:** Integrate `tesseract.js` for scanned PDFs, a table-stakes feature.
-*   **Accessibility:** Add offline **Read Aloud (TTS)** using `transformers.js` (e.g., Kitten TTS `onnx-community/kitten-tts-nano-0.1-ONNX`).
-*   **Retention & Trust Features:** Add session continuity (resume unsaved work), Privacy Audit Log (timestamped history of local actions), contextual Progressive Mode promotion (e.g., suggest "Professional" mode if OCR is needed), per-tool time estimates, and dismissible in-workflow trust badges ("Processing in your browser").
-*   **Flatten Forms:** Add ability to remove interactive fields and burn content in.
-*   **PDF to Structured Notes:** Turn PDFs into Markdown/Obsidian files with heading hierarchy and annotations.
+* [ ] **Transformers.js Integration:** Implement a lightweight NER model in the browser (target <50MB budget for first load).
+* [ ] **Automated PII Scanner:** Build the UI to scan a document, flag sensitive entities (SSNs, names, emails), and present them in a sidebar for one-click redaction.
+* [ ] **True Redaction Engine:** Ensure the redaction actually removes the underlying text paths using `pymupdf`, which outperforms `pdf-lib` for this.
+* [ ] **Redaction Reversal / Audit Tool:** Build a parser that scans incoming PDFs for "fake" redactions (hidden text layers under shapes) and alerts the user.
+* [ ] **Sanitize & Send:** A one-click action that strips all metadata (author, history), removes hidden text/scripts, flattens forms/annotations, and verifies no fake redactions exist. On completion, it displays a dismissible, non-exportable in-app checklist of findings to build confidence without implying a legal guarantee.
+* [ ] **OCR Foundation:** Integrate `tesseract.js` for scanned PDFs, a table-stakes feature.
+* [ ] **Accessibility:** Add offline **Read Aloud (TTS)** using `transformers.js` (e.g., Kitten TTS `onnx-community/kitten-tts-nano-0.1-ONNX`).
+* [ ] **Retention & Trust Features:** Add session continuity (resume unsaved work), Privacy Audit Log (timestamped history of local actions), contextual Progressive Mode promotion (e.g., suggest "Professional" mode if OCR is needed), per-tool time estimates, and dismissible in-workflow trust badges ("Processing in your browser").
+* [ ] **Flatten Forms:** Add ability to remove interactive fields and burn content in.
+* [ ] **PDF to Structured Notes:** Turn PDFs into Markdown/Obsidian files with heading hierarchy and annotations.
 
 ### Phase 3: Data Extraction & Conversion (Months 10–16)
 **Objective:** Bring in the Pyodide/WASM engine to attract data workers, researchers, and administrators.
-*   **Monetization Strategy:** Define monetization model before releasing Phase 3 features (freemium/pro tier/enterprise).
-*   **Pyodide Web Worker:** Set up the background thread to load the Python environment without freezing the UI.
-*   **Table Extraction (Sequential Fallback):** Default to `pdfplumber`. If the user is unsatisfied, provide a "Try the other engine" button to re-run with `pymupdf`. If automated extraction fails entirely, surface a manual bounding-box UI in the `pdf.js` viewer as the final fallback. Outputs to clean CSV or **Excel/XLSX**.
-*   **High-Value Utilities:** Add **Bookmark/Outline Editor**, **Image Extractor** (ZIP download), **Hyperlink Extractor**, **Crop/Resize Pages** (e.g., to A4/Letter), **Custom Page Numbering**, and **"Fast Web View" linearization**.
-*   **Cross-Document Page Reordering:** When multiple files are open, display thumbnail rails side-by-side to allow dragging pages directly between documents.
-*   **Workflow Recipes:** Allow users to save tool sequences (e.g., "OCR → Extract tables → Redact PII → Compress") locally to IndexedDB. One click applies a recipe. Exportable as JSON or shareable via URL to drive organic growth.
-*   **Legal Utilities:** Implement **Bates Numbering** for legal professionals.
-*   **Growth & Engagement UX:** Add deep-link shareable tool URLs (`/#tool=redact`), output quality feedback prompts (👍/👎 post-download), and early PWA install prompts for offline usage.
-*   **HTML/Markdown Export:** Extract raw text and headers into developer-friendly formats.
-*   **The Office Bridge:** Implement local PDF to DOCX and DOCX to PDF conversion (using fallback to `pymupdf` + `python-docx` if needed based on Phase 1 spike).
-*   **Batch Operations:** Allow users to process a folder of PDFs at once (split all, redact all, etc).
-*   **Digital Signature Verification:** Enable checking signature validity, critical for legal/enterprise workflows.
-*   **True Dark PDF Export:** Use `pymupdf` to rewrite PDFs with a dark background and recolored text, while preserving images.
+* [ ] **Monetization Strategy:** Define monetization model before releasing Phase 3 features (freemium/pro tier/enterprise).
+* [ ] **Pyodide Web Worker:** Set up the background thread to load the Python environment without freezing the UI.
+* [ ] **Table Extraction (Sequential Fallback):** Default to `pdfplumber`. If the user is unsatisfied, provide a "Try the other engine" button to re-run with `pymupdf`. If automated extraction fails entirely, surface a manual bounding-box UI in the `pdf.js` viewer as the final fallback. Outputs to clean CSV or **Excel/XLSX**.
+* [ ] **High-Value Utilities:** Add **Bookmark/Outline Editor**, **Image Extractor** (ZIP download), **Hyperlink Extractor**, **Crop/Resize Pages** (e.g., to A4/Letter), **Custom Page Numbering**, and **"Fast Web View" linearization**.
+* [ ] **Cross-Document Page Reordering:** When multiple files are open, display thumbnail rails side-by-side to allow dragging pages directly between documents.
+* [ ] **Workflow Recipes:** Allow users to save tool sequences (e.g., "OCR → Extract tables → Redact PII → Compress") locally to IndexedDB. One click applies a recipe. Exportable as JSON or shareable via URL to drive organic growth.
+* [ ] **Legal Utilities:** Implement **Bates Numbering** for legal professionals.
+* [ ] **Growth & Engagement UX:** Add deep-link shareable tool URLs (`/#tool=redact`), output quality feedback prompts (👍/👎 post-download), and early PWA install prompts for offline usage.
+* [ ] **HTML/Markdown Export:** Extract raw text and headers into developer-friendly formats.
+* [ ] **The Office Bridge:** Implement local PDF to DOCX and DOCX to PDF conversion (using fallback to `pymupdf` + `python-docx` if needed based on Phase 1 spike).
+* [ ] **Batch Operations:** Allow users to process a folder of PDFs at once (split all, redact all, etc).
+* [ ] **Digital Signature Verification:** Enable checking signature validity, critical for legal/enterprise workflows.
+* [ ] **True Dark PDF Export:** Use `pymupdf` to rewrite PDFs with a dark background and recolored text, while preserving images.
 
 ### Phase 4: Professional Workflows & Scale (Months 17–24)
 **Objective:** Finalize the enterprise-tier features that ensure high retention.
-*   **Context-Aware Diff (Track Changes):** Build the semantic comparison tool for two PDF versions.
-*   **Multi-PDF Search:** Allow users to drop an entire folder of PDFs into the browser. Use `transformers.js` to create local embeddings, making the folder instantly searchable.
-*   **Reviewer Portal:** Extract annotations, comments, and highlights into an actionable checklist.
-*   **PDF/A Conversion:** Enable conversion to PDF/A for archival compliance.
-*   **Browser Extension:** Develop a Chrome/Firefox extension that adds "Open in BunkerPDF" to the right-click context menu on any PDF link, acting purely as a discovery launcher without requiring intrusive permissions.
-*   **Offline Mode:** Wrap the application in a Progressive Web App (PWA) manifest so users can install it locally and use it without an internet connection.
+* [ ] **Context-Aware Diff (Track Changes):** Build the semantic comparison tool for two PDF versions.
+* [ ] **Multi-PDF Search:** Allow users to drop an entire folder of PDFs into the browser. Use `transformers.js` to create local embeddings, making the folder instantly searchable.
+* [ ] **Reviewer Portal:** Extract annotations, comments, and highlights into an actionable checklist.
+* [ ] **PDF/A Conversion:** Enable conversion to PDF/A for archival compliance.
+* [ ] **Browser Extension:** Develop a Chrome/Firefox extension that adds "Open in BunkerPDF" to the right-click context menu on any PDF link, acting purely as a discovery launcher without requiring intrusive permissions.
+* [ ] **Offline Mode:** Wrap the application in a Progressive Web App (PWA) manifest so users can install it locally and use it without an internet connection.
 
 ---
 
@@ -282,9 +282,9 @@ For academic, scientific, and research users, the following tools have been eval
 
 To begin executing this plan, the immediate priority is validating the foundational technology stack to ensure the UX vision is possible.
 
-1.  **Repository Setup:** Initialize the frontend framework (e.g., Next.js) and configure the Webpack/Vite bundler to handle WASM files correctly.
-2.  **Proof of Concept 1 (The Fast Lane):** Implement a simple drag-and-drop zone that uses `pdf-lib` to instantly merge two PDFs and trigger a local download.
-3.  **Proof of Concept 2 (The AI Lane):** Instantiate `transformers.js` in a Web Worker, pass it a hardcoded string of text containing a name and an email, and log the NER extraction results to the console.
+1. [ ] **Repository Setup:** Initialize the frontend framework (e.g., Next.js) and configure the Webpack/Vite bundler to handle WASM files correctly.
+2. [ ] **Proof of Concept 1 (The Fast Lane):** Implement a simple drag-and-drop zone that uses `pdf-lib` to instantly merge two PDFs and trigger a local download.
+3. [ ] **Proof of Concept 2 (The AI Lane):** Instantiate `transformers.js` in a Web Worker, pass it a hardcoded string of text containing a name and an email, and log the NER extraction results to the console.
 
 By isolating the JS-native manipulation from the WebGPU-accelerated AI early on, you secure the two main pillars of the application before tackling the heavy Pyodide integrations.
 
@@ -298,3 +298,13 @@ While the tri-engine edge architecture provides massive privacy and cost benefit
 *   **Storage API Migration (OPFS vs. IDBFS):** While IDBFS (IndexedDB) is a functional starting point for caching Python wheels, it is relatively slow for heavy read/write operations (such as dumping hundreds of extracted high-res images). The architecture should plan a migration path to the **Origin Private File System (OPFS)**, which provides highly performant, synchronous file access within Web Workers, mimicking a native file system much more closely.
 *   **Cross-Origin Isolation (COOP/COEP):** To achieve maximum performance in Web Workers—specifically if the architecture eventually requires `SharedArrayBuffer` for multi-threading or rapid memory sharing between JS and WASM—the application must be served with strict Cross-Origin-Opener-Policy and Cross-Origin-Embedder-Policy headers. This makes loading external third-party resources (like remote fonts or external scripts) significantly more complex.
 *   **Content Security Policy (CSP):** Running Pyodide and dynamically compiling WASM requires specific CSP directives (such as `'wasm-unsafe-eval'`). Security policies must be carefully crafted to allow the engines to function without exposing the application to XSS vulnerabilities.
+
+## 10. Audit & Feasibility Notes
+
+**Overall Assessment**: The plan is highly detailed, well-structured, and feasible for a 24-month horizon. It clearly differentiates between lightweight tasks (Engine A) and heavy tasks (Engine C), and identifies core technical risks early.
+
+**Missing Details / Areas for Refinement**:
+*   **WebRTC Signaling:** Phase 1 mentions zero-server WebRTC/P2P sharing. WebRTC *requires* a signaling server to exchange connection offers/answers before establishing a P2P connection. A lightweight, privacy-preserving signaling mechanism (e.g., using WebSockets or Server-Sent Events, or a public free STUN/TURN server setup) needs to be explicitly defined. Otherwise, Base64 URLs are the only truly serverless option, but they are limited by URI length constraints (~2MB max in some browsers, but realistically 64KB for safe sharing).
+*   **WASM Memory Limits (OOM):** The plan acknowledges WASM limits in section 9. However, the execution steps should include explicit OOM-prevention strategies: e.g., chunking large PDFs before passing to Pyodide, and strict memory profiling in the CI/CD pipeline.
+*   **Pyodide Fallbacks:** `pdf2docx` fallback is mentioned, but what if Pyodide itself fails to load entirely due to strict CSPs in certain enterprise environments? A clearer downgrade path to Engine A/B only is needed.
+*   **Monetization/Hosting:** If it's a 100% client-side app, hosting costs are just static file delivery (cheap). Monetization strategy in Phase 3 should account for how to "gate" client-side features securely.
