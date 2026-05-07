@@ -180,3 +180,14 @@ To begin executing this plan, the immediate priority is validating the foundatio
 3.  **Proof of Concept 2 (The AI Lane):** Instantiate `transformers.js` in a Web Worker, pass it a hardcoded string of text containing a name and an email, and log the NER extraction results to the console.
 
 By isolating the JS-native manipulation from the WebGPU-accelerated AI early on, you secure the two main pillars of the application before tackling the heavy Pyodide integrations.
+
+---
+
+## 8. Critical Technical Considerations & Risks
+
+While the tri-engine edge architecture provides massive privacy and cost benefits, it introduces browser-specific constraints that must be actively managed.
+
+*   **WASM Memory Limits (OOM Risk):** WebAssembly instances typically have a hard memory ceiling (historically 2GB, scaling towards 4GB in modern browsers). Loading, decoding, and processing massive PDFs (e.g., 500MB+ scanned documents) entirely in memory via Pyodide will crash the browser tab. The application must implement streaming where possible, or chunking strategies, and gracefully handle Out-Of-Memory (OOM) errors by warning users before processing large files.
+*   **Storage API Migration (OPFS vs. IDBFS):** While IDBFS (IndexedDB) is a functional starting point for caching Python wheels, it is relatively slow for heavy read/write operations (such as dumping hundreds of extracted high-res images). The architecture should plan a migration path to the **Origin Private File System (OPFS)**, which provides highly performant, synchronous file access within Web Workers, mimicking a native file system much more closely.
+*   **Cross-Origin Isolation (COOP/COEP):** To achieve maximum performance in Web Workers—specifically if the architecture eventually requires `SharedArrayBuffer` for multi-threading or rapid memory sharing between JS and WASM—the application must be served with strict Cross-Origin-Opener-Policy and Cross-Origin-Embedder-Policy headers. This makes loading external third-party resources (like remote fonts or external scripts) significantly more complex.
+*   **Content Security Policy (CSP):** Running Pyodide and dynamically compiling WASM requires specific CSP directives (such as `'wasm-unsafe-eval'`). Security policies must be carefully crafted to allow the engines to function without exposing the application to XSS vulnerabilities.
