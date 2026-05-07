@@ -187,7 +187,56 @@ While a drag-and-drop desktop paradigm is primary, mobile cannot be ignored:
 
 ---
 
-## 5. Academic / Research Tools Feasibility
+## 5. UI Layout & Navigation Architecture
+
+The core challenge is surfacing 40+ features without overwhelming users. The solution is three layers working together, each serving a different user type, with the document itself doing most of the navigational work.
+
+### Layer 1: Document Health Panel — Primary Tool Discovery
+
+The Document Health Panel is the main tool discovery engine, not a passive information display. When a file loads, it scans the document and surfaces only what is relevant:
+
+- Scanned PDF → OCR surfaces prominently as the suggested first action
+- Metadata detected → "Sanitize before sending" appears as a suggestion
+- Forms detected → form tools appear automatically
+- No selectable text → extraction tools are greyed out with a tooltip explaining why
+
+Most users never need to browse tools at all. The document guides them.
+
+### Layer 2: Slim Icon Rail — Secondary Navigation
+
+A narrow icon rail on the left side of the workspace organises all features into five categories. Labels are visible alongside icons by default; collapsing to icons-only is available as a user preference, not the default state. Categories:
+
+- **Edit** — merge, split, rotate, reorder, crop, page numbering
+- **Security** — redact, sanitise, password, signature verification
+- **Extract** — tables, text, images, OCR
+- **Export** — DOCX, markdown, dark PDF, PDF/A
+- **Review** — diff, annotations, multi-PDF search
+
+Clicking a category opens a panel that **overlays the viewer** with a subtle backdrop. The document remains in its exact position — no layout shift, no pushing. The overlay closes when the user clicks away or presses Escape.
+
+### Layer 3: Command Palette — Power User Escape Hatch
+
+`Cmd+K` opens a search bar indexing every feature by name and common synonyms. Typing "hide", "censor", or "black out" surfaces Redact. Typing "table" surfaces both extraction options. Zero visual noise for users who don't need it; two keystrokes to anything for those who do.
+
+### Complexity Modes
+
+The Simple/Enhanced/Professional toggle controls depth *within* each category, not which categories are visible. In Simple mode the Security drawer shows three options; in Professional mode it shows twelve. Structure stays consistent; density scales with the user's chosen mode.
+
+### Workflow Recipes
+
+Recipes are a session-level concept and do not belong in the icon rail. They live in the **top bar alongside the file tabs** — a persistent "Recipes" button opening a dropdown of saved workflows. Always accessible, never buried inside a category.
+
+### Tabs
+
+Used for one purpose only: switching between open files. A tab bar across the top of the viewer shows open documents as thumbnail + filename. Not used for features or categories.
+
+### The Net Result
+
+A non-tech user loads a PDF, sees two or three relevant suggestions in the health panel, clicks one, done — they never see the icon rail. A power user hits `Cmd+K`, types what they want, and arrives in two keystrokes. The full feature set exists but is never in anyone's way.
+
+---
+
+## 6. Academic / Research Tools Feasibility
 
 For academic, scientific, and research users, the following tools have been evaluated for feasibility within the edge-native architecture:
 
@@ -197,16 +246,16 @@ For academic, scientific, and research users, the following tools have been eval
 
 ---
 
-## 6. Detailed Feature Plans
+## 7. Detailed Feature Plans
 
-### 6.1 Dark Mode PDF
+### 7.1 Dark Mode PDF
 **Goal:** Produce a genuinely readable dark-mode PDF, not a naive CSS invert that turns photos negative.
 
 *   **Tier 1 — Viewer Dark Mode (Phase 1):** Instant preview using a CSS canvas filter (`invert(1) hue-rotate(180deg)`) applied to `pdf.js` render output. Zero processing overhead.
 *   **Tier 2 — True Dark PDF Export (Phase 3):** Uses `pymupdf` (Engine C) to rewrite the document. It paints a dark background, recolors text blocks (inverting black/dark text to near-white), and importantly, applies a brightness/contrast gamma correction to images rather than color-inverting them.
 *   **UX:** A toggle in the viewer toolbar (Sun ↔ Moon icon). An "Export Dark PDF" button for the true rewrite, featuring a split-screen before/after preview.
 
-### 6.2 PDF to Structured Notes
+### 7.2 PDF to Structured Notes
 **Goal:** Turn any PDF into a clean Markdown/Obsidian `.md` file with proper heading hierarchy and extracted annotations.
 
 *   **Processing Pipeline:** `pymupdf` extracts text blocks with font metadata (size, weight). A Heading Detector ranks font sizes to classify H1/H2/H3. `pdf.js` extracts highlights and sticky notes. Everything is assembled into Markdown with YAML frontmatter.
@@ -214,7 +263,7 @@ For academic, scientific, and research users, the following tools have been eval
 *   **AI Summary (Optional):** Integration with an external API (like Claude) to generate per-section TL;DR summaries inserted as blockquotes. Opt-in only to preserve the privacy-first brand.
 *   **UX:** Live split-pane preview (PDF vs. Markdown). Options to toggle annotations, summaries, and Obsidian mode. Deep-link integration for Obsidian users.
 
-### 6.3 QR & Barcode Decoder
+### 7.3 QR & Barcode Decoder
 **Goal:** Detect and decode every QR code and barcode on every page of a PDF.
 
 *   **Implementation:** Pure Engine A functionality using `@zxing/library` (supports QR, Data Matrix, PDF417, UPC, etc.).
@@ -224,7 +273,7 @@ For academic, scientific, and research users, the following tools have been eval
 
 ---
 
-## 7. Next Strategic Steps
+## 8. Next Strategic Steps
 
 To begin executing this plan, the immediate priority is validating the foundational technology stack to ensure the UX vision is possible.
 
@@ -236,7 +285,7 @@ By isolating the JS-native manipulation from the WebGPU-accelerated AI early on,
 
 ---
 
-## 8. Critical Technical Considerations & Risks
+## 9. Critical Technical Considerations & Risks
 
 While the tri-engine edge architecture provides massive privacy and cost benefits, it introduces browser-specific constraints that must be actively managed.
 
