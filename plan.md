@@ -301,7 +301,7 @@ For academic, scientific, and research users, the following tools have been eval
 
 To begin executing this plan, the immediate priority is validating the foundational technology stack to ensure the UX vision is possible.
 
-1. [ ] **Repository Setup:** Initialize the frontend framework (e.g., Next.js) and configure the Webpack/Vite bundler to handle WASM files correctly.
+1. [ ] **Repository Setup:** Initialize the frontend framework using Vite/React (chosen over Next.js for simpler WASM handling in a client-only app) and configure the bundler to handle WASM files correctly.
 2. [ ] **Proof of Concept 1 (The Fast Lane):** Implement a simple drag-and-drop zone that uses `pdf-lib` to instantly merge two PDFs and trigger a local download.
 3. [ ] **Proof of Concept 2 (The AI Lane):** Instantiate `transformers.js` in a Web Worker, pass it a hardcoded string of text containing a name and an email, and log the NER extraction results to the console.
 4. [ ] **WASM Memory Profiling:** Implement strict memory profiling in the CI/CD pipeline to continuously monitor memory footprints and prevent WASM OOM crashes during heavy loads.
