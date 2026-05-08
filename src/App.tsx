@@ -1,14 +1,46 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Dropzone } from './components/ui/Dropzone';
 import { useFileStore, type PDFDocument } from './store/fileStore';
 import { mergePdfs, splitPdf } from './lib/engineA';
 import { PDFThumbnail } from './components/pdf/PDFThumbnail';
+import type { NERWorkerMessage, NERWorkerResponse } from './workers/nerWorker';
 
 function App() {
   const documents = useFileStore(state => state.documents);
+  const workerRef = useRef<Worker | null>(null);
   const removeDocument = useFileStore(state => state.removeDocument);
   const clearAll = useFileStore(state => state.clearAll);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  useEffect(() => {
+    // Initialize the NER worker
+    workerRef.current = new Worker(new URL('./workers/nerWorker.ts', import.meta.url), {
+      type: 'module'
+    });
+
+    workerRef.current.onmessage = (e: MessageEvent<NERWorkerResponse>) => {
+      if (e.data.type === 'READY') {
+        console.log('NER Worker is ready.');
+        // Run POC extraction
+        const testString = 'My name is Jules and my email is jules@example.com.';
+        console.log(`Sending text to NER Worker: "${testString}"`);
+        workerRef.current?.postMessage({
+          type: 'EXTRACT',
+          text: testString
+        } satisfies NERWorkerMessage);
+      } else if (e.data.type === 'RESULT') {
+        console.log('NER Extraction Results:', e.data.result);
+      } else if (e.data.type === 'ERROR') {
+        console.error('NER Worker Error:', e.data.error);
+      }
+    };
+
+    workerRef.current.postMessage({ type: 'INIT' } satisfies NERWorkerMessage);
+
+    return () => {
+      workerRef.current?.terminate();
+    };
+  }, []);
 
   const handleMerge = async () => {
     if (documents.length < 2) {
