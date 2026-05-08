@@ -1,30 +1,37 @@
 import { useState, useEffect, useRef } from 'react';
 import { Dropzone } from './components/ui/Dropzone';
 import { useFileStore, type PDFDocument } from './store/fileStore';
+import { useEngineStore } from './store/engineStore';
 import { mergePdfs, splitPdf } from './lib/engineA';
 import { PDFThumbnail } from './components/pdf/PDFThumbnail';
+import { EngineStatusPill } from './components/ui/EngineStatusPill';
 import type { NERWorkerMessage, NERWorkerResponse } from './workers/nerWorker';
+import type { PyodideWorkerMessage, PyodideWorkerResponse } from './workers/pyodideWorker';
 
 function App() {
   const documents = useFileStore(state => state.documents);
-  const workerRef = useRef<Worker | null>(null);
+  const { setAiStatus, setPyodideStatus } = useEngineStore();
+  const nerWorkerRef = useRef<Worker | null>(null);
+  const pyodideWorkerRef = useRef<Worker | null>(null);
   const removeDocument = useFileStore(state => state.removeDocument);
   const clearAll = useFileStore(state => state.clearAll);
   const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
     // Initialize the NER worker
-    workerRef.current = new Worker(new URL('./workers/nerWorker.ts', import.meta.url), {
+    setAiStatus('loading');
+    nerWorkerRef.current = new Worker(new URL('./workers/nerWorker.ts', import.meta.url), {
       type: 'module'
     });
 
-    workerRef.current.onmessage = (e: MessageEvent<NERWorkerResponse>) => {
+    nerWorkerRef.current.onmessage = (e: MessageEvent<NERWorkerResponse>) => {
       if (e.data.type === 'READY') {
         console.log('NER Worker is ready.');
+        setAiStatus('ready');
         // Run POC extraction
         const testString = 'My name is Jules and my email is jules@example.com.';
         console.log(`Sending text to NER Worker: "${testString}"`);
-        workerRef.current?.postMessage({
+        nerWorkerRef.current?.postMessage({
           type: 'EXTRACT',
           text: testString
         } satisfies NERWorkerMessage);
@@ -32,15 +39,39 @@ function App() {
         console.log('NER Extraction Results:', e.data.result);
       } else if (e.data.type === 'ERROR') {
         console.error('NER Worker Error:', e.data.error);
+        setAiStatus('error', e.data.error);
       }
     };
 
-    workerRef.current.postMessage({ type: 'INIT' } satisfies NERWorkerMessage);
+    nerWorkerRef.current.postMessage({ type: 'INIT' } satisfies NERWorkerMessage);
+
+    // Initialize the Pyodide worker
+    setPyodideStatus('loading');
+    pyodideWorkerRef.current = new Worker(new URL('./workers/pyodideWorker.ts', import.meta.url), {
+      type: 'module'
+    });
+
+    pyodideWorkerRef.current.onmessage = (e: MessageEvent<PyodideWorkerResponse>) => {
+      if (e.data.type === 'PROGRESS') {
+        console.log('Pyodide Worker Progress:', e.data.stage);
+      } else if (e.data.type === 'READY') {
+        console.log('Pyodide Worker is ready.');
+        setPyodideStatus('ready');
+      } else if (e.data.type === 'RESULT') {
+        console.log('Pyodide Worker Result:', e.data.result);
+      } else if (e.data.type === 'ERROR') {
+        console.error('Pyodide Worker Error:', e.data.error);
+        setPyodideStatus('error', e.data.error);
+      }
+    };
+
+    pyodideWorkerRef.current.postMessage({ type: 'INIT' } satisfies PyodideWorkerMessage);
 
     return () => {
-      workerRef.current?.terminate();
+      nerWorkerRef.current?.terminate();
+      pyodideWorkerRef.current?.terminate();
     };
-  }, []);
+  }, [setAiStatus, setPyodideStatus]);
 
   const handleMerge = async () => {
     if (documents.length < 2) {
@@ -100,11 +131,22 @@ function App() {
   return (
     <div className="App font-sans bg-gray-50 min-h-screen">
       {documents.length === 0 ? (
-        <Dropzone />
+        <div className="flex flex-col h-screen">
+          <header className="p-4 flex justify-between items-center bg-white border-b border-gray-200">
+            <div className="font-bold text-xl text-gray-800 tracking-tight">BunkerPDF</div>
+            <EngineStatusPill />
+          </header>
+          <div className="flex-1">
+            <Dropzone />
+          </div>
+        </div>
       ) : (
         <div className="p-8 max-w-6xl mx-auto flex flex-col gap-8">
           <div className="flex justify-between items-center">
-            <h1 className="text-3xl font-bold">Workspace</h1>
+            <div className="flex items-center gap-4">
+              <h1 className="text-3xl font-bold">Workspace</h1>
+              <EngineStatusPill />
+            </div>
             <div className="flex gap-4">
               <button
                 onClick={handleMerge}
