@@ -80,7 +80,7 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 ### Phase 1.5: UI Polish & Commodity Features (Months 4–6)
 **Objective:** Layer on necessary UI improvements and common commodity features delayed from MVP.
 * [ ] **UX/UI Priorities:**
-  * [ ] 3-step onboarding tooltip tour
+  * [x] 3-step onboarding tooltip tour
   * [ ] explicit error states (OOM, corrupt files, passwords)
   * [ ] human-readable loading stages with cancel buttons
   * [ ] thumbnail context menus (right-click to extract/delete)
