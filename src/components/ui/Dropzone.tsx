@@ -1,6 +1,7 @@
 import React, { useCallback, useState, useRef } from 'react';
 import { Upload, Shield, FileText, Lock, FileOutput } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
+import { OnboardingTour } from './OnboardingTour';
 import { twMerge } from 'tailwind-merge';
 import { useFileStore, type PDFDocument } from '../../store/fileStore';
 import { getPdfInfo } from '../../lib/pdfProcessing';
@@ -74,7 +75,8 @@ export function Dropzone() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-gray-50 text-gray-900 flex flex-col items-center justify-center p-4 relative">
+      <OnboardingTour />
       {/* Hero Section */}
       <div className="max-w-3xl w-full text-center space-y-4 mb-12">
         <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight">
@@ -92,7 +94,7 @@ export function Dropzone() {
         onDrop={handleDrop}
         onClick={handleClick}
         className={cn(
-          "max-w-4xl w-full aspect-[2/1] min-h-[300px] border-4 border-dashed rounded-3xl flex flex-col items-center justify-center p-8 transition-all duration-200 cursor-pointer bg-white group",
+          "tour-step-1 max-w-4xl w-full aspect-[2/1] min-h-[300px] border-4 border-dashed rounded-3xl flex flex-col items-center justify-center p-8 transition-all duration-200 cursor-pointer bg-white group",
           isDragging ? "border-blue-500 bg-blue-50 scale-[1.02] shadow-xl" : "border-gray-300 hover:border-gray-400 hover:bg-gray-50"
         )}
       >
@@ -118,21 +120,27 @@ export function Dropzone() {
 
       {/* Quick Actions Grid (Phase 1 placeholders) */}
       <div className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-3 gap-6 mt-12">
-        <ActionCard
-          icon={<Lock className="text-red-500" />}
-          title="Redact PII"
-          description="True redaction of sensitive info."
-        />
-        <ActionCard
-          icon={<FileOutput className="text-blue-500" />}
-          title="Merge & Split"
-          description="Combine or extract pages instantly."
-        />
-        <ActionCard
-          icon={<FileText className="text-purple-500" />}
-          title="Extract Text"
-          description="Local OCR and text extraction."
-        />
+        <div className="tour-step-2">
+          <ActionCard
+            icon={<Lock className="text-red-500" />}
+            title="Redact PII"
+            description="True redaction of sensitive info."
+          />
+        </div>
+        <div className="tour-step-3">
+          <ActionCard
+            icon={<FileOutput className="text-blue-500" />}
+            title="Merge & Split"
+            description="Combine or extract pages instantly."
+          />
+        </div>
+        <div>
+          <ActionCard
+            icon={<FileText className="text-purple-500" />}
+            title="Extract Text"
+            description="Local OCR and text extraction."
+          />
+        </div>
       </div>
     </div>
   );
