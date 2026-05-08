@@ -4,6 +4,7 @@ import { useFileStore, type PDFDocument } from './store/fileStore';
 import { useEngineStore } from './store/engineStore';
 import { mergePdfs, splitPdf } from './lib/engineA';
 import { EngineStatusPill } from './components/ui/EngineStatusPill';
+import { getSmartOutputName } from './lib/utils';
 import { DocumentCard } from './components/pdf/DocumentCard';
 import type { NERWorkerMessage, NERWorkerResponse } from './workers/nerWorker';
 import type { PyodideWorkerMessage, PyodideWorkerResponse } from './workers/pyodideWorker';
@@ -151,7 +152,7 @@ function App() {
 
       const a = document.createElement('a');
       a.href = url;
-      a.download = `merged-${Date.now()}.pdf`;
+      a.download = getSmartOutputName(documents[0].name, 'merged');
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -175,7 +176,7 @@ function App() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `${doc.name.replace('.pdf', '')}-page-${index + 1}.pdf`;
+        a.download = getSmartOutputName(doc.name, `split-page-${index + 1}`);
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);

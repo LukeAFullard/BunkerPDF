@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { PDFThumbnail } from './PDFThumbnail';
 import { type PDFDocument } from '../../store/fileStore';
+import { getSmartOutputName } from '../../lib/utils';
 
 interface DocumentCardProps {
   doc: PDFDocument;
@@ -74,7 +75,7 @@ export function DocumentCard({
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${doc.name.replace('.pdf', '')}-redacted.pdf`;
+      a.download = getSmartOutputName(doc.name, 'redacted');
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
