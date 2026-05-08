@@ -1,5 +1,12 @@
 import { useState, useEffect } from 'react';
-import Joyride, { STATUS, type Step, type CallBackProps } from 'react-joyride';
+import * as JoyrideModule from 'react-joyride';
+
+// React-joyride TypeScript definitions and exports can be finicky depending on bundler
+// We cast through any to ensure both dev and prod builds work correctly
+const Joyride = (JoyrideModule as any).default || JoyrideModule;
+const { STATUS } = JoyrideModule as any;
+type Step = any;
+type CallBackProps = any;
 
 export function OnboardingTour() {
   const [run, setRun] = useState(false);
@@ -18,7 +25,7 @@ export function OnboardingTour() {
     {
       target: '.tour-step-1',
       content: 'Welcome to BunkerPDF! This is where you can drop your PDF files to get started. Everything happens locally in your browser.',
-      disableBeacon: true,
+      disableBeacon: true as any,
     },
     {
       target: '.tour-step-2',
@@ -32,7 +39,7 @@ export function OnboardingTour() {
 
   const handleJoyrideCallback = (data: CallBackProps) => {
     const { status } = data;
-    const finishedStatuses: string[] = [STATUS.FINISHED, STATUS.SKIPPED];
+    const finishedStatuses: string[] = [STATUS?.FINISHED, STATUS?.SKIPPED].filter(Boolean);
 
     if (finishedStatuses.includes(status)) {
       setRun(false);
@@ -40,8 +47,12 @@ export function OnboardingTour() {
     }
   };
 
+  // Ensure we have a valid component function to render
+  const Component = typeof Joyride === 'function' ? Joyride : (Joyride as any).Joyride;
+  if (!Component) return null;
+
   return (
-    <Joyride
+    <Component
       steps={steps}
       run={run}
       continuous={true}

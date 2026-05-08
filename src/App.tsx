@@ -6,11 +6,13 @@ import { mergePdfs, splitPdf } from './lib/engineA';
 import { EngineStatusPill } from './components/ui/EngineStatusPill';
 import { getSmartOutputName } from './lib/utils';
 import { DocumentCard } from './components/pdf/DocumentCard';
+import { FileTabs } from './components/ui/FileTabs';
 import type { NERWorkerMessage, NERWorkerResponse } from './workers/nerWorker';
 import type { PyodideWorkerMessage, PyodideWorkerResponse } from './workers/pyodideWorker';
 
 function App() {
   const documents = useFileStore(state => state.documents);
+  const activeDocumentId = useFileStore(state => state.activeDocumentId);
   const { setAiStatus, setPyodideStatus } = useEngineStore();
   const nerWorkerRef = useRef<Worker | null>(null);
   const pyodideWorkerRef = useRef<Worker | null>(null);
@@ -226,20 +228,29 @@ function App() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {documents.map(doc => (
-              <DocumentCard
-                key={doc.id}
-                doc={doc}
-                onRemove={removeDocument}
-                onSplit={handleSplitBurst}
-                extractText={extractText}
-                extractEntities={extractEntities}
-                redactPdf={redactPdf}
-                isGlobalProcessing={isGlobalProcessing}
-                setIsGlobalProcessing={setIsGlobalProcessing}
-              />
-            ))}
+          <div className="flex flex-col">
+            <FileTabs />
+
+            <div className="mt-4 flex justify-center">
+              {(() => {
+                const activeDoc = documents.find(doc => doc.id === activeDocumentId);
+                if (!activeDoc) return null;
+                return (
+                  <div key={activeDoc.id} className="w-full max-w-2xl">
+                    <DocumentCard
+                      doc={activeDoc}
+                      onRemove={removeDocument}
+                      onSplit={handleSplitBurst}
+                      extractText={extractText}
+                      extractEntities={extractEntities}
+                      redactPdf={redactPdf}
+                      isGlobalProcessing={isGlobalProcessing}
+                      setIsGlobalProcessing={setIsGlobalProcessing}
+                    />
+                  </div>
+                );
+              })()}
+            </div>
           </div>
         </div>
       )}

@@ -1,26 +1,31 @@
 import React, { useCallback, useState, useRef } from 'react';
 import { Upload, Shield, FileText, Lock, FileOutput } from 'lucide-react';
-import { clsx, type ClassValue } from 'clsx';
 import { OnboardingTour } from './OnboardingTour';
-import { twMerge } from 'tailwind-merge';
 import { useFileStore, type PDFDocument } from '../../store/fileStore';
 import { getPdfInfo } from '../../lib/pdfProcessing';
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
+import { cn } from '../../lib/utils';
 
 export function Dropzone() {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const addDocuments = useFileStore(state => state.addDocuments);
 
+  const documents = useFileStore(state => state.documents);
+
   const handleFiles = async (files: File[]) => {
-    const pdfFiles = files.filter(f => f.type === 'application/pdf');
+    let pdfFiles = files.filter(f => f.type === 'application/pdf');
     if (pdfFiles.length === 0) {
       alert("Please upload PDF files only.");
       return;
     }
+
+    const availableSlots = 8 - documents.length;
+    if (pdfFiles.length > availableSlots) {
+      alert(`Maximum 8 files allowed. Only ${availableSlots > 0 ? `the next ${availableSlots}` : '0'} will be loaded.`);
+      pdfFiles = pdfFiles.slice(0, Math.max(0, availableSlots));
+    }
+
+    if (pdfFiles.length === 0) return;
 
     // Parse metadata before inserting to prevent redundant renders
     const parsedDocs: PDFDocument[] = await Promise.all(
