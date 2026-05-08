@@ -65,8 +65,8 @@ Because persisting PDFs locally creates new privacy threat vectors, the applicat
 This timeline is structured to build a working foundation rapidly, layer on the "killer" features to build a user base, and polish the product into a standalone business asset.
 
 ### Phase 0: Pre-Development Strategy
-* [ ] **Monetization Strategy:** Define monetization model *before* writing Phase 1 code (freemium/pro tier/enterprise). Determine how to securely gate client-side features without a persistent server (e.g., cryptographic license verification or offline key validation).
-* [ ] **Product Telemetry Plan:** Define a plan for opt-in anonymous local telemetry or structured feedback collection before launching features, to gather signal on what matters.
+* [x] **Monetization Strategy:** Define monetization model *before* writing Phase 1 code (freemium/pro tier/enterprise). Determine how to securely gate client-side features without a persistent server (e.g., cryptographic license verification or offline key validation).
+* [x] **Product Telemetry Plan:** Define a plan for opt-in anonymous local telemetry or structured feedback collection before launching features, to gather signal on what matters.
 
 ### Phase 1: The True v1 MVP (Months 1–3)
 **Objective:** Build the absolute smallest thing that proves the privacy differentiator and is useful enough to share: **Drop a PDF → True redaction with PII scanner → Download. No server. Provably private.**
