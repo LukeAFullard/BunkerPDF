@@ -14,7 +14,13 @@
 
 ### Phase 1.5: UI Polish & Commodity Features (Months 4–6)
 **Objective:** Layer on necessary UI improvements and common commodity features delayed from MVP.
-* [ ] **UX/UI Priorities:** 3-step onboarding tooltip tour, explicit error states (OOM, corrupt files, passwords), human-readable loading stages with cancel buttons, thumbnail context menus (right-click to extract/delete), smart output file naming (`[original-name]-[action]-[timestamp]`), and multi-file tab bar.
+* [ ] **UX/UI Priorities:**
+  * [ ] 3-step onboarding tooltip tour
+  * [ ] explicit error states (OOM, corrupt files, passwords)
+  * [ ] human-readable loading stages with cancel buttons
+  * [ ] thumbnail context menus (right-click to extract/delete)
+  * [x] smart output file naming (`[original-name]-[action]-[timestamp]`)
+  * [ ] multi-file tab bar
 * [ ] **Accessibility Foundation:** Focus rings, keyboard operability, and ARIA live regions for engine status.
 * [ ] **Expanded Commodity Features:** Add Reorder, Add Pages, Delete Pages, **Stamp / Watermark**, and **PDF compression/optimization** (metadata stripping + recompression).
 * [ ] **Undo/Redo System:** Implement a robust undo/redo stack (Cmd+Z).
