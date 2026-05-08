@@ -70,8 +70,8 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 
 ### Phase 1: The True v1 MVP (Months 1–3)
 **Objective:** Build the absolute smallest thing that proves the privacy differentiator and is useful enough to share: **Drop a PDF → True redaction with PII scanner → Download. No server. Provably private.**
-* [ ] **Core UI & The Dropzone:** Develop the Vite/React frontend. Implement the "Massive Dropzone" welcome page and Zustand state management for handling files in memory.
-* [ ] **Core Commodity Features:** Hook up `pdf-lib` for Combine, Split, Rotate.
+* [x] **Core UI & The Dropzone:** Develop the Vite/React frontend. Implement the "Massive Dropzone" welcome page and Zustand state management for handling files in memory.
+* [x] **Core Commodity Features:** Hook up `pdf-lib` for Combine, Split, Rotate.
 * [ ] **Automated PII Scanner & True Redaction (MVP Scope):** Implement a lightweight NER model in the browser (target <50MB budget for first load). Build the UI to scan a document, flag sensitive entities (SSNs, names, emails), and present them in a sidebar for one-click redaction. Ensure redaction removes underlying text paths using `pymupdf`.
 * [ ] **Pyodide Cold-Start Strategy:** Implement a concrete strategy: either pre-warm Pyodide silently in the background immediately on page load, or explicitly gate heavy features (like True Redaction) behind an "Enable advanced tools" step with clear expectation-setting to prevent abandonment on a 60–100MB download.
 * [ ] **Early Spikes:** Validate `pymupdf` + `pdf2docx` in Pyodide.
@@ -301,8 +301,8 @@ For academic, scientific, and research users, the following tools have been eval
 
 To begin executing this plan, the immediate priority is validating the foundational technology stack to ensure the UX vision is possible.
 
-1. [ ] **Repository Setup:** Initialize the frontend framework using Vite/React (chosen over Next.js for simpler WASM handling in a client-only app) and configure the bundler to handle WASM files correctly.
-2. [ ] **Proof of Concept 1 (The Fast Lane):** Implement a simple drag-and-drop zone that uses `pdf-lib` to instantly merge two PDFs and trigger a local download.
+1. [x] **Repository Setup:** Initialize the frontend framework using Vite/React (chosen over Next.js for simpler WASM handling in a client-only app) and configure the bundler to handle WASM files correctly.
+2. [x] **Proof of Concept 1 (The Fast Lane):** Implement a simple drag-and-drop zone that uses `pdf-lib` to instantly merge two PDFs and trigger a local download.
 3. [ ] **Proof of Concept 2 (The AI Lane):** Instantiate `transformers.js` in a Web Worker, pass it a hardcoded string of text containing a name and an email, and log the NER extraction results to the console.
 4. [ ] **WASM Memory Profiling:** Implement strict memory profiling in the CI/CD pipeline to continuously monitor memory footprints and prevent WASM OOM crashes during heavy loads.
 
