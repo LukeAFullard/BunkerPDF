@@ -11,9 +11,10 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
 interface PDFThumbnailProps {
   file: File;
   width?: number;
+  className?: string;
 }
 
-export function PDFThumbnail({ file, width = 200 }: PDFThumbnailProps) {
+export function PDFThumbnail({ file, width = 200, className }: PDFThumbnailProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -78,15 +79,15 @@ export function PDFThumbnail({ file, width = 200 }: PDFThumbnailProps) {
 
   if (error) {
     return (
-      <div className="w-full h-full min-h-[100px] flex items-center justify-center bg-gray-100 text-gray-400 text-sm rounded">
+      <div className={`w-full h-full min-h-[100px] flex items-center justify-center bg-gray-100 text-gray-400 text-sm rounded ${className || ''}`}>
         {error}
       </div>
     );
   }
 
   return (
-    <div className="w-full overflow-hidden bg-gray-100 flex items-center justify-center rounded">
-      <canvas ref={canvasRef} className="shadow-sm" />
+    <div className={`w-full overflow-hidden bg-gray-100 flex items-center justify-center rounded ${className || ''}`}>
+      <canvas ref={canvasRef} className="shadow-sm max-w-full max-h-full object-contain" />
     </div>
   );
 }

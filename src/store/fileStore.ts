@@ -24,20 +24,33 @@ export const useFileStore = create<FileStore>((set) => ({
   activeDocumentId: null,
 
   addDocuments: (docs: PDFDocument[]) => set((state) => {
+    const newDocs = [...state.documents, ...docs].slice(0, 8); // Enforce 8 file cap
     return {
-      documents: [...state.documents, ...docs],
+      documents: newDocs,
       // If there wasn't an active document, set the first new one as active
-      activeDocumentId: state.activeDocumentId || (docs.length > 0 ? docs[0].id : null)
+      activeDocumentId: state.activeDocumentId || (newDocs.length > 0 ? newDocs[0].id : null)
     };
   }),
 
   removeDocument: (id: string) => set((state) => {
     const remaining = state.documents.filter(doc => doc.id !== id);
+    let nextActiveId = state.activeDocumentId;
+
+    if (state.activeDocumentId === id) {
+      if (remaining.length > 0) {
+        // Find the index of the document being removed
+        const index = state.documents.findIndex(doc => doc.id === id);
+        // Set the active document to the one before it, or the first one if it was the first
+        const nextIndex = Math.max(0, index - 1);
+        nextActiveId = remaining[nextIndex]?.id || remaining[0].id;
+      } else {
+        nextActiveId = null;
+      }
+    }
+
     return {
       documents: remaining,
-      activeDocumentId: state.activeDocumentId === id
-        ? (remaining.length > 0 ? remaining[0].id : null)
-        : state.activeDocumentId
+      activeDocumentId: nextActiveId
     };
   }),
 
