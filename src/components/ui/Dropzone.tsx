@@ -2,7 +2,8 @@ import React, { useCallback, useState, useRef } from 'react';
 import { Upload, Shield, FileText, Lock, FileOutput } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { useFileStore } from '../../store/fileStore';
+import { useFileStore, type PDFDocument } from '../../store/fileStore';
+import { getPdfInfo } from '../../lib/pdfProcessing';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -20,12 +21,29 @@ export function Dropzone() {
       return;
     }
 
-    // Add them to the store immediately so UI responds
-    addDocuments(pdfFiles);
+    // Parse metadata before inserting to prevent redundant renders
+    const parsedDocs: PDFDocument[] = await Promise.all(
+      pdfFiles.map(async (file) => {
+        let pageCount;
+        try {
+          const info = await getPdfInfo(file);
+          pageCount = info.pageCount;
+        } catch (e) {
+          console.error(`Failed to parse PDF info for ${file.name}`, e);
+        }
 
-    // In a real app we'd retrieve the generated IDs.
-    // For now we assume the store's latest additions match `pdfFiles` in order.
-    // Let's use a timeout trick to get the IDs, or just fetch all docs.
+        return {
+          id: crypto.randomUUID(),
+          file,
+          name: file.name,
+          size: file.size,
+          lastModified: file.lastModified,
+          pageCount
+        };
+      })
+    );
+
+    addDocuments(parsedDocs);
   };
 
   const handleDragOver = useCallback((e: React.DragEvent) => {

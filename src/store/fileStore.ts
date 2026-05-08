@@ -12,7 +12,7 @@ export interface PDFDocument {
 interface FileStore {
   documents: PDFDocument[];
   activeDocumentId: string | null;
-  addDocuments: (files: File[]) => void;
+  addDocuments: (docs: PDFDocument[]) => void;
   removeDocument: (id: string) => void;
   setActiveDocument: (id: string) => void;
   updateDocument: (id: string, updates: Partial<PDFDocument>) => void;
@@ -23,19 +23,11 @@ export const useFileStore = create<FileStore>((set) => ({
   documents: [],
   activeDocumentId: null,
 
-  addDocuments: (files: File[]) => set((state) => {
-    const newDocs: PDFDocument[] = files.map(file => ({
-      id: crypto.randomUUID(),
-      file,
-      name: file.name,
-      size: file.size,
-      lastModified: file.lastModified
-    }));
-
+  addDocuments: (docs: PDFDocument[]) => set((state) => {
     return {
-      documents: [...state.documents, ...newDocs],
+      documents: [...state.documents, ...docs],
       // If there wasn't an active document, set the first new one as active
-      activeDocumentId: state.activeDocumentId || (newDocs.length > 0 ? newDocs[0].id : null)
+      activeDocumentId: state.activeDocumentId || (docs.length > 0 ? docs[0].id : null)
     };
   }),
 

@@ -1,13 +1,11 @@
-import { useEffect } from 'react';
-import { Dropzone } from './components/ui/Dropzone';
 import { useState } from 'react';
-import { useFileStore } from './store/fileStore';
-import { getPdfInfo } from './lib/pdfProcessing';
+import { Dropzone } from './components/ui/Dropzone';
+import { useFileStore, type PDFDocument } from './store/fileStore';
 import { mergePdfs, splitPdf } from './lib/engineA';
+import { PDFThumbnail } from './components/pdf/PDFThumbnail';
 
 function App() {
   const documents = useFileStore(state => state.documents);
-  const updateDocument = useFileStore(state => state.updateDocument);
   const removeDocument = useFileStore(state => state.removeDocument);
   const clearAll = useFileStore(state => state.clearAll);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -42,7 +40,7 @@ function App() {
     }
   };
 
-  const handleSplitBurst = async (doc: any) => {
+  const handleSplitBurst = async (doc: PDFDocument) => {
     setIsProcessing(true);
     try {
       const splitBytesArray = await splitPdf(doc.file);
@@ -66,20 +64,6 @@ function App() {
       setIsProcessing(false);
     }
   };
-
-  // Process newly added documents to extract page count
-  useEffect(() => {
-    documents.forEach(async (doc) => {
-      if (doc.pageCount === undefined) {
-        try {
-          const info = await getPdfInfo(doc.file);
-          updateDocument(doc.id, { pageCount: info.pageCount });
-        } catch (e) {
-          console.error(e);
-        }
-      }
-    });
-  }, [documents, updateDocument]);
 
   return (
     <div className="App font-sans bg-gray-50 min-h-screen">
@@ -108,15 +92,18 @@ function App() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {documents.map(doc => (
-              <div key={doc.id} className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
+              <div key={doc.id} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+                <div className="mb-4">
+                  <PDFThumbnail file={doc.file} />
+                </div>
                 <div>
                   <h3 className="font-semibold text-lg truncate" title={doc.name}>{doc.name}</h3>
-                  <div className="text-gray-500 text-sm mt-2">
+                  <div className="text-gray-500 text-sm mt-1">
                     <p>Size: {(doc.size / 1024 / 1024).toFixed(2)} MB</p>
                     <p>Pages: {doc.pageCount !== undefined ? doc.pageCount : 'Loading...'}</p>
                   </div>
                 </div>
-                <div className="mt-4 flex gap-4">
+                <div className="mt-4 pt-4 border-t border-gray-100 flex gap-4">
                   <button
                     onClick={() => handleSplitBurst(doc)}
                     disabled={isProcessing}
