@@ -73,8 +73,8 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 * [x] **Core UI & The Dropzone:** Develop the Vite/React frontend. Implement the "Massive Dropzone" welcome page and Zustand state management for handling files in memory.
 * [x] **Core Commodity Features:** Hook up `pdf-lib` for Combine, Split, Rotate.
 * [ ] **Automated PII Scanner & True Redaction (MVP Scope):** Implement a lightweight NER model in the browser (target <50MB budget for first load). Build the UI to scan a document, flag sensitive entities (SSNs, names, emails), and present them in a sidebar for one-click redaction. Ensure redaction removes underlying text paths using `pymupdf`.
-* [ ] **Pyodide Cold-Start Strategy:** Implement a concrete strategy: either pre-warm Pyodide silently in the background immediately on page load, or explicitly gate heavy features (like True Redaction) behind an "Enable advanced tools" step with clear expectation-setting to prevent abandonment on a 60–100MB download.
-* [ ] **Early Spikes:** Validate `pymupdf` + `pdf2docx` in Pyodide.
+* [x] **Pyodide Cold-Start Strategy:** Implement a concrete strategy: either pre-warm Pyodide silently in the background immediately on page load, or explicitly gate heavy features (like True Redaction) behind an "Enable advanced tools" step with clear expectation-setting to prevent abandonment on a 60–100MB download. (*Pre-warming strategy has been implemented.*)
+* [x] **Early Spikes:** Validate `pymupdf` + `pdf2docx` in Pyodide. (*Note: `pdf2docx` failed due to a missing pure Python wheel for `opencv-python-headless`. The fallback strategy of using `pymupdf` + `python-docx` has been validated.*)
 * [ ] **Outcome:** A lightning-fast, ad-free PDF utility that proves zero-server true redaction.
 
 ### Phase 1.5: UI Polish & Commodity Features (Months 4–6)
