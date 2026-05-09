@@ -32,6 +32,7 @@ export function EngineStatusPill() {
       )}
       role="status"
       aria-live="polite"
+      aria-atomic="true"
       title={aiError || pyodideError || statusText}
     >
       {(aiStatus === 'loading' || pyodideStatus === 'loading') && (

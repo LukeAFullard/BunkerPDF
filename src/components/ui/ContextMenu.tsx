@@ -54,7 +54,7 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
             item.onClick();
             onClose();
           }}
-          className={`w-full text-left px-4 py-2 text-sm flex items-center gap-2 hover:bg-gray-100 ${
+          className={`w-full text-left px-4 py-2 text-sm flex items-center gap-2 hover:bg-gray-100 focus-visible:outline-none focus-visible:bg-gray-100 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 ${
             item.variant === 'danger' ? 'text-red-600 hover:text-red-700' : 'text-gray-700'
           }`}
         >
