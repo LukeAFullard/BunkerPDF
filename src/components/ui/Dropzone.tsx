@@ -4,18 +4,24 @@ import { OnboardingTour } from './OnboardingTour';
 import { useFileStore, type PDFDocument } from '../../store/fileStore';
 import { getPdfInfo } from '../../lib/pdfProcessing';
 import { cn } from '../../lib/utils';
+import { ErrorModal } from './ErrorModal';
 
 export function Dropzone() {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const addDocuments = useFileStore(state => state.addDocuments);
+  const [errorState, setErrorState] = useState<{ isOpen: boolean, title: string, message: React.ReactNode }>({ isOpen: false, title: '', message: '' });
 
   const documents = useFileStore(state => state.documents);
 
   const handleFiles = async (files: File[]) => {
     let pdfFiles = files.filter(f => f.type === 'application/pdf');
     if (pdfFiles.length === 0) {
-      alert("Please upload PDF files only.");
+      setErrorState({
+        isOpen: true,
+        title: 'Invalid File Type',
+        message: 'Please upload PDF files only.'
+      });
       return;
     }
 
@@ -24,7 +30,18 @@ export function Dropzone() {
     const oversizedFiles = pdfFiles.filter(f => f.size > MAX_FILE_SIZE);
 
     if (oversizedFiles.length > 0) {
-      alert(`The following files are larger than 80MB and will not be loaded:\n${oversizedFiles.map(f => f.name).join('\n')}\n\nProcessing files this large in the browser may cause memory issues.`);
+      setErrorState({
+        isOpen: true,
+        title: 'File Too Large',
+        message: (
+          <div>
+            <p className="mb-2">This file is too large to process entirely in your browser. Try splitting it into smaller sections first.</p>
+            <ul className="list-disc pl-5 text-sm text-gray-500">
+              {oversizedFiles.map(f => <li key={f.name}>{f.name} ({(f.size / 1024 / 1024).toFixed(1)}MB)</li>)}
+            </ul>
+          </div>
+        )
+      });
       pdfFiles = pdfFiles.filter(f => f.size <= MAX_FILE_SIZE);
     }
 
@@ -39,28 +56,57 @@ export function Dropzone() {
     if (pdfFiles.length === 0) return;
 
     // Parse metadata before inserting to prevent redundant renders
-    const parsedDocs: PDFDocument[] = await Promise.all(
-      pdfFiles.map(async (file) => {
-        let pageCount;
-        try {
-          const info = await getPdfInfo(file);
-          pageCount = info.pageCount;
-        } catch (e) {
-          console.error(`Failed to parse PDF info for ${file.name}`, e);
+    const parsedDocs: PDFDocument[] = [];
+
+    for (const file of pdfFiles) {
+      let pageCount;
+      let isEncrypted = false;
+      let isCorrupt = false;
+
+      try {
+        const info = await getPdfInfo(file);
+        pageCount = info.pageCount;
+        isEncrypted = info.isEncrypted;
+      } catch (e: unknown) {
+        console.error(`Failed to parse PDF info for ${file.name}`, e);
+        if (e instanceof Error && e.message === 'CORRUPT_PDF') {
+          isCorrupt = true;
         }
+      }
 
-        return {
-          id: crypto.randomUUID(),
-          file,
-          name: file.name,
-          size: file.size,
-          lastModified: file.lastModified,
-          pageCount
-        };
-      })
-    );
+      if (isCorrupt) {
+        setErrorState({
+          isOpen: true,
+          title: 'Corrupt PDF',
+          message: `We couldn't read "${file.name}". It may be damaged or in an unsupported format.`
+        });
+        continue;
+      }
 
-    addDocuments(parsedDocs);
+      if (isEncrypted) {
+        setErrorState({
+          isOpen: true,
+          title: 'Password-Protected PDF',
+          message: `"${file.name}" is password-protected. Password-protected PDFs are not currently supported by all features.`
+        });
+        // Still allow adding it, but we should mark it as encrypted
+      }
+
+      parsedDocs.push({
+        id: crypto.randomUUID(),
+        file,
+        name: file.name,
+        size: file.size,
+        lastModified: file.lastModified,
+        pageCount,
+        isEncrypted,
+        isCorrupt
+      });
+    }
+
+    if (parsedDocs.length > 0) {
+      addDocuments(parsedDocs);
+    }
   };
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -78,6 +124,7 @@ export function Dropzone() {
     setIsDragging(false);
     const files = Array.from(e.dataTransfer.files);
     handleFiles(files);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleClick = () => {
@@ -93,6 +140,12 @@ export function Dropzone() {
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 flex flex-col items-center justify-center p-4 relative">
       <OnboardingTour />
+      <ErrorModal
+        isOpen={errorState.isOpen}
+        title={errorState.title}
+        message={errorState.message}
+        onClose={() => setErrorState(prev => ({ ...prev, isOpen: false }))}
+      />
       {/* Hero Section */}
       <div className="max-w-3xl w-full text-center space-y-4 mb-12">
         <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight">

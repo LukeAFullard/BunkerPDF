@@ -7,6 +7,8 @@ export interface PDFDocument {
   size: number;
   pageCount?: number;
   lastModified: number;
+  isEncrypted?: boolean;
+  isCorrupt?: boolean;
 }
 
 interface FileStore {
