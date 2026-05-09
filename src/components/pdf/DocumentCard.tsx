@@ -1,11 +1,11 @@
-import { useState } from 'react';
-import { PDFThumbnail } from './PDFThumbnail';
-import { type PDFDocument, useFileStore } from '../../store/fileStore';
-import { useEffect } from 'react';
-import { getSmartOutputName } from '../../lib/utils';
-import { ErrorModal } from '../ui/ErrorModal';
-import { useProcessingStore } from '../../store/processingStore';
-import { ContextMenu } from '../ui/ContextMenu';
+import { useState } from "react";
+import { PDFThumbnail } from "./PDFThumbnail";
+import { type PDFDocument, useFileStore } from "../../store/fileStore";
+import { useEffect } from "react";
+import { getSmartOutputName } from "../../lib/utils";
+import { ErrorModal } from "../ui/ErrorModal";
+import { useProcessingStore } from "../../store/processingStore";
+import { ContextMenu } from "../ui/ContextMenu";
 
 interface DocumentCardProps {
   doc: PDFDocument;
@@ -17,10 +17,15 @@ interface DocumentCardProps {
   onDeletePages?: (doc: PDFDocument) => void;
   onReorderPages?: (doc: PDFDocument) => void;
   onEncrypt?: (doc: PDFDocument) => void;
+  onSanitize?: (doc: PDFDocument) => void;
   extractText: (bytes: Uint8Array) => Promise<string>;
   extractEntities: (text: string) => Promise<string[]>;
   redactPdf: (bytes: Uint8Array, redactions: string[]) => Promise<Uint8Array>;
-  updateDocumentFile: (id: string, newFile: File, newPageCount?: number) => void;
+  updateDocumentFile: (
+    id: string,
+    newFile: File,
+    newPageCount?: number,
+  ) => void;
 }
 
 export function DocumentCard({
@@ -33,30 +38,44 @@ export function DocumentCard({
   onDeletePages,
   onReorderPages,
   onEncrypt,
+  onSanitize,
   extractText,
   extractEntities,
   redactPdf,
-  updateDocumentFile
+  updateDocumentFile,
 }: DocumentCardProps) {
-  const [detectedEntities, setDetectedEntities] = useState<string[] | null>(null);
-  const [selectedEntities, setSelectedEntities] = useState<Set<string>>(new Set());
-  const [errorState, setErrorState] = useState<{ isOpen: boolean, title: string, message: React.ReactNode }>({ isOpen: false, title: '', message: '' });
+  const [detectedEntities, setDetectedEntities] = useState<string[] | null>(
+    null,
+  );
+  const [selectedEntities, setSelectedEntities] = useState<Set<string>>(
+    new Set(),
+  );
+  const [errorState, setErrorState] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: React.ReactNode;
+  }>({ isOpen: false, title: "", message: "" });
 
-  const { startProcessing, updateStage, stopProcessing, isActive: isProcessing } = useProcessingStore();
-  const undo = useFileStore(state => state.undo);
-  const redo = useFileStore(state => state.redo);
+  const {
+    startProcessing,
+    updateStage,
+    stopProcessing,
+    isActive: isProcessing,
+  } = useProcessingStore();
+  const undo = useFileStore((state) => state.undo);
+  const redo = useFileStore((state) => state.redo);
 
   const canUndo = (doc.history?.past?.length ?? 0) > 0;
   const canRedo = (doc.history?.future?.length ?? 0) > 0;
 
-  const activeDocumentId = useFileStore(state => state.activeDocumentId);
+  const activeDocumentId = useFileStore((state) => state.activeDocumentId);
   const isActive = activeDocumentId === doc.id;
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!isActive) return;
 
-      if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+      if ((e.metaKey || e.ctrlKey) && e.key === "z") {
         if (e.shiftKey) {
           e.preventDefault();
           if (canRedo) redo(doc.id);
@@ -64,33 +83,36 @@ export function DocumentCard({
           e.preventDefault();
           if (canUndo) undo(doc.id);
         }
-      } else if ((e.metaKey || e.ctrlKey) && e.key === 'y') {
+      } else if ((e.metaKey || e.ctrlKey) && e.key === "y") {
         e.preventDefault();
         if (canRedo) redo(doc.id);
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [doc.id, canUndo, canRedo, undo, redo, isActive]);
 
   const handleDownload = () => {
     const url = URL.createObjectURL(doc.file);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
-    a.download = getSmartOutputName(doc.name, 'saved');
+    a.download = getSmartOutputName(doc.name, "saved");
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
-  const [contextMenuState, setContextMenuState] = useState<{ x: number; y: number } | null>(null);
+  const [contextMenuState, setContextMenuState] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
 
   const handleScan = async () => {
     setDetectedEntities(null);
     setSelectedEntities(new Set());
 
     let isCancelled = false;
-    startProcessing('Extracting text...', true, () => {
+    startProcessing("Extracting text...", true, () => {
       isCancelled = true;
       stopProcessing();
     });
@@ -102,12 +124,12 @@ export function DocumentCard({
       const text = await extractText(pdfBytes);
       if (isCancelled) return;
 
-      if (!text || text.trim() === '') {
+      if (!text || text.trim() === "") {
         setDetectedEntities([]);
         return;
       }
 
-      updateStage('Scanning for PII...');
+      updateStage("Scanning for PII...");
       const entities = await extractEntities(text);
       if (isCancelled) return;
 
@@ -116,7 +138,11 @@ export function DocumentCard({
     } catch (err) {
       if (isCancelled) return;
       console.error(err);
-      setErrorState({ isOpen: true, title: 'Scan Error', message: 'An error occurred while scanning the document.' });
+      setErrorState({
+        isOpen: true,
+        title: "Scan Error",
+        message: "An error occurred while scanning the document.",
+      });
     } finally {
       if (!isCancelled) stopProcessing();
     }
@@ -126,7 +152,7 @@ export function DocumentCard({
     if (selectedEntities.size === 0) return;
 
     let isCancelled = false;
-    startProcessing('Redacting document...', true, () => {
+    startProcessing("Redacting document...", true, () => {
       isCancelled = true;
       stopProcessing();
     });
@@ -143,21 +169,27 @@ export function DocumentCard({
       const standardBuffer = new Uint8Array(redactedBytes.length);
       standardBuffer.set(redactedBytes);
 
-      const newFile = new File([standardBuffer], doc.name, { type: 'application/pdf' });
+      const newFile = new File([standardBuffer], doc.name, {
+        type: "application/pdf",
+      });
       updateDocumentFile(doc.id, newFile);
 
       setDetectedEntities(null); // Clear sidebar after redaction
     } catch (err) {
       if (isCancelled) return;
       console.error(err);
-      setErrorState({ isOpen: true, title: 'Redaction Error', message: 'An error occurred while redacting the document.' });
+      setErrorState({
+        isOpen: true,
+        title: "Redaction Error",
+        message: "An error occurred while redacting the document.",
+      });
     } finally {
       if (!isCancelled) stopProcessing();
     }
   };
 
   const toggleEntity = (entity: string) => {
-    setSelectedEntities(prev => {
+    setSelectedEntities((prev) => {
       const next = new Set(prev);
       if (next.has(entity)) {
         next.delete(entity);
@@ -181,14 +213,19 @@ export function DocumentCard({
           y={contextMenuState.y}
           onClose={() => setContextMenuState(null)}
           items={[
-            { label: 'Extract / Split', onClick: () => onSplit(doc) },
-            { label: 'Rotate 90°', onClick: () => onRotate?.(doc) },
-            { label: 'Add Watermark', onClick: () => onWatermark?.(doc) },
-            { label: 'Optimize (Compress)', onClick: () => onOptimize?.(doc) },
-            { label: 'Delete Pages', onClick: () => onDeletePages?.(doc) },
-            { label: 'Reorder Pages', onClick: () => onReorderPages?.(doc) },
-            { label: 'Protect (Password)', onClick: () => onEncrypt?.(doc) },
-            { label: 'Remove File', variant: 'danger', onClick: () => onRemove(doc.id) },
+            { label: "Extract / Split", onClick: () => onSplit(doc) },
+            { label: "Rotate 90°", onClick: () => onRotate?.(doc) },
+            { label: "Add Watermark", onClick: () => onWatermark?.(doc) },
+            { label: "Optimize (Compress)", onClick: () => onOptimize?.(doc) },
+            { label: "Delete Pages", onClick: () => onDeletePages?.(doc) },
+            { label: "Reorder Pages", onClick: () => onReorderPages?.(doc) },
+            { label: "Protect (Password)", onClick: () => onEncrypt?.(doc) },
+            { label: "Sanitize & Send", onClick: () => onSanitize?.(doc) },
+            {
+              label: "Remove File",
+              variant: "danger",
+              onClick: () => onRemove(doc.id),
+            },
           ]}
         />
       )}
@@ -196,18 +233,21 @@ export function DocumentCard({
         isOpen={errorState.isOpen}
         title={errorState.title}
         message={errorState.message}
-        onClose={() => setErrorState(prev => ({ ...prev, isOpen: false }))}
+        onClose={() => setErrorState((prev) => ({ ...prev, isOpen: false }))}
       />
       <div className="p-4 flex flex-col justify-between flex-1">
         <div
           className="mb-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
           onContextMenu={handleContextMenu}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
+            if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
               // Trigger context menu manually for keyboard users
               const rect = e.currentTarget.getBoundingClientRect();
-              setContextMenuState({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+              setContextMenuState({
+                x: rect.left + rect.width / 2,
+                y: rect.top + rect.height / 2,
+              });
             }
           }}
           tabIndex={0}
@@ -217,10 +257,15 @@ export function DocumentCard({
           <PDFThumbnail file={doc.file} />
         </div>
         <div>
-          <h3 className="font-semibold text-lg truncate" title={doc.name}>{doc.name}</h3>
+          <h3 className="font-semibold text-lg truncate" title={doc.name}>
+            {doc.name}
+          </h3>
           <div className="text-gray-500 text-sm mt-1">
             <p>Size: {(doc.size / 1024 / 1024).toFixed(2)} MB</p>
-            <p>Pages: {doc.pageCount !== undefined ? doc.pageCount : 'Loading...'}</p>
+            <p>
+              Pages:{" "}
+              {doc.pageCount !== undefined ? doc.pageCount : "Loading..."}
+            </p>
           </div>
         </div>
         <div className="mt-4 pt-4 border-t border-gray-100 flex flex-wrap gap-2">
@@ -262,6 +307,13 @@ export function DocumentCard({
             Scan PII
           </button>
           <button
+            onClick={() => onSanitize?.(doc)}
+            disabled={isProcessing}
+            className="text-indigo-600 hover:text-indigo-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded px-1"
+          >
+            Sanitize
+          </button>
+          <button
             onClick={() => onRemove(doc.id)}
             disabled={isProcessing}
             className="text-red-500 hover:text-red-700 text-sm font-medium disabled:opacity-50 ml-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 rounded px-1"
@@ -286,11 +338,16 @@ export function DocumentCard({
           </div>
 
           {detectedEntities.length === 0 ? (
-            <p className="text-sm text-gray-500">No sensitive information found.</p>
+            <p className="text-sm text-gray-500">
+              No sensitive information found.
+            </p>
           ) : (
             <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
               {detectedEntities.map((entity, i) => (
-                <label key={i} className="flex items-start gap-2 text-sm cursor-pointer hover:bg-gray-50 p-1 rounded">
+                <label
+                  key={i}
+                  className="flex items-start gap-2 text-sm cursor-pointer hover:bg-gray-50 p-1 rounded"
+                >
                   <input
                     type="checkbox"
                     className="mt-1"
