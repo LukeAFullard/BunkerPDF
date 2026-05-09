@@ -146,7 +146,21 @@ export function DocumentCard({
         onClose={() => setErrorState(prev => ({ ...prev, isOpen: false }))}
       />
       <div className="p-4 flex flex-col justify-between flex-1">
-        <div className="mb-4" onContextMenu={handleContextMenu}>
+        <div
+          className="mb-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
+          onContextMenu={handleContextMenu}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              // Trigger context menu manually for keyboard users
+              const rect = e.currentTarget.getBoundingClientRect();
+              setContextMenuState({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+            }
+          }}
+          tabIndex={0}
+          role="button"
+          aria-label={`Open context menu for ${doc.name}`}
+        >
           <PDFThumbnail file={doc.file} />
         </div>
         <div>
@@ -160,21 +174,21 @@ export function DocumentCard({
           <button
             onClick={() => onSplit(doc)}
             disabled={isProcessing}
-            className="text-blue-600 hover:text-blue-800 text-sm font-medium disabled:opacity-50"
+            className="text-blue-600 hover:text-blue-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded px-1"
           >
             Split
           </button>
           <button
             onClick={handleScan}
             disabled={isProcessing}
-            className="text-purple-600 hover:text-purple-800 text-sm font-medium disabled:opacity-50"
+            className="text-purple-600 hover:text-purple-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 rounded px-1"
           >
             Scan PII
           </button>
           <button
             onClick={() => onRemove(doc.id)}
             disabled={isProcessing}
-            className="text-red-500 hover:text-red-700 text-sm font-medium disabled:opacity-50 ml-auto"
+            className="text-red-500 hover:text-red-700 text-sm font-medium disabled:opacity-50 ml-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 rounded px-1"
           >
             Remove
           </button>
@@ -188,7 +202,8 @@ export function DocumentCard({
             <h4 className="font-semibold text-gray-800">Detected PII</h4>
             <button
               onClick={() => setDetectedEntities(null)}
-              className="text-gray-400 hover:text-gray-600"
+              className="text-gray-400 hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 rounded"
+              aria-label="Close PII panel"
             >
               ×
             </button>
@@ -216,7 +231,7 @@ export function DocumentCard({
             <button
               onClick={handleRedact}
               disabled={isProcessing || selectedEntities.size === 0}
-              className="w-full mt-4 bg-red-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors"
+              className="w-full mt-4 bg-red-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-1"
             >
               Redact {selectedEntities.size} items
             </button>

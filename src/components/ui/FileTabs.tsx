@@ -18,8 +18,17 @@ export function FileTabs() {
           <div
             key={doc.id}
             onClick={() => setActiveDocument(doc.id)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setActiveDocument(doc.id);
+              }
+            }}
+            role="tab"
+            aria-selected={isActive}
+            tabIndex={0}
             className={cn(
-              "flex items-center gap-2 px-3 py-2 rounded-t-lg border-t border-x cursor-pointer min-w-[120px] max-w-[200px] transition-colors relative group",
+              "flex items-center gap-2 px-3 py-2 rounded-t-lg border-t border-x cursor-pointer min-w-[120px] max-w-[200px] transition-colors relative group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500",
               isActive
                 ? "bg-white border-gray-200 shadow-[0_4px_0_0_white] z-10 -mb-[1px]"
                 : "bg-gray-50 border-gray-100 hover:bg-gray-100 text-gray-600"
@@ -36,7 +45,8 @@ export function FileTabs() {
                 e.stopPropagation();
                 removeDocument(doc.id);
               }}
-              className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-gray-200 text-gray-400 hover:text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity"
+              aria-label={`Close ${doc.name}`}
+              className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-gray-200 text-gray-400 hover:text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               title="Close tab"
             >
               &times;

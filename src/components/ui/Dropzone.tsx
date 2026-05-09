@@ -143,6 +143,13 @@ export function Dropzone({ onError }: DropzoneProps = {}) {
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handleClick();
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 flex flex-col items-center justify-center p-4 relative">
       <OnboardingTour />
@@ -168,8 +175,12 @@ export function Dropzone({ onError }: DropzoneProps = {}) {
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         onClick={handleClick}
+        onKeyDown={handleKeyDown}
+        role="button"
+        tabIndex={0}
+        aria-label="Upload PDF document"
         className={cn(
-          "tour-step-1 max-w-4xl w-full aspect-[2/1] min-h-[300px] border-4 border-dashed rounded-3xl flex flex-col items-center justify-center p-8 transition-all duration-200 cursor-pointer bg-white group",
+          "tour-step-1 max-w-4xl w-full aspect-[2/1] min-h-[300px] border-4 border-dashed rounded-3xl flex flex-col items-center justify-center p-8 transition-all duration-200 cursor-pointer bg-white group focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-500 focus-visible:border-transparent",
           isDragging ? "border-blue-500 bg-blue-50 scale-[1.02] shadow-xl" : "border-gray-300 hover:border-gray-400 hover:bg-gray-50"
         )}
       >
