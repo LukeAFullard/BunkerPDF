@@ -3,12 +3,13 @@ import { Dropzone } from './components/ui/Dropzone';
 import { useFileStore, type PDFDocument } from './store/fileStore';
 import { useEngineStore } from './store/engineStore';
 import { useProcessingStore } from './store/processingStore';
-import { mergePdfs, splitPdf } from './lib/engineA';
+import { mergePdfs, splitPdf, rotatePdf, watermarkPdf, optimizePdf, deletePages, reorderPages } from './lib/engineA';
 import { EngineStatusPill } from './components/ui/EngineStatusPill';
 import { getSmartOutputName } from './lib/utils';
 import { DocumentCard } from './components/pdf/DocumentCard';
 import { FileTabs } from './components/ui/FileTabs';
 import { ErrorModal } from './components/ui/ErrorModal';
+import { InputModal } from './components/ui/InputModal';
 import { ProcessingModal } from './components/ui/ProcessingModal';
 import type { NERWorkerMessage, NERWorkerResponse } from './workers/nerWorker';
 import type { PyodideWorkerMessage, PyodideWorkerResponse } from './workers/pyodideWorker';
@@ -22,6 +23,9 @@ function App() {
   const removeDocument = useFileStore(state => state.removeDocument);
   const clearAll = useFileStore(state => state.clearAll);
   const [errorState, setErrorState] = useState<{ isOpen: boolean, title: string, message: React.ReactNode }>({ isOpen: false, title: '', message: '' });
+  const [inputState, setInputState] = useState<{ isOpen: boolean, title: string, message: string, placeholder: string, defaultValue?: string, onConfirm: (val: string) => void }>({
+    isOpen: false, title: '', message: '', placeholder: '', onConfirm: () => {}
+  });
 
   const { startProcessing, stopProcessing, isActive: isGlobalProcessing } = useProcessingStore();
 
@@ -213,9 +217,203 @@ function App() {
     }
   };
 
+
+  const handleRotate = async (doc: PDFDocument) => {
+    let isCancelled = false;
+    startProcessing('Rotating PDF...', true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
+    try {
+      const rotatedBytes = await rotatePdf(doc.file, 90);
+      if (isCancelled) return;
+
+      const blob = new Blob([new Uint8Array(rotatedBytes)], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = getSmartOutputName(doc.name, 'rotated');
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      if (isCancelled) return;
+      console.error(e);
+      setErrorState({ isOpen: true, title: 'Rotate Error', message: 'An error occurred while rotating the PDF.' });
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
+  };
+
+  const handleWatermark = (doc: PDFDocument) => {
+    setInputState({
+      isOpen: true,
+      title: 'Add Watermark',
+      message: 'Enter the text you want to use as a watermark:',
+      placeholder: 'e.g. CONFIDENTIAL',
+      onConfirm: async (text) => {
+        setInputState(prev => ({ ...prev, isOpen: false }));
+        if (!text) return;
+
+        let isCancelled = false;
+        startProcessing('Adding watermark...', true, () => {
+          isCancelled = true;
+          stopProcessing();
+        });
+
+        try {
+          const watermarkedBytes = await watermarkPdf(doc.file, text);
+          if (isCancelled) return;
+
+          const blob = new Blob([new Uint8Array(watermarkedBytes)], { type: 'application/pdf' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = getSmartOutputName(doc.name, 'watermarked');
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        } catch (e) {
+          if (isCancelled) return;
+          console.error(e);
+          setErrorState({ isOpen: true, title: 'Watermark Error', message: 'An error occurred while adding the watermark.' });
+        } finally {
+          if (!isCancelled) stopProcessing();
+        }
+      }
+    });
+  };
+
+  const handleOptimize = async (doc: PDFDocument) => {
+    let isCancelled = false;
+    startProcessing('Optimizing PDF...', true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
+    try {
+      const optimizedBytes = await optimizePdf(doc.file);
+      if (isCancelled) return;
+
+      const blob = new Blob([new Uint8Array(optimizedBytes)], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = getSmartOutputName(doc.name, 'optimized');
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      if (isCancelled) return;
+      console.error(e);
+      setErrorState({ isOpen: true, title: 'Optimize Error', message: 'An error occurred while optimizing the PDF.' });
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
+  };
+
+  const handleDeletePages = (doc: PDFDocument) => {
+    setInputState({
+      isOpen: true,
+      title: 'Delete Pages',
+      message: 'Enter the page numbers to delete (comma separated, e.g. 1, 3, 5):',
+      placeholder: '1, 3, 5',
+      onConfirm: async (text) => {
+        setInputState(prev => ({ ...prev, isOpen: false }));
+        if (!text) return;
+
+        const indices = text.split(',').map(n => parseInt(n.trim(), 10) - 1).filter(n => !isNaN(n));
+        if (indices.length === 0) return;
+
+        let isCancelled = false;
+        startProcessing('Deleting pages...', true, () => {
+          isCancelled = true;
+          stopProcessing();
+        });
+
+        try {
+          const deletedBytes = await deletePages(doc.file, indices);
+          if (isCancelled) return;
+
+          const blob = new Blob([new Uint8Array(deletedBytes)], { type: 'application/pdf' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = getSmartOutputName(doc.name, 'deleted');
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        } catch (e) {
+          if (isCancelled) return;
+          console.error(e);
+          setErrorState({ isOpen: true, title: 'Delete Error', message: 'An error occurred while deleting pages.' });
+        } finally {
+          if (!isCancelled) stopProcessing();
+        }
+      }
+    });
+  };
+
+  const handleReorderPages = (doc: PDFDocument) => {
+    setInputState({
+      isOpen: true,
+      title: 'Reorder Pages',
+      message: `Enter the new order of pages (comma separated, e.g. 3, 1, 2) [Total Pages: ${doc.pageCount}]:`,
+      placeholder: '3, 1, 2',
+      onConfirm: async (text) => {
+        setInputState(prev => ({ ...prev, isOpen: false }));
+        if (!text) return;
+
+        const indices = text.split(',').map(n => parseInt(n.trim(), 10) - 1).filter(n => !isNaN(n));
+        if (indices.length === 0) return;
+
+        let isCancelled = false;
+        startProcessing('Reordering pages...', true, () => {
+          isCancelled = true;
+          stopProcessing();
+        });
+
+        try {
+          const reorderedBytes = await reorderPages(doc.file, indices);
+          if (isCancelled) return;
+
+          const blob = new Blob([new Uint8Array(reorderedBytes)], { type: 'application/pdf' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = getSmartOutputName(doc.name, 'reordered');
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        } catch (e) {
+          if (isCancelled) return;
+          console.error(e);
+          setErrorState({ isOpen: true, title: 'Reorder Error', message: 'An error occurred while reordering pages.' });
+        } finally {
+          if (!isCancelled) stopProcessing();
+        }
+      }
+    });
+  };
+
   return (
     <div className="App font-sans bg-gray-50 min-h-screen">
       <ProcessingModal />
+      <InputModal
+        isOpen={inputState.isOpen}
+        title={inputState.title}
+        message={inputState.message}
+        placeholder={inputState.placeholder}
+        defaultValue={inputState.defaultValue}
+        onConfirm={inputState.onConfirm}
+        onCancel={() => setInputState(prev => ({ ...prev, isOpen: false }))}
+      />
       <ErrorModal
         isOpen={errorState.isOpen}
         title={errorState.title}
@@ -269,6 +467,11 @@ function App() {
                       doc={activeDoc}
                       onRemove={removeDocument}
                       onSplit={handleSplitBurst}
+                      onRotate={handleRotate}
+                      onWatermark={handleWatermark}
+                      onOptimize={handleOptimize}
+                      onDeletePages={handleDeletePages}
+                      onReorderPages={handleReorderPages}
                       extractText={extractText}
                       extractEntities={extractEntities}
                       redactPdf={redactPdf}
