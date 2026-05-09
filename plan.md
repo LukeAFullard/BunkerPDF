@@ -83,7 +83,7 @@ This timeline is structured to build a working foundation rapidly, layer on the 
   * [x] 3-step onboarding tooltip tour
   * [x] explicit error states (OOM, corrupt files, passwords)
   * [x] human-readable loading stages with cancel buttons
-  * [ ] thumbnail context menus (right-click to extract/delete)
+  * [x] thumbnail context menus (right-click to extract/delete)
   * [x] smart output file naming (`[original-name]-[action]-[timestamp]`)
   * [x] multi-file tab bar
 * [ ] **Accessibility Foundation:** Focus rings, keyboard operability, and ARIA live regions for engine status.
