@@ -6,6 +6,7 @@ import { getSmartOutputName } from "../../lib/utils";
 import { ErrorModal } from "../ui/ErrorModal";
 import { useProcessingStore } from "../../store/processingStore";
 import { ContextMenu } from "../ui/ContextMenu";
+import { decodeBarcodesFromPdf } from "../../lib/barcodeDecoder";
 
 interface DocumentCardProps {
   doc: PDFDocument;
@@ -50,6 +51,7 @@ export function DocumentCard({
   const [selectedEntities, setSelectedEntities] = useState<Set<string>>(
     new Set(),
   );
+  const [detectedCodes, setDetectedCodes] = useState<string[] | null>(null);
   const [errorState, setErrorState] = useState<{
     isOpen: boolean;
     title: string;
@@ -106,6 +108,40 @@ export function DocumentCard({
     x: number;
     y: number;
   } | null>(null);
+
+  const handleScanCodes = async () => {
+    setDetectedCodes(null);
+
+    let isCancelled = false;
+    startProcessing("Scanning for barcodes...", true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
+    try {
+      const codes = await decodeBarcodesFromPdf(doc.file);
+      if (isCancelled) return;
+
+      setDetectedCodes(codes);
+      if (codes.length === 0) {
+        setErrorState({
+          isOpen: true,
+          title: "Scan Complete",
+          message: "No readable barcodes or QR codes were found in this document.",
+        });
+      }
+    } catch (err) {
+      if (isCancelled) return;
+      console.error(err);
+      setErrorState({
+        isOpen: true,
+        title: "Scan Error",
+        message: "An error occurred while scanning for barcodes.",
+      });
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
+  };
 
   const handleScan = async () => {
     setDetectedEntities(null);
@@ -307,6 +343,13 @@ export function DocumentCard({
             Scan PII
           </button>
           <button
+            onClick={handleScanCodes}
+            disabled={isProcessing}
+            className="text-orange-600 hover:text-orange-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 rounded px-1"
+          >
+            Scan Codes
+          </button>
+          <button
             onClick={() => onSanitize?.(doc)}
             disabled={isProcessing}
             className="text-indigo-600 hover:text-indigo-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded px-1"
@@ -369,6 +412,40 @@ export function DocumentCard({
               Redact {selectedEntities.size} items
             </button>
           )}
+        </div>
+      )}
+
+      {/* Barcode Scanner Sidebar / Overlay */}
+      {detectedCodes !== null && detectedCodes.length > 0 && (
+        <div className="absolute top-0 right-full mr-4 w-64 bg-white border border-gray-200 rounded-xl shadow-lg p-4 z-10">
+          <div className="flex justify-between items-center mb-4">
+            <h4 className="font-semibold text-gray-800">Detected Codes</h4>
+            <button
+              onClick={() => setDetectedCodes(null)}
+              className="text-gray-400 hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 rounded"
+              aria-label="Close barcode panel"
+            >
+              ×
+            </button>
+          </div>
+
+          <div className="flex flex-col gap-3 max-h-64 overflow-y-auto">
+            {detectedCodes.map((code, i) => (
+              <div key={i} className="flex flex-col gap-1 p-2 bg-gray-50 rounded text-sm border border-gray-100">
+                <span className="break-all font-mono text-xs">{code}</span>
+                {(code.startsWith("http://") || code.startsWith("https://")) && (
+                  <a
+                    href={code}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline text-xs"
+                  >
+                    Open Link
+                  </a>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

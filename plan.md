@@ -93,7 +93,7 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 * [x] **Basic Polish:** Implement standard metadata cleaning and password encryption.
 * [ ] **Annotations & Signatures:** Basic highlight/draw tools and signature capture/placement.
 * [ ] **Sharing:** Implement **WebRTC/P2P sharing** or Base64 URL sharing.
-* [ ] **Early Features:** Implement **Viewer Dark Mode** (CSS filter) and **QR & Barcode Decoder** (`@zxing/library`).
+* [x] **Early Features:** Implement **Viewer Dark Mode** (CSS filter) and **QR & Barcode Decoder** (`@zxing/library`).
 
 ### Phase 2: The Intelligent Security Hub (Months 7–11)
 **Objective:** Deploy the core differentiator—the Redaction Suite—using edge-native AI.
