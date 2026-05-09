@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { PDFThumbnail } from './PDFThumbnail';
 import { type PDFDocument } from '../../store/fileStore';
 import { getSmartOutputName } from '../../lib/utils';
+import { ErrorModal } from '../ui/ErrorModal';
 
 interface DocumentCardProps {
   doc: PDFDocument;
@@ -28,6 +29,7 @@ export function DocumentCard({
   const [detectedEntities, setDetectedEntities] = useState<string[] | null>(null);
   const [selectedEntities, setSelectedEntities] = useState<Set<string>>(new Set());
   const [isRedacting, setIsRedacting] = useState(false);
+  const [errorState, setErrorState] = useState<{ isOpen: boolean, title: string, message: React.ReactNode }>({ isOpen: false, title: '', message: '' });
 
   const handleScan = async () => {
     setIsScanning(true);
@@ -48,7 +50,7 @@ export function DocumentCard({
       setSelectedEntities(new Set(entities)); // pre-select all
     } catch (err) {
       console.error(err);
-      alert("Failed to scan document");
+      setErrorState({ isOpen: true, title: 'Scan Error', message: 'An error occurred while scanning the document.' });
     } finally {
       setIsScanning(false);
     }
@@ -82,7 +84,7 @@ export function DocumentCard({
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error(err);
-      alert("Failed to redact document");
+      setErrorState({ isOpen: true, title: 'Redaction Error', message: 'An error occurred while redacting the document.' });
     } finally {
       setIsRedacting(false);
       setIsGlobalProcessing(false);
@@ -106,6 +108,12 @@ export function DocumentCard({
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col hover:shadow-md transition-shadow relative">
+      <ErrorModal
+        isOpen={errorState.isOpen}
+        title={errorState.title}
+        message={errorState.message}
+        onClose={() => setErrorState(prev => ({ ...prev, isOpen: false }))}
+      />
       <div className="p-4 flex flex-col justify-between flex-1">
         <div className="mb-4">
           <PDFThumbnail file={doc.file} />

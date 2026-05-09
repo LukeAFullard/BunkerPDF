@@ -7,6 +7,7 @@ import { EngineStatusPill } from './components/ui/EngineStatusPill';
 import { getSmartOutputName } from './lib/utils';
 import { DocumentCard } from './components/pdf/DocumentCard';
 import { FileTabs } from './components/ui/FileTabs';
+import { ErrorModal } from './components/ui/ErrorModal';
 import type { NERWorkerMessage, NERWorkerResponse } from './workers/nerWorker';
 import type { PyodideWorkerMessage, PyodideWorkerResponse } from './workers/pyodideWorker';
 
@@ -19,6 +20,7 @@ function App() {
   const removeDocument = useFileStore(state => state.removeDocument);
   const clearAll = useFileStore(state => state.clearAll);
   const [isGlobalProcessing, setIsGlobalProcessing] = useState(false);
+  const [errorState, setErrorState] = useState<{ isOpen: boolean, title: string, message: React.ReactNode }>({ isOpen: false, title: '', message: '' });
 
   // Promise resolvers mapping
   const nerResolvers = useRef<Map<string, { resolve: (val: any) => void; reject: (err: any) => void }>>(new Map());
@@ -141,7 +143,7 @@ function App() {
 
   const handleMerge = async () => {
     if (documents.length < 2) {
-      alert("Please upload at least 2 PDFs to merge.");
+      setErrorState({ isOpen: true, title: 'Not Enough Files', message: 'Please upload at least 2 PDFs to merge.' });
       return;
     }
 
@@ -161,7 +163,7 @@ function App() {
       URL.revokeObjectURL(url);
     } catch (e) {
       console.error(e);
-      alert("Error merging PDFs");
+      setErrorState({ isOpen: true, title: 'Merge Error', message: 'An error occurred while merging the PDFs.' });
     } finally {
       setIsGlobalProcessing(false);
     }
@@ -186,7 +188,7 @@ function App() {
       });
     } catch (e) {
       console.error(e);
-      alert("Error splitting PDF");
+      setErrorState({ isOpen: true, title: 'Split Error', message: 'An error occurred while splitting the PDF.' });
     } finally {
       setIsGlobalProcessing(false);
     }
@@ -194,6 +196,12 @@ function App() {
 
   return (
     <div className="App font-sans bg-gray-50 min-h-screen">
+      <ErrorModal
+        isOpen={errorState.isOpen}
+        title={errorState.title}
+        message={errorState.message}
+        onClose={() => setErrorState(prev => ({ ...prev, isOpen: false }))}
+      />
       {documents.length === 0 ? (
         <div className="flex flex-col h-screen">
           <header className="p-4 flex justify-between items-center bg-white border-b border-gray-200">
