@@ -3,7 +3,7 @@ import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
 export function EngineStatusPill() {
-  const { aiStatus, aiError, pyodideStatus, pyodideError } = useEngineStore();
+  const { aiStatus, aiError, pyodideStatus, pyodideError, pyodideStage } = useEngineStore();
 
   let statusText = 'Ready';
   let statusColor = 'bg-green-100 text-green-800 border-green-200';
@@ -12,7 +12,7 @@ export function EngineStatusPill() {
     statusText = 'Error Loading Engines';
     statusColor = 'bg-red-100 text-red-800 border-red-200';
   } else if (pyodideStatus === 'loading') {
-    statusText = 'Loading advanced features (first time only)...';
+    statusText = pyodideStage ? `Loading tools: ${pyodideStage}` : 'Loading advanced features (first time only)...';
     statusColor = 'bg-yellow-100 text-yellow-800 border-yellow-200';
   } else if (aiStatus === 'loading') {
     statusText = 'Preparing smart tools...';
