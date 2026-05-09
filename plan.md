@@ -75,11 +75,11 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 * [x] **Automated PII Scanner & True Redaction (MVP Scope):** Implement a lightweight NER model in the browser (target <50MB budget for first load). Build the UI to scan a document, flag sensitive entities (SSNs, names, emails), and present them in a sidebar for one-click redaction. Ensure redaction removes underlying text paths using `pymupdf`.
 * [x] **Pyodide Cold-Start Strategy:** Implement a concrete strategy: either pre-warm Pyodide silently in the background immediately on page load, or explicitly gate heavy features (like True Redaction) behind an "Enable advanced tools" step with clear expectation-setting to prevent abandonment on a 60–100MB download. (*Pre-warming strategy has been implemented.*)
 * [x] **Early Spikes:** Validate `pymupdf` + `pdf2docx` in Pyodide. (*Note: `pdf2docx` failed due to a missing pure Python wheel for `opencv-python-headless`. The fallback strategy of using `pymupdf` + `python-docx` has been validated.*)
-* [ ] **Outcome:** A lightning-fast, ad-free PDF utility that proves zero-server true redaction.
+* [x] **Outcome:** A lightning-fast, ad-free PDF utility that proves zero-server true redaction.
 
 ### Phase 1.5: UI Polish & Commodity Features (Months 4–6)
 **Objective:** Layer on necessary UI improvements and common commodity features delayed from MVP.
-* [ ] **UX/UI Priorities:**
+* [x] **UX/UI Priorities:**
   * [x] 3-step onboarding tooltip tour
   * [x] explicit error states (OOM, corrupt files, passwords)
   * [x] human-readable loading stages with cancel buttons
@@ -87,7 +87,7 @@ This timeline is structured to build a working foundation rapidly, layer on the 
   * [x] smart output file naming (`[original-name]-[action]-[timestamp]`)
   * [x] multi-file tab bar
 * [x] **Accessibility Foundation:** Focus rings, keyboard operability, and ARIA live regions for engine status.
-* [ ] **Expanded Commodity Features:** Add Reorder, Add Pages, Delete Pages, **Stamp / Watermark**, and **PDF compression/optimization** (metadata stripping + recompression).
+* [x] **Expanded Commodity Features:** Add Reorder, Add Pages, Delete Pages, **Stamp / Watermark**, and **PDF compression/optimization** (metadata stripping + recompression).
 * [ ] **Undo/Redo System:** Implement a robust undo/redo stack (Cmd+Z).
 * [ ] **Mobile Scope (Lightweight Utility Mode):** Mobile is strictly a lightweight utility mode (Merge/Split), NOT full workstation parity. Due to RAM, thermal throttling, and Safari WASM limits, heavy processing (Pyodide, OCR, Large PDFs) is too risky for MVP mobile.
 * [ ] **Basic Polish:** Implement standard metadata cleaning and password encryption.

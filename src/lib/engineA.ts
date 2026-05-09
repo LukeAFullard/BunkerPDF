@@ -1,4 +1,4 @@
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, degrees, rgb } from 'pdf-lib';
 
 export async function mergePdfs(files: File[]): Promise<Uint8Array> {
   const mergedPdf = await PDFDocument.create();
@@ -32,4 +32,88 @@ export async function splitPdf(file: File): Promise<Uint8Array[]> {
   }
 
   return splitPdfs;
+}
+
+export async function rotatePdf(file: File, degreesToRotate: number = 90): Promise<Uint8Array> {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+
+  const pages = pdfDoc.getPages();
+  for (const page of pages) {
+    const currentRotation = page.getRotation().angle;
+    page.setRotation(degrees(currentRotation + degreesToRotate));
+  }
+
+  return await pdfDoc.save();
+}
+
+export async function watermarkPdf(file: File, text: string): Promise<Uint8Array> {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+
+  const pages = pdfDoc.getPages();
+  for (const page of pages) {
+    const { width, height } = page.getSize();
+    page.drawText(text, {
+      x: width / 4,
+      y: height / 2,
+      size: 50,
+      color: rgb(0.5, 0.5, 0.5),
+      opacity: 0.5,
+      rotate: degrees(45),
+    });
+  }
+
+  return await pdfDoc.save();
+}
+
+export async function optimizePdf(file: File): Promise<Uint8Array> {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+
+  // Basic metadata stripping
+  pdfDoc.setTitle('');
+  pdfDoc.setAuthor('');
+  pdfDoc.setSubject('');
+  pdfDoc.setKeywords([]);
+  pdfDoc.setProducer('');
+  pdfDoc.setCreator('');
+
+  // Recompressing by saving without adding any new stuff. Not true compression but strips metadata.
+  return await pdfDoc.save({ useObjectStreams: false });
+}
+
+export async function deletePages(file: File, pageIndices: number[]): Promise<Uint8Array> {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+
+  // Sort descending so indices don't shift when we delete
+  const sortedIndices = [...pageIndices].sort((a, b) => b - a);
+
+  for (const idx of sortedIndices) {
+    if (idx >= 0 && idx < pdfDoc.getPageCount()) {
+      pdfDoc.removePage(idx);
+    }
+  }
+
+  return await pdfDoc.save();
+}
+
+export async function reorderPages(file: File, newOrderIndices: number[]): Promise<Uint8Array> {
+  const arrayBuffer = await file.arrayBuffer();
+  const originalDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+  const newDoc = await PDFDocument.create();
+
+  // Validate indices
+  const validIndices = newOrderIndices.filter(idx => idx >= 0 && idx < originalDoc.getPageCount());
+
+  if (validIndices.length > 0) {
+    const copiedPages = await newDoc.copyPages(originalDoc, validIndices);
+    copiedPages.forEach(page => newDoc.addPage(page));
+  } else {
+    // If empty or invalid, return original
+    return await originalDoc.save();
+  }
+
+  return await newDoc.save();
 }

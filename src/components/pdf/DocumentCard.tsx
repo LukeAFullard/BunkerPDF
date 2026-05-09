@@ -10,6 +10,11 @@ interface DocumentCardProps {
   doc: PDFDocument;
   onRemove: (id: string) => void;
   onSplit: (doc: PDFDocument) => void;
+  onRotate?: (doc: PDFDocument) => void;
+  onWatermark?: (doc: PDFDocument) => void;
+  onOptimize?: (doc: PDFDocument) => void;
+  onDeletePages?: (doc: PDFDocument) => void;
+  onReorderPages?: (doc: PDFDocument) => void;
   extractText: (bytes: Uint8Array) => Promise<string>;
   extractEntities: (text: string) => Promise<string[]>;
   redactPdf: (bytes: Uint8Array, redactions: string[]) => Promise<Uint8Array>;
@@ -19,6 +24,11 @@ export function DocumentCard({
   doc,
   onRemove,
   onSplit,
+  onRotate,
+  onWatermark,
+  onOptimize,
+  onDeletePages,
+  onReorderPages,
   extractText,
   extractEntities,
   redactPdf
@@ -135,7 +145,12 @@ export function DocumentCard({
           onClose={() => setContextMenuState(null)}
           items={[
             { label: 'Extract / Split', onClick: () => onSplit(doc) },
-            { label: 'Delete', variant: 'danger', onClick: () => onRemove(doc.id) },
+            { label: 'Rotate 90°', onClick: () => onRotate?.(doc) },
+            { label: 'Add Watermark', onClick: () => onWatermark?.(doc) },
+            { label: 'Optimize (Compress)', onClick: () => onOptimize?.(doc) },
+            { label: 'Delete Pages', onClick: () => onDeletePages?.(doc) },
+            { label: 'Reorder Pages', onClick: () => onReorderPages?.(doc) },
+            { label: 'Remove File', variant: 'danger', onClick: () => onRemove(doc.id) },
           ]}
         />
       )}
