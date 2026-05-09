@@ -4,6 +4,7 @@ import { type PDFDocument } from '../../store/fileStore';
 import { getSmartOutputName } from '../../lib/utils';
 import { ErrorModal } from '../ui/ErrorModal';
 import { useProcessingStore } from '../../store/processingStore';
+import { ContextMenu } from '../ui/ContextMenu';
 
 interface DocumentCardProps {
   doc: PDFDocument;
@@ -27,6 +28,7 @@ export function DocumentCard({
   const [errorState, setErrorState] = useState<{ isOpen: boolean, title: string, message: React.ReactNode }>({ isOpen: false, title: '', message: '' });
 
   const { startProcessing, updateStage, stopProcessing, isActive: isProcessing } = useProcessingStore();
+  const [contextMenuState, setContextMenuState] = useState<{ x: number; y: number } | null>(null);
 
   const handleScan = async () => {
     setDetectedEntities(null);
@@ -119,8 +121,24 @@ export function DocumentCard({
     });
   };
 
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault(); // Prevent default browser context menu
+    setContextMenuState({ x: e.clientX, y: e.clientY });
+  };
+
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col hover:shadow-md transition-shadow relative">
+      {contextMenuState && (
+        <ContextMenu
+          x={contextMenuState.x}
+          y={contextMenuState.y}
+          onClose={() => setContextMenuState(null)}
+          items={[
+            { label: 'Extract / Split', onClick: () => onSplit(doc) },
+            { label: 'Delete', variant: 'danger', onClick: () => onRemove(doc.id) },
+          ]}
+        />
+      )}
       <ErrorModal
         isOpen={errorState.isOpen}
         title={errorState.title}
@@ -128,7 +146,7 @@ export function DocumentCard({
         onClose={() => setErrorState(prev => ({ ...prev, isOpen: false }))}
       />
       <div className="p-4 flex flex-col justify-between flex-1">
-        <div className="mb-4">
+        <div className="mb-4" onContextMenu={handleContextMenu}>
           <PDFThumbnail file={doc.file} />
         </div>
         <div>
