@@ -19,6 +19,17 @@ export function Dropzone() {
       return;
     }
 
+    // Filter out files larger than 80MB (80 * 1024 * 1024 bytes)
+    const MAX_FILE_SIZE = 80 * 1024 * 1024;
+    const oversizedFiles = pdfFiles.filter(f => f.size > MAX_FILE_SIZE);
+
+    if (oversizedFiles.length > 0) {
+      alert(`The following files are larger than 80MB and will not be loaded:\n${oversizedFiles.map(f => f.name).join('\n')}\n\nProcessing files this large in the browser may cause memory issues.`);
+      pdfFiles = pdfFiles.filter(f => f.size <= MAX_FILE_SIZE);
+    }
+
+    if (pdfFiles.length === 0) return;
+
     const availableSlots = 8 - documents.length;
     if (pdfFiles.length > availableSlots) {
       alert(`Maximum 8 files allowed. Only ${availableSlots > 0 ? `the next ${availableSlots}` : '0'} will be loaded.`);
