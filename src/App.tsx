@@ -21,6 +21,9 @@ function App() {
   const nerWorkerRef = useRef<Worker | null>(null);
   const pyodideWorkerRef = useRef<Worker | null>(null);
   const removeDocument = useFileStore(state => state.removeDocument);
+  const updateDocumentFile = useFileStore(state => state.updateDocumentFile);
+  const addDocuments = useFileStore(state => state.addDocuments);
+
   const clearAll = useFileStore(state => state.clearAll);
   const [errorState, setErrorState] = useState<{ isOpen: boolean, title: string, message: React.ReactNode }>({ isOpen: false, title: '', message: '' });
   const [inputState, setInputState] = useState<{ isOpen: boolean, title: string, message: string, placeholder: string, defaultValue?: string, onConfirm: (val: string) => void }>({
@@ -196,18 +199,21 @@ function App() {
       const splitBytesArray = await splitPdf(doc.file);
       if (isCancelled) return;
 
-      splitBytesArray.forEach((bytes, index) => {
-        const buffer = new Uint8Array(bytes);
-        const blob = new Blob([buffer], { type: 'application/pdf' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = getSmartOutputName(doc.name, `split-page-${index + 1}`);
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+      // Add split documents to workspace instead of downloading
+      const newDocs = splitBytesArray.map((bytes, index) => {
+        const standardBuffer = new Uint8Array(bytes.length);
+        standardBuffer.set(bytes);
+        const newFile = new File([standardBuffer], getSmartOutputName(doc.name, `split-page-${index + 1}`), { type: 'application/pdf' });
+        return {
+          id: crypto.randomUUID(),
+          file: newFile,
+          name: newFile.name,
+          size: newFile.size,
+          lastModified: Date.now(),
+          pageCount: 1, // Split creates 1-page documents
+        };
       });
+      addDocuments(newDocs);
     } catch (e) {
       if (isCancelled) return;
       console.error(e);
@@ -229,15 +235,10 @@ function App() {
       const rotatedBytes = await rotatePdf(doc.file, 90);
       if (isCancelled) return;
 
-      const blob = new Blob([new Uint8Array(rotatedBytes)], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = getSmartOutputName(doc.name, 'rotated');
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      const standardBuffer = new Uint8Array(rotatedBytes.length);
+      standardBuffer.set(rotatedBytes);
+      const newFile = new File([standardBuffer], doc.name, { type: 'application/pdf' });
+      updateDocumentFile(doc.id, newFile);
     } catch (e) {
       if (isCancelled) return;
       console.error(e);
@@ -267,15 +268,10 @@ function App() {
           const watermarkedBytes = await watermarkPdf(doc.file, text);
           if (isCancelled) return;
 
-          const blob = new Blob([new Uint8Array(watermarkedBytes)], { type: 'application/pdf' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = getSmartOutputName(doc.name, 'watermarked');
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
+          const standardBuffer = new Uint8Array(watermarkedBytes.length);
+          standardBuffer.set(watermarkedBytes);
+          const newFile = new File([standardBuffer], doc.name, { type: 'application/pdf' });
+          updateDocumentFile(doc.id, newFile);
         } catch (e) {
           if (isCancelled) return;
           console.error(e);
@@ -298,15 +294,10 @@ function App() {
       const optimizedBytes = await optimizePdf(doc.file);
       if (isCancelled) return;
 
-      const blob = new Blob([new Uint8Array(optimizedBytes)], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = getSmartOutputName(doc.name, 'optimized');
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      const standardBuffer = new Uint8Array(optimizedBytes.length);
+      standardBuffer.set(optimizedBytes);
+      const newFile = new File([standardBuffer], doc.name, { type: 'application/pdf' });
+      updateDocumentFile(doc.id, newFile);
     } catch (e) {
       if (isCancelled) return;
       console.error(e);
@@ -339,15 +330,11 @@ function App() {
           const deletedBytes = await deletePages(doc.file, indices);
           if (isCancelled) return;
 
-          const blob = new Blob([new Uint8Array(deletedBytes)], { type: 'application/pdf' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = getSmartOutputName(doc.name, 'deleted');
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
+          const standardBuffer = new Uint8Array(deletedBytes.length);
+          standardBuffer.set(deletedBytes);
+          const newFile = new File([standardBuffer], doc.name, { type: 'application/pdf' });
+          const newPageCount = (doc.pageCount || 0) - indices.length;
+          updateDocumentFile(doc.id, newFile, newPageCount > 0 ? newPageCount : undefined);
         } catch (e) {
           if (isCancelled) return;
           console.error(e);
@@ -382,15 +369,10 @@ function App() {
           const reorderedBytes = await reorderPages(doc.file, indices);
           if (isCancelled) return;
 
-          const blob = new Blob([new Uint8Array(reorderedBytes)], { type: 'application/pdf' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = getSmartOutputName(doc.name, 'reordered');
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
+          const standardBuffer = new Uint8Array(reorderedBytes.length);
+          standardBuffer.set(reorderedBytes);
+          const newFile = new File([standardBuffer], doc.name, { type: 'application/pdf' });
+          updateDocumentFile(doc.id, newFile);
         } catch (e) {
           if (isCancelled) return;
           console.error(e);
@@ -475,6 +457,7 @@ function App() {
                       extractText={extractText}
                       extractEntities={extractEntities}
                       redactPdf={redactPdf}
+                      updateDocumentFile={updateDocumentFile}
                     />
                   </div>
                 );

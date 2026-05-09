@@ -1,5 +1,11 @@
 import { create } from 'zustand';
 
+export interface DocumentHistoryState {
+  file: File;
+  size: number;
+  pageCount?: number;
+}
+
 export interface PDFDocument {
   id: string;
   file: File;
@@ -9,6 +15,10 @@ export interface PDFDocument {
   lastModified: number;
   isEncrypted?: boolean;
   isCorrupt?: boolean;
+  history?: {
+    past: DocumentHistoryState[];
+    future: DocumentHistoryState[];
+  };
 }
 
 interface FileStore {
@@ -18,6 +28,9 @@ interface FileStore {
   removeDocument: (id: string) => void;
   setActiveDocument: (id: string) => void;
   updateDocument: (id: string, updates: Partial<PDFDocument>) => void;
+  updateDocumentFile: (id: string, newFile: File, newPageCount?: number) => void;
+  undo: (id: string) => void;
+  redo: (id: string) => void;
   clearAll: () => void;
 }
 
@@ -62,6 +75,83 @@ export const useFileStore = create<FileStore>((set) => ({
     documents: state.documents.map(doc =>
       doc.id === id ? { ...doc, ...updates } : doc
     )
+  })),
+
+  updateDocumentFile: (id: string, newFile: File, newPageCount?: number) => set((state) => ({
+    documents: state.documents.map(doc => {
+      if (doc.id !== id) return doc;
+
+      const currentState: DocumentHistoryState = {
+        file: doc.file,
+        size: doc.size,
+        pageCount: doc.pageCount,
+      };
+
+      const newPast = [...(doc.history?.past || []), currentState].slice(-10); // keep last 10 states
+
+      return {
+        ...doc,
+        file: newFile,
+        size: newFile.size,
+        pageCount: newPageCount !== undefined ? newPageCount : doc.pageCount,
+        history: {
+          past: newPast,
+          future: [],
+        }
+      };
+    })
+  })),
+
+  undo: (id: string) => set((state) => ({
+    documents: state.documents.map(doc => {
+      if (doc.id !== id || !doc.history || doc.history.past.length === 0) return doc;
+
+      const past = [...doc.history.past];
+      const previousState = past.pop()!;
+
+      const currentState: DocumentHistoryState = {
+        file: doc.file,
+        size: doc.size,
+        pageCount: doc.pageCount,
+      };
+
+      return {
+        ...doc,
+        file: previousState.file,
+        size: previousState.size,
+        pageCount: previousState.pageCount,
+        history: {
+          past,
+          future: [currentState, ...(doc.history.future || [])]
+        }
+      };
+    })
+  })),
+
+  redo: (id: string) => set((state) => ({
+    documents: state.documents.map(doc => {
+      if (doc.id !== id || !doc.history || doc.history.future.length === 0) return doc;
+
+      const future = [...doc.history.future];
+      const nextState = future.shift()!;
+
+      const currentState: DocumentHistoryState = {
+        file: doc.file,
+        size: doc.size,
+        pageCount: doc.pageCount,
+      };
+
+      return {
+        ...doc,
+        file: nextState.file,
+        size: nextState.size,
+        pageCount: nextState.pageCount,
+        history: {
+          past: [...(doc.history.past || []), currentState].slice(-10),
+          future
+        }
+      };
+    })
   })),
 
   clearAll: () => set({ documents: [], activeDocumentId: null }),

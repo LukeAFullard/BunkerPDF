@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { PDFThumbnail } from './PDFThumbnail';
-import { type PDFDocument } from '../../store/fileStore';
+import { type PDFDocument, useFileStore } from '../../store/fileStore';
+import { useEffect } from 'react';
 import { getSmartOutputName } from '../../lib/utils';
 import { ErrorModal } from '../ui/ErrorModal';
 import { useProcessingStore } from '../../store/processingStore';
@@ -18,6 +19,7 @@ interface DocumentCardProps {
   extractText: (bytes: Uint8Array) => Promise<string>;
   extractEntities: (text: string) => Promise<string[]>;
   redactPdf: (bytes: Uint8Array, redactions: string[]) => Promise<Uint8Array>;
+  updateDocumentFile: (id: string, newFile: File, newPageCount?: number) => void;
 }
 
 export function DocumentCard({
@@ -31,13 +33,54 @@ export function DocumentCard({
   onReorderPages,
   extractText,
   extractEntities,
-  redactPdf
+  redactPdf,
+  updateDocumentFile
 }: DocumentCardProps) {
   const [detectedEntities, setDetectedEntities] = useState<string[] | null>(null);
   const [selectedEntities, setSelectedEntities] = useState<Set<string>>(new Set());
   const [errorState, setErrorState] = useState<{ isOpen: boolean, title: string, message: React.ReactNode }>({ isOpen: false, title: '', message: '' });
 
   const { startProcessing, updateStage, stopProcessing, isActive: isProcessing } = useProcessingStore();
+  const undo = useFileStore(state => state.undo);
+  const redo = useFileStore(state => state.redo);
+
+  const canUndo = (doc.history?.past?.length ?? 0) > 0;
+  const canRedo = (doc.history?.future?.length ?? 0) > 0;
+
+  const activeDocumentId = useFileStore(state => state.activeDocumentId);
+  const isActive = activeDocumentId === doc.id;
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!isActive) return;
+
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+        if (e.shiftKey) {
+          e.preventDefault();
+          if (canRedo) redo(doc.id);
+        } else {
+          e.preventDefault();
+          if (canUndo) undo(doc.id);
+        }
+      } else if ((e.metaKey || e.ctrlKey) && e.key === 'y') {
+        e.preventDefault();
+        if (canRedo) redo(doc.id);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [doc.id, canUndo, canRedo, undo, redo, isActive]);
+
+  const handleDownload = () => {
+    const url = URL.createObjectURL(doc.file);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = getSmartOutputName(doc.name, 'saved');
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
   const [contextMenuState, setContextMenuState] = useState<{ x: number; y: number } | null>(null);
 
   const handleScan = async () => {
@@ -98,16 +141,8 @@ export function DocumentCard({
       const standardBuffer = new Uint8Array(redactedBytes.length);
       standardBuffer.set(redactedBytes);
 
-      // Download
-      const blob = new Blob([standardBuffer], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = getSmartOutputName(doc.name, 'redacted');
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      const newFile = new File([standardBuffer], doc.name, { type: 'application/pdf' });
+      updateDocumentFile(doc.id, newFile);
 
       setDetectedEntities(null); // Clear sidebar after redaction
     } catch (err) {
@@ -192,6 +227,29 @@ export function DocumentCard({
             className="text-blue-600 hover:text-blue-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded px-1"
           >
             Split
+          </button>
+          <button
+            onClick={() => undo(doc.id)}
+            disabled={isProcessing || !canUndo}
+            className="text-gray-600 hover:text-gray-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 rounded px-1"
+            title="Undo (Cmd+Z)"
+          >
+            Undo
+          </button>
+          <button
+            onClick={() => redo(doc.id)}
+            disabled={isProcessing || !canRedo}
+            className="text-gray-600 hover:text-gray-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 rounded px-1"
+            title="Redo (Cmd+Shift+Z)"
+          >
+            Redo
+          </button>
+          <button
+            onClick={handleDownload}
+            disabled={isProcessing}
+            className="text-green-600 hover:text-green-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 rounded px-1"
+          >
+            Download
           </button>
           <button
             onClick={handleScan}
