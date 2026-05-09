@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
+import { useUIStore } from '../../store/uiStore';
 
 // We must specify the worker source for pdfjs-dist.
 // Using the Vite worker pattern or pointing to the local minified worker.
@@ -17,6 +18,7 @@ interface PDFThumbnailProps {
 export function PDFThumbnail({ file, width = 200, className }: PDFThumbnailProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [error, setError] = useState<string | null>(null);
+  const isDarkMode = useUIStore((state) => state.isDarkMode);
 
   useEffect(() => {
     let renderTask: pdfjsLib.RenderTask | null = null;
@@ -87,7 +89,11 @@ export function PDFThumbnail({ file, width = 200, className }: PDFThumbnailProps
 
   return (
     <div className={`w-full overflow-hidden bg-gray-100 flex items-center justify-center rounded ${className || ''}`}>
-      <canvas ref={canvasRef} className="shadow-sm max-w-full max-h-full object-contain" />
+      <canvas
+        ref={canvasRef}
+        className="shadow-sm max-w-full max-h-full object-contain transition-all"
+        style={isDarkMode ? { filter: 'invert(1) hue-rotate(180deg)' } : undefined}
+      />
     </div>
   );
 }

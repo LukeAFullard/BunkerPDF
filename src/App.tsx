@@ -3,6 +3,8 @@ import { Dropzone } from "./components/ui/Dropzone";
 import { useFileStore, type PDFDocument } from "./store/fileStore";
 import { useEngineStore } from "./store/engineStore";
 import { useProcessingStore } from "./store/processingStore";
+import { useUIStore } from "./store/uiStore";
+import { Sun, Moon } from "lucide-react";
 import {
   mergePdfs,
   splitPdf,
@@ -28,6 +30,7 @@ import type {
 function App() {
   const documents = useFileStore((state) => state.documents);
   const activeDocumentId = useFileStore((state) => state.activeDocumentId);
+  const { isDarkMode, toggleDarkMode } = useUIStore();
   const { setAiStatus, setPyodideStatus } = useEngineStore();
   const nerWorkerRef = useRef<Worker | null>(null);
   const pyodideWorkerRef = useRef<Worker | null>(null);
@@ -649,7 +652,14 @@ function App() {
               <h1 className="text-3xl font-bold">Workspace</h1>
               <EngineStatusPill />
             </div>
-            <div className="flex gap-4">
+            <div className="flex gap-4 items-center">
+              <button
+                onClick={toggleDarkMode}
+                className="p-2 rounded-lg text-gray-600 hover:bg-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400"
+                title="Toggle Dark Mode"
+              >
+                {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+              </button>
               <button
                 onClick={handleMerge}
                 disabled={documents.length < 2 || isGlobalProcessing}
