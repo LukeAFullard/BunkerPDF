@@ -88,7 +88,7 @@ This timeline is structured to build a working foundation rapidly, layer on the 
   * [x] multi-file tab bar
 * [x] **Accessibility Foundation:** Focus rings, keyboard operability, and ARIA live regions for engine status.
 * [x] **Expanded Commodity Features:** Add Reorder, Add Pages, Delete Pages, **Stamp / Watermark**, and **PDF compression/optimization** (metadata stripping + recompression).
-* [ ] **Undo/Redo System:** Implement a robust undo/redo stack (Cmd+Z).
+* [x] **Undo/Redo System:** Implement a robust undo/redo stack (Cmd+Z).
 * [ ] **Mobile Scope (Lightweight Utility Mode):** Mobile is strictly a lightweight utility mode (Merge/Split), NOT full workstation parity. Due to RAM, thermal throttling, and Safari WASM limits, heavy processing (Pyodide, OCR, Large PDFs) is too risky for MVP mobile.
 * [ ] **Basic Polish:** Implement standard metadata cleaning and password encryption.
 * [ ] **Annotations & Signatures:** Basic highlight/draw tools and signature capture/placement.

@@ -20,16 +20,23 @@ export function InputModal({
   onCancel
 }: InputModalProps) {
   const [value, setValue] = useState(defaultValue);
+
+  useEffect(() => {
+    if (isOpen) {
+      setTimeout(() => setValue(defaultValue), 0);
+    }
+  }, [isOpen, defaultValue]);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen) {
-      setValue(defaultValue);
       setTimeout(() => {
         inputRef.current?.focus();
       }, 0);
     }
   }, [isOpen, defaultValue]);
+
+
 
   if (!isOpen) return null;
 

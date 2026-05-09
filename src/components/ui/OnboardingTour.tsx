@@ -16,7 +16,7 @@ export function OnboardingTour() {
     if (typeof window !== 'undefined') {
       const seen = localStorage.getItem('bunkerpdf-tour-seen');
       if (!seen) {
-        setRun(true);
+        setTimeout(() => setRun(true), 0);
       }
     }
   }, []);
