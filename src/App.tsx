@@ -125,6 +125,20 @@ function App() {
     });
   };
 
+  const encryptPdf = (bytes: Uint8Array, password: string): Promise<Uint8Array> => {
+    return new Promise((resolve, reject) => {
+      if (!pyodideWorkerRef.current) return reject(new Error('Pyodide worker not ready'));
+      const jobId = crypto.randomUUID();
+      pyodideResolvers.current.set(jobId, { resolve, reject });
+      pyodideWorkerRef.current.postMessage({
+        type: 'ENCRYPT_DOCUMENT',
+        jobId,
+        pdfBytes: bytes,
+        password
+      } satisfies PyodideWorkerMessage);
+    });
+  };
+
   const redactPdf = (bytes: Uint8Array, redactions: string[]): Promise<Uint8Array> => {
     return new Promise((resolve, reject) => {
       if (!pyodideWorkerRef.current) return reject(new Error('Pyodide worker not ready'));
@@ -346,6 +360,43 @@ function App() {
     });
   };
 
+  const handleEncrypt = (doc: PDFDocument) => {
+    setInputState({
+      isOpen: true,
+      title: 'Protect PDF',
+      message: 'Enter a password to encrypt this PDF:',
+      placeholder: 'Secure password',
+      onConfirm: async (password) => {
+        setInputState(prev => ({ ...prev, isOpen: false }));
+        if (!password) return;
+
+        let isCancelled = false;
+        startProcessing('Encrypting PDF...', true, () => {
+          isCancelled = true;
+          stopProcessing();
+        });
+
+        try {
+          const arrayBuffer = await doc.file.arrayBuffer();
+          const pdfBytes = new Uint8Array(arrayBuffer);
+          const encryptedBytes = await encryptPdf(pdfBytes, password);
+          if (isCancelled) return;
+
+          const standardBuffer = new Uint8Array(encryptedBytes.length);
+          standardBuffer.set(encryptedBytes);
+          const newFile = new File([standardBuffer], doc.name, { type: 'application/pdf' });
+          updateDocumentFile(doc.id, newFile);
+        } catch (e) {
+          if (isCancelled) return;
+          console.error(e);
+          setErrorState({ isOpen: true, title: 'Encryption Error', message: 'An error occurred while encrypting the PDF.' });
+        } finally {
+          if (!isCancelled) stopProcessing();
+        }
+      }
+    });
+  };
+
   const handleReorderPages = (doc: PDFDocument) => {
     setInputState({
       isOpen: true,
@@ -454,6 +505,7 @@ function App() {
                       onOptimize={handleOptimize}
                       onDeletePages={handleDeletePages}
                       onReorderPages={handleReorderPages}
+                      onEncrypt={handleEncrypt}
                       extractText={extractText}
                       extractEntities={extractEntities}
                       redactPdf={redactPdf}
