@@ -73,7 +73,80 @@ function App() {
     Map<string, { resolve: (val: any) => void; reject: (err: any) => void }>
   >(new Map());
 
+
+  // Check for share payload on load
   useEffect(() => {
+    const hash = window.location.hash;
+    if (hash.startsWith('#share=')) {
+      const base64 = hash.replace('#share=', '');
+      window.location.hash = ''; // Clear it out so it doesn't stay in URL
+
+      const loadSharedFile = async () => {
+        try {
+          const { base64ToArrayBuffer } = await import('./lib/shareUtils');
+          const buffer = base64ToArrayBuffer(base64);
+          const file = new File([buffer], "shared_document.pdf", { type: 'application/pdf' });
+
+          let pageCount;
+          let isEncrypted = false;
+          let isCorrupt = false;
+
+          try {
+            const { getPdfInfo } = await import('./lib/pdfProcessing');
+            const info = await getPdfInfo(file);
+            pageCount = info.pageCount;
+            isEncrypted = info.isEncrypted;
+          } catch (e: unknown) {
+            console.error(`Failed to parse shared PDF info`, e);
+            if (e instanceof Error && e.message === 'CORRUPT_PDF') {
+              isCorrupt = true;
+            }
+          }
+
+          if (isCorrupt) {
+            setErrorState({
+              isOpen: true,
+              title: 'Corrupt Shared PDF',
+              message: `The shared file appears to be corrupted or invalid.`
+            });
+            return;
+          }
+
+          if (isEncrypted) {
+            setErrorState({
+              isOpen: true,
+              title: 'Password-Protected PDF',
+              message: `The shared file is password-protected.`
+            });
+          }
+
+          useFileStore.getState().addDocuments([{
+            id: crypto.randomUUID(),
+            file,
+            name: file.name,
+            size: file.size,
+            lastModified: file.lastModified,
+            pageCount,
+            isEncrypted,
+            isCorrupt
+          }]);
+
+        } catch (e) {
+          console.error("Failed to load shared file", e);
+          setErrorState({
+            isOpen: true,
+            title: "Share Load Error",
+            message: "Failed to load the shared document. The link might be invalid or corrupted.",
+          });
+        }
+      };
+
+      loadSharedFile();
+    }
+  }, []);
+
+  useEffect(() => {
+
     // Initialize the NER worker
     setAiStatus("loading");
     nerWorkerRef.current = new Worker(
@@ -482,7 +555,45 @@ function App() {
     });
   };
 
+
+  const handleShare = async (doc: PDFDocument) => {
+    try {
+      const buffer = await doc.file.arrayBuffer();
+      // Import dynamically or ensure arrayBufferToBase64 is imported at top
+      const { arrayBufferToBase64 } = await import('./lib/shareUtils');
+      const base64 = await arrayBufferToBase64(buffer);
+
+      const baseUrl = window.location.href.split('#')[0];
+      const shareUrl = `${baseUrl}#share=${base64}`;
+
+      if (shareUrl.length > 64 * 1024) {
+        setErrorState({
+          isOpen: true,
+          title: "Share Error",
+          message: "This file is too large to share via URL (limit is ~64KB).",
+        });
+        return;
+      }
+
+      await navigator.clipboard.writeText(shareUrl);
+
+      setErrorState({
+        isOpen: true,
+        title: "Share Link Copied",
+        message: "A shareable link has been copied to your clipboard. Note that the entire file is encoded in the URL.",
+      });
+    } catch (e) {
+      console.error(e);
+      setErrorState({
+        isOpen: true,
+        title: "Share Error",
+        message: "Failed to generate shareable link.",
+      });
+    }
+  };
+
   const handleSanitize = async (doc: PDFDocument) => {
+
     let isCancelled = false;
     startProcessing("Sanitizing PDF...", true, () => {
       isCancelled = true;
@@ -698,6 +809,7 @@ function App() {
                       onReorderPages={handleReorderPages}
                       onEncrypt={handleEncrypt}
                       onSanitize={handleSanitize}
+                      onShare={handleShare}
                       extractText={extractText}
                       extractEntities={extractEntities}
                       redactPdf={redactPdf}

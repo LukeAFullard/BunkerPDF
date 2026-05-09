@@ -89,10 +89,10 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 * [x] **Accessibility Foundation:** Focus rings, keyboard operability, and ARIA live regions for engine status.
 * [x] **Expanded Commodity Features:** Add Reorder, Add Pages, Delete Pages, **Stamp / Watermark**, and **PDF compression/optimization** (metadata stripping + recompression).
 * [x] **Undo/Redo System:** Implement a robust undo/redo stack (Cmd+Z).
-* [ ] **Mobile Scope (Lightweight Utility Mode):** Mobile is strictly a lightweight utility mode (Merge/Split), NOT full workstation parity. Due to RAM, thermal throttling, and Safari WASM limits, heavy processing (Pyodide, OCR, Large PDFs) is too risky for MVP mobile.
+* [x] **Mobile Scope (Lightweight Utility Mode):** Mobile is strictly a lightweight utility mode (Merge/Split), NOT full workstation parity. Due to RAM, thermal throttling, and Safari WASM limits, heavy processing (Pyodide, OCR, Large PDFs) is too risky for MVP mobile.
 * [x] **Basic Polish:** Implement standard metadata cleaning and password encryption.
 * [ ] **Annotations & Signatures:** Basic highlight/draw tools and signature capture/placement.
-* [ ] **Sharing:** Implement **WebRTC/P2P sharing** or Base64 URL sharing.
+* [x] **Sharing:** Implement **WebRTC/P2P sharing** or Base64 URL sharing.
 * [x] **Early Features:** Implement **Viewer Dark Mode** (CSS filter) and **QR & Barcode Decoder** (`@zxing/library`).
 
 ### Phase 2: The Intelligent Security Hub (Months 7–11)
