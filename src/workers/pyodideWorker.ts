@@ -4,11 +4,12 @@ let pyodide: PyodideInterface | null = null;
 let initPromise: Promise<void> | null = null;
 
 export type PyodideWorkerMessage = {
-  type: 'INIT' | 'RUN_CODE' | 'EXTRACT_TEXT' | 'REDACT_DOCUMENT';
+  type: 'INIT' | 'RUN_CODE' | 'EXTRACT_TEXT' | 'REDACT_DOCUMENT' | 'ENCRYPT_DOCUMENT';
   code?: string;
   jobId?: string;
   pdfBytes?: Uint8Array;
   redactions?: string[];
+  password?: string;
 };
 
 export type PyodideWorkerResponse = {
@@ -100,6 +101,28 @@ bytes(out_bytes)
       const redactedBytes = redactedProxy.toJs();
 
       const resultBytes = new Uint8Array(redactedBytes);
+      self.postMessage({ type: 'RESULT', jobId, result: resultBytes } satisfies PyodideWorkerResponse);
+    } else if (type === 'ENCRYPT_DOCUMENT') {
+      if (!initPromise) initPromise = initializePyodide();
+      await initPromise;
+      if (!pyodide) throw new Error('Pyodide not initialized');
+      if (!pdfBytes) throw new Error('No PDF bytes provided');
+      const passwordToUse = e.data.password;
+      if (!passwordToUse) throw new Error('No password provided');
+
+      pyodide.globals.set("doc_bytes", pdfBytes);
+      pyodide.globals.set("password", passwordToUse);
+      const encryptCode = `
+import fitz
+doc = fitz.open(stream=bytes(doc_bytes), filetype="pdf")
+out_bytes = doc.write(encryption=fitz.PDF_ENCRYPT_AES_256, user_pw=password, owner_pw=password, permissions=fitz.PDF_PERM_PRINT)
+doc.close()
+bytes(out_bytes)
+      `;
+      const encryptedProxy = await pyodide.runPythonAsync(encryptCode);
+      const encryptedBytes = encryptedProxy.toJs();
+
+      const resultBytes = new Uint8Array(encryptedBytes);
       self.postMessage({ type: 'RESULT', jobId, result: resultBytes } satisfies PyodideWorkerResponse);
     }
   } catch (error: any) {

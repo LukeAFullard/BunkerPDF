@@ -16,6 +16,7 @@ interface DocumentCardProps {
   onOptimize?: (doc: PDFDocument) => void;
   onDeletePages?: (doc: PDFDocument) => void;
   onReorderPages?: (doc: PDFDocument) => void;
+  onEncrypt?: (doc: PDFDocument) => void;
   extractText: (bytes: Uint8Array) => Promise<string>;
   extractEntities: (text: string) => Promise<string[]>;
   redactPdf: (bytes: Uint8Array, redactions: string[]) => Promise<Uint8Array>;
@@ -31,6 +32,7 @@ export function DocumentCard({
   onOptimize,
   onDeletePages,
   onReorderPages,
+  onEncrypt,
   extractText,
   extractEntities,
   redactPdf,
@@ -185,6 +187,7 @@ export function DocumentCard({
             { label: 'Optimize (Compress)', onClick: () => onOptimize?.(doc) },
             { label: 'Delete Pages', onClick: () => onDeletePages?.(doc) },
             { label: 'Reorder Pages', onClick: () => onReorderPages?.(doc) },
+            { label: 'Protect (Password)', onClick: () => onEncrypt?.(doc) },
             { label: 'Remove File', variant: 'danger', onClick: () => onRemove(doc.id) },
           ]}
         />
