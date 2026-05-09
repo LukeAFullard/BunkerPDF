@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { PDFThumbnail } from "./PDFThumbnail";
+import { useMobile } from "../../lib/useMobile";
 import { type PDFDocument, useFileStore } from "../../store/fileStore";
 import { useEffect } from "react";
 import { getSmartOutputName } from "../../lib/utils";
@@ -19,6 +20,7 @@ interface DocumentCardProps {
   onReorderPages?: (doc: PDFDocument) => void;
   onEncrypt?: (doc: PDFDocument) => void;
   onSanitize?: (doc: PDFDocument) => void;
+  onShare?: (doc: PDFDocument) => void;
   extractText: (bytes: Uint8Array) => Promise<string>;
   extractEntities: (text: string) => Promise<string[]>;
   redactPdf: (bytes: Uint8Array, redactions: string[]) => Promise<Uint8Array>;
@@ -40,11 +42,13 @@ export function DocumentCard({
   onReorderPages,
   onEncrypt,
   onSanitize,
+  onShare,
   extractText,
   extractEntities,
   redactPdf,
   updateDocumentFile,
 }: DocumentCardProps) {
+  const isMobile = useMobile();
   const [detectedEntities, setDetectedEntities] = useState<string[] | null>(
     null,
   );
@@ -248,21 +252,22 @@ export function DocumentCard({
           x={contextMenuState.x}
           y={contextMenuState.y}
           onClose={() => setContextMenuState(null)}
-          items={[
+items={[
             { label: "Extract / Split", onClick: () => onSplit(doc) },
             { label: "Rotate 90°", onClick: () => onRotate?.(doc) },
             { label: "Add Watermark", onClick: () => onWatermark?.(doc) },
             { label: "Optimize (Compress)", onClick: () => onOptimize?.(doc) },
             { label: "Delete Pages", onClick: () => onDeletePages?.(doc) },
             { label: "Reorder Pages", onClick: () => onReorderPages?.(doc) },
-            { label: "Protect (Password)", onClick: () => onEncrypt?.(doc) },
-            { label: "Sanitize & Send", onClick: () => onSanitize?.(doc) },
+            (!isMobile ? { label: "Protect (Password)", onClick: () => onEncrypt?.(doc) } : null),
+            (!isMobile ? { label: "Sanitize & Send", onClick: () => onSanitize?.(doc) } : null),
+            { label: "Share (URL)", onClick: () => onShare?.(doc) },
             {
               label: "Remove File",
               variant: "danger",
               onClick: () => onRemove(doc.id),
             },
-          ]}
+          ].filter(Boolean) as any} // eslint-disable-line @typescript-eslint/no-explicit-any
         />
       )}
       <ErrorModal
@@ -335,27 +340,34 @@ export function DocumentCard({
           >
             Download
           </button>
-          <button
-            onClick={handleScan}
-            disabled={isProcessing}
-            className="text-purple-600 hover:text-purple-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 rounded px-1"
-          >
-            Scan PII
-          </button>
-          <button
-            onClick={handleScanCodes}
-            disabled={isProcessing}
-            className="text-orange-600 hover:text-orange-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 rounded px-1"
-          >
-            Scan Codes
-          </button>
-          <button
-            onClick={() => onSanitize?.(doc)}
-            disabled={isProcessing}
-            className="text-indigo-600 hover:text-indigo-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded px-1"
-          >
-            Sanitize
-          </button>
+          {!isMobile && (
+            <>
+              <button
+                onClick={handleScan}
+                disabled={isProcessing}
+                className="text-purple-600 hover:text-purple-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 rounded px-1"
+              >
+                Scan PII
+              </button>
+              <button
+                onClick={handleScanCodes}
+                disabled={isProcessing}
+                className="text-orange-600 hover:text-orange-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 rounded px-1"
+              >
+                Scan Codes
+              </button>
+              <button
+                onClick={() => onSanitize?.(doc)}
+                disabled={isProcessing}
+                className="text-indigo-600 hover:text-indigo-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded px-1"
+              >
+                Sanitize
+              </button>
+            </>
+          )}
+          {isMobile && (
+            <span className="text-xs bg-gray-100 text-gray-500 px-2 py-1 rounded">Mobile Utility Mode</span>
+          )}
           <button
             onClick={() => onRemove(doc.id)}
             disabled={isProcessing}
