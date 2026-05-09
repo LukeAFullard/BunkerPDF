@@ -3,6 +3,7 @@ import { PDFThumbnail } from './PDFThumbnail';
 import { type PDFDocument } from '../../store/fileStore';
 import { getSmartOutputName } from '../../lib/utils';
 import { ErrorModal } from '../ui/ErrorModal';
+import { useProcessingStore } from '../../store/processingStore';
 
 interface DocumentCardProps {
   doc: PDFDocument;
@@ -11,8 +12,6 @@ interface DocumentCardProps {
   extractText: (bytes: Uint8Array) => Promise<string>;
   extractEntities: (text: string) => Promise<string[]>;
   redactPdf: (bytes: Uint8Array, redactions: string[]) => Promise<Uint8Array>;
-  isGlobalProcessing: boolean;
-  setIsGlobalProcessing: (status: boolean) => void;
 }
 
 export function DocumentCard({
@@ -21,52 +20,67 @@ export function DocumentCard({
   onSplit,
   extractText,
   extractEntities,
-  redactPdf,
-  isGlobalProcessing,
-  setIsGlobalProcessing
+  redactPdf
 }: DocumentCardProps) {
-  const [isScanning, setIsScanning] = useState(false);
   const [detectedEntities, setDetectedEntities] = useState<string[] | null>(null);
   const [selectedEntities, setSelectedEntities] = useState<Set<string>>(new Set());
-  const [isRedacting, setIsRedacting] = useState(false);
   const [errorState, setErrorState] = useState<{ isOpen: boolean, title: string, message: React.ReactNode }>({ isOpen: false, title: '', message: '' });
 
+  const { startProcessing, updateStage, stopProcessing, isActive: isProcessing } = useProcessingStore();
+
   const handleScan = async () => {
-    setIsScanning(true);
     setDetectedEntities(null);
     setSelectedEntities(new Set());
+
+    let isCancelled = false;
+    startProcessing('Extracting text...', true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
     try {
       const buffer = await doc.file.arrayBuffer();
       const pdfBytes = new Uint8Array(buffer);
 
       const text = await extractText(pdfBytes);
+      if (isCancelled) return;
+
       if (!text || text.trim() === '') {
         setDetectedEntities([]);
         return;
       }
 
+      updateStage('Scanning for PII...');
       const entities = await extractEntities(text);
+      if (isCancelled) return;
+
       setDetectedEntities(entities);
       setSelectedEntities(new Set(entities)); // pre-select all
     } catch (err) {
+      if (isCancelled) return;
       console.error(err);
       setErrorState({ isOpen: true, title: 'Scan Error', message: 'An error occurred while scanning the document.' });
     } finally {
-      setIsScanning(false);
+      if (!isCancelled) stopProcessing();
     }
   };
 
   const handleRedact = async () => {
     if (selectedEntities.size === 0) return;
 
-    setIsRedacting(true);
-    setIsGlobalProcessing(true);
+    let isCancelled = false;
+    startProcessing('Redacting document...', true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
     try {
       const buffer = await doc.file.arrayBuffer();
       const pdfBytes = new Uint8Array(buffer);
       const redactions = Array.from(selectedEntities);
 
       const redactedBytes = await redactPdf(pdfBytes, redactions);
+      if (isCancelled) return;
 
       // Need standard array buffer without TS complaints for shared buffer
       const standardBuffer = new Uint8Array(redactedBytes.length);
@@ -82,13 +96,14 @@ export function DocumentCard({
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+
+      setDetectedEntities(null); // Clear sidebar after redaction
     } catch (err) {
+      if (isCancelled) return;
       console.error(err);
       setErrorState({ isOpen: true, title: 'Redaction Error', message: 'An error occurred while redacting the document.' });
     } finally {
-      setIsRedacting(false);
-      setIsGlobalProcessing(false);
-      setDetectedEntities(null); // Clear sidebar after redaction
+      if (!isCancelled) stopProcessing();
     }
   };
 
@@ -103,8 +118,6 @@ export function DocumentCard({
       return next;
     });
   };
-
-  const isProcessing = isScanning || isRedacting || isGlobalProcessing;
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col hover:shadow-md transition-shadow relative">
@@ -138,7 +151,7 @@ export function DocumentCard({
             disabled={isProcessing}
             className="text-purple-600 hover:text-purple-800 text-sm font-medium disabled:opacity-50"
           >
-            {isScanning ? 'Scanning...' : 'Scan PII'}
+            Scan PII
           </button>
           <button
             onClick={() => onRemove(doc.id)}
@@ -187,7 +200,7 @@ export function DocumentCard({
               disabled={isProcessing || selectedEntities.size === 0}
               className="w-full mt-4 bg-red-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors"
             >
-              {isRedacting ? 'Redacting...' : `Redact ${selectedEntities.size} items`}
+              Redact {selectedEntities.size} items
             </button>
           )}
         </div>

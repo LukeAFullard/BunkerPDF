@@ -2,12 +2,14 @@ import { useState, useEffect, useRef } from 'react';
 import { Dropzone } from './components/ui/Dropzone';
 import { useFileStore, type PDFDocument } from './store/fileStore';
 import { useEngineStore } from './store/engineStore';
+import { useProcessingStore } from './store/processingStore';
 import { mergePdfs, splitPdf } from './lib/engineA';
 import { EngineStatusPill } from './components/ui/EngineStatusPill';
 import { getSmartOutputName } from './lib/utils';
 import { DocumentCard } from './components/pdf/DocumentCard';
 import { FileTabs } from './components/ui/FileTabs';
 import { ErrorModal } from './components/ui/ErrorModal';
+import { ProcessingModal } from './components/ui/ProcessingModal';
 import type { NERWorkerMessage, NERWorkerResponse } from './workers/nerWorker';
 import type { PyodideWorkerMessage, PyodideWorkerResponse } from './workers/pyodideWorker';
 
@@ -19,8 +21,9 @@ function App() {
   const pyodideWorkerRef = useRef<Worker | null>(null);
   const removeDocument = useFileStore(state => state.removeDocument);
   const clearAll = useFileStore(state => state.clearAll);
-  const [isGlobalProcessing, setIsGlobalProcessing] = useState(false);
   const [errorState, setErrorState] = useState<{ isOpen: boolean, title: string, message: React.ReactNode }>({ isOpen: false, title: '', message: '' });
+
+  const { startProcessing, stopProcessing, isActive: isGlobalProcessing } = useProcessingStore();
 
   // Promise resolvers mapping
   const nerResolvers = useRef<Map<string, { resolve: (val: any) => void; reject: (err: any) => void }>>(new Map());
@@ -70,6 +73,7 @@ function App() {
       const { type, jobId, result, error, stage } = e.data;
       if (type === 'PROGRESS') {
         console.log('Pyodide Worker Progress:', stage);
+        if (stage) setPyodideStatus('loading', null, stage);
       } else if (type === 'READY') {
         console.log('Pyodide Worker is ready.');
         setPyodideStatus('ready');
@@ -147,9 +151,16 @@ function App() {
       return;
     }
 
-    setIsGlobalProcessing(true);
+    let isCancelled = false;
+    startProcessing('Merging PDFs...', true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
     try {
       const mergedBytes = await mergePdfs(documents.map(d => d.file));
+      if (isCancelled) return;
+
       const buffer = new Uint8Array(mergedBytes);
       const blob = new Blob([buffer], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
@@ -162,17 +173,24 @@ function App() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (e) {
+      if (isCancelled) return;
       console.error(e);
       setErrorState({ isOpen: true, title: 'Merge Error', message: 'An error occurred while merging the PDFs.' });
     } finally {
-      setIsGlobalProcessing(false);
+      if (!isCancelled) stopProcessing();
     }
   };
 
   const handleSplitBurst = async (doc: PDFDocument) => {
-    setIsGlobalProcessing(true);
+    let isCancelled = false;
+    startProcessing('Splitting PDF pages...', true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
     try {
       const splitBytesArray = await splitPdf(doc.file);
+      if (isCancelled) return;
 
       splitBytesArray.forEach((bytes, index) => {
         const buffer = new Uint8Array(bytes);
@@ -187,15 +205,17 @@ function App() {
         URL.revokeObjectURL(url);
       });
     } catch (e) {
+      if (isCancelled) return;
       console.error(e);
       setErrorState({ isOpen: true, title: 'Split Error', message: 'An error occurred while splitting the PDF.' });
     } finally {
-      setIsGlobalProcessing(false);
+      if (!isCancelled) stopProcessing();
     }
   };
 
   return (
     <div className="App font-sans bg-gray-50 min-h-screen">
+      <ProcessingModal />
       <ErrorModal
         isOpen={errorState.isOpen}
         title={errorState.title}
@@ -252,8 +272,6 @@ function App() {
                       extractText={extractText}
                       extractEntities={extractEntities}
                       redactPdf={redactPdf}
-                      isGlobalProcessing={isGlobalProcessing}
-                      setIsGlobalProcessing={setIsGlobalProcessing}
                     />
                   </div>
                 );

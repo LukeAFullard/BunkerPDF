@@ -82,7 +82,7 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 * [ ] **UX/UI Priorities:**
   * [x] 3-step onboarding tooltip tour
   * [x] explicit error states (OOM, corrupt files, passwords)
-  * [ ] human-readable loading stages with cancel buttons
+  * [x] human-readable loading stages with cancel buttons
   * [ ] thumbnail context menus (right-click to extract/delete)
   * [x] smart output file naming (`[original-name]-[action]-[timestamp]`)
   * [x] multi-file tab bar
