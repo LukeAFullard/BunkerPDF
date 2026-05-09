@@ -24,7 +24,7 @@ export function ErrorModal({ isOpen, title, message, onClose, primaryAction }: E
             </svg>
             <h3 className="text-xl font-bold text-gray-900">{title}</h3>
           </div>
-          <div className="text-gray-600 mb-6">
+          <div className="text-gray-600 mb-6 whitespace-pre-wrap">
             {message}
           </div>
           <div className="flex justify-end gap-3">
