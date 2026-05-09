@@ -209,7 +209,7 @@ function App() {
             <EngineStatusPill />
           </header>
           <div className="flex-1">
-            <Dropzone />
+            <Dropzone onError={(title, message) => setErrorState({ isOpen: true, title, message })} />
           </div>
         </div>
       ) : (

@@ -6,22 +6,30 @@ import { getPdfInfo } from '../../lib/pdfProcessing';
 import { cn } from '../../lib/utils';
 import { ErrorModal } from './ErrorModal';
 
-export function Dropzone() {
+interface DropzoneProps {
+  onError?: (title: string, message: React.ReactNode) => void;
+}
+
+export function Dropzone({ onError }: DropzoneProps = {}) {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const addDocuments = useFileStore(state => state.addDocuments);
   const [errorState, setErrorState] = useState<{ isOpen: boolean, title: string, message: React.ReactNode }>({ isOpen: false, title: '', message: '' });
+
+  const handleError = (title: string, message: React.ReactNode) => {
+    if (onError) {
+      onError(title, message);
+    } else {
+      setErrorState({ isOpen: true, title, message });
+    }
+  };
 
   const documents = useFileStore(state => state.documents);
 
   const handleFiles = async (files: File[]) => {
     let pdfFiles = files.filter(f => f.type === 'application/pdf');
     if (pdfFiles.length === 0) {
-      setErrorState({
-        isOpen: true,
-        title: 'Invalid File Type',
-        message: 'Please upload PDF files only.'
-      });
+      handleError('Invalid File Type', 'Please upload PDF files only.');
       return;
     }
 
@@ -30,18 +38,15 @@ export function Dropzone() {
     const oversizedFiles = pdfFiles.filter(f => f.size > MAX_FILE_SIZE);
 
     if (oversizedFiles.length > 0) {
-      setErrorState({
-        isOpen: true,
-        title: 'File Too Large',
-        message: (
-          <div>
-            <p className="mb-2">This file is too large to process entirely in your browser. Try splitting it into smaller sections first.</p>
-            <ul className="list-disc pl-5 text-sm text-gray-500">
-              {oversizedFiles.map(f => <li key={f.name}>{f.name} ({(f.size / 1024 / 1024).toFixed(1)}MB)</li>)}
-            </ul>
-          </div>
-        )
-      });
+      handleError(
+        'File Too Large',
+        <div>
+          <p className="mb-2">This file is too large to process entirely in your browser. Try splitting it into smaller sections first.</p>
+          <ul className="list-disc pl-5 text-sm text-gray-500">
+            {oversizedFiles.map(f => <li key={f.name}>{f.name} ({(f.size / 1024 / 1024).toFixed(1)}MB)</li>)}
+          </ul>
+        </div>
+      );
       pdfFiles = pdfFiles.filter(f => f.size <= MAX_FILE_SIZE);
     }
 
@@ -49,7 +54,10 @@ export function Dropzone() {
 
     const availableSlots = 8 - documents.length;
     if (pdfFiles.length > availableSlots) {
-      alert(`Maximum 8 files allowed. Only ${availableSlots > 0 ? `the next ${availableSlots}` : '0'} will be loaded.`);
+      handleError(
+        'File Limit Reached',
+        `Maximum 8 files allowed. Only ${availableSlots > 0 ? `the next ${availableSlots}` : '0'} will be loaded.`
+      );
       pdfFiles = pdfFiles.slice(0, Math.max(0, availableSlots));
     }
 
@@ -75,20 +83,18 @@ export function Dropzone() {
       }
 
       if (isCorrupt) {
-        setErrorState({
-          isOpen: true,
-          title: 'Corrupt PDF',
-          message: `We couldn't read "${file.name}". It may be damaged or in an unsupported format.`
-        });
+        handleError(
+          'Corrupt PDF',
+          `We couldn't read "${file.name}". It may be damaged or in an unsupported format.`
+        );
         continue;
       }
 
       if (isEncrypted) {
-        setErrorState({
-          isOpen: true,
-          title: 'Password-Protected PDF',
-          message: `"${file.name}" is password-protected. Password-protected PDFs are not currently supported by all features.`
-        });
+        handleError(
+          'Password-Protected PDF',
+          `"${file.name}" is password-protected. Password-protected PDFs are not currently supported by all features.`
+        );
         // Still allow adding it, but we should mark it as encrypted
       }
 
