@@ -13,6 +13,7 @@ interface DocumentCardProps {
   doc: PDFDocument;
   onRemove: (id: string) => void;
   onSplit: (doc: PDFDocument) => void;
+  onOcr?: (doc: PDFDocument) => void;
   onRotate?: (doc: PDFDocument) => void;
   onWatermark?: (doc: PDFDocument) => void;
   onOptimize?: (doc: PDFDocument) => void;
@@ -38,6 +39,7 @@ export function DocumentCard({
   doc,
   onRemove,
   onSplit,
+  onOcr,
   onRotate,
   onWatermark,
   onOptimize,
@@ -364,6 +366,13 @@ items={[
                 className="text-orange-600 hover:text-orange-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 rounded px-1"
               >
                 Scan Codes
+              </button>
+              <button
+                onClick={() => onOcr?.(doc)}
+                disabled={isProcessing}
+                className="text-orange-600 hover:text-orange-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 rounded px-1"
+              >
+                OCR
               </button>
               <button
                 onClick={() => onSanitize?.(doc)}

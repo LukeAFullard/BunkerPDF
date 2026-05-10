@@ -17,6 +17,7 @@ import {
 } from "./lib/engineA";
 import { EngineStatusPill } from "./components/ui/EngineStatusPill";
 import { getSmartOutputName } from "./lib/utils";
+import { ocrPdf } from "./lib/ocrEngine";
 import { DocumentCard } from "./components/pdf/DocumentCard";
 import { FileTabs } from "./components/ui/FileTabs";
 import { ErrorModal } from "./components/ui/ErrorModal";
@@ -235,7 +236,10 @@ function App() {
       type: "INIT",
     } satisfies PyodideWorkerMessage);
 
-    return () => {
+
+
+
+  return () => {
       nerWorkerRef.current?.terminate();
       pyodideWorkerRef.current?.terminate();
     };
@@ -991,7 +995,42 @@ function App() {
                   (doc) => doc.id === activeDocumentId,
                 );
                 if (!activeDoc) return null;
-                return (
+                const handleOcr = async (doc: PDFDocument) => {
+  let isCancelled = false;
+  const abortController = new AbortController();
+  startProcessing("Starting OCR...", true, () => {
+    isCancelled = true;
+    abortController.abort();
+    stopProcessing();
+  });
+
+  try {
+    const newFile = await ocrPdf(doc.file, (stage) => {
+      if (!isCancelled) useProcessingStore.getState().updateStage(stage);
+    }, abortController.signal);
+
+    if (isCancelled) return;
+
+    updateDocumentFile(doc.id, newFile);
+
+    setErrorState({
+      isOpen: true,
+      title: "OCR Complete",
+      message: "Text has been successfully extracted and overlaid on the document.",
+    });
+  } catch (e) {
+    if (isCancelled) return;
+    console.error(e);
+    setErrorState({
+      isOpen: true,
+      title: "OCR Error",
+      message: "An error occurred during text extraction.",
+    });
+  } finally {
+    if (!isCancelled) stopProcessing();
+  }
+};
+  return (
                   <div key={activeDoc.id} className="w-full max-w-2xl">
                     <DocumentCard
                       doc={activeDoc}
@@ -1008,6 +1047,7 @@ function App() {
                       onHighlight={handleHighlight}
                       onSign={handleSign}
                       onAudit={handleAudit}
+                      onOcr={handleOcr}
                       extractText={extractText}
                       extractEntities={extractEntities}
                       redactPdf={redactPdf}
