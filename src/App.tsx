@@ -18,6 +18,9 @@ import {
 import { EngineStatusPill } from "./components/ui/EngineStatusPill";
 import { getSmartOutputName } from "./lib/utils";
 import { ocrPdf } from "./lib/ocrEngine";
+import { AudioPlayerModal } from "./components/ui/AudioPlayerModal";
+import { generateSpeech } from "./lib/ttsEngine";
+import { createWavFile } from "./lib/audioUtils";
 import { DocumentCard } from "./components/pdf/DocumentCard";
 import { FileTabs } from "./components/ui/FileTabs";
 import { ErrorModal } from "./components/ui/ErrorModal";
@@ -46,6 +49,12 @@ function App() {
     title: string;
     message: React.ReactNode;
   }>({ isOpen: false, title: "", message: "" });
+
+  const [audioPlayerState, setAudioPlayerState] = useState<{
+    isOpen: boolean;
+    audioUrl: string | null;
+    title: string;
+  }>({ isOpen: false, audioUrl: null, title: "Read Aloud" });
   const [signatureModalState, setSignatureModalState] = useState<{
     isOpen: boolean;
     activeDocId: string | null;
@@ -684,6 +693,58 @@ function App() {
     }
   };
 
+  const handleReadAloud = async (doc: PDFDocument) => {
+    let isCancelled = false;
+    startProcessing("Generating audio...", true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
+    try {
+      const arrayBuffer = await doc.file.arrayBuffer();
+      const pdfBytes = new Uint8Array(arrayBuffer);
+      const text = await extractText(pdfBytes);
+      if (isCancelled) return;
+
+      if (!text.trim()) {
+        setErrorState({
+          isOpen: true,
+          title: "Read Aloud Error",
+          message: "No readable text found in this document. You may need to run OCR first.",
+        });
+        return;
+      }
+
+      useProcessingStore.getState().updateStage("Synthesizing speech (this may take a while)...");
+
+      const { audio, samplingRate } = await generateSpeech(text, (progress) => {
+        if (!isCancelled) useProcessingStore.getState().updateStage(`Synthesizing speech (${progress}%)...`);
+      });
+      if (isCancelled) return;
+
+      const wavFile = createWavFile(audio, samplingRate);
+      const audioUrl = URL.createObjectURL(wavFile);
+
+      setAudioPlayerState({
+        isOpen: true,
+        audioUrl,
+        title: `Read Aloud: ${doc.name}`,
+      });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (e: any) {
+      if (isCancelled) return;
+      console.error(e);
+      setErrorState({
+        isOpen: true,
+        title: "Read Aloud Error",
+        message: "Failed to generate speech. " + (e.message || ""),
+      });
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
+  };
+
   const handleAudit = async (doc: PDFDocument) => {
     let isCancelled = false;
     startProcessing("Auditing document for fake redactions...", true, () => {
@@ -939,6 +1000,17 @@ function App() {
         message={errorState.message}
         onClose={() => setErrorState((prev) => ({ ...prev, isOpen: false }))}
       />
+      <AudioPlayerModal
+        isOpen={audioPlayerState.isOpen}
+        audioUrl={audioPlayerState.audioUrl}
+        title={audioPlayerState.title}
+        onClose={() => {
+          setAudioPlayerState((prev) => ({ ...prev, isOpen: false }));
+          if (audioPlayerState.audioUrl) {
+            URL.revokeObjectURL(audioPlayerState.audioUrl);
+          }
+        }}
+      />
       {documents.length === 0 ? (
         <div className="flex flex-col h-screen">
           <header className="p-4 flex justify-between items-center bg-white border-b border-gray-200">
@@ -1047,6 +1119,7 @@ function App() {
                       onHighlight={handleHighlight}
                       onSign={handleSign}
                       onAudit={handleAudit}
+                      onReadAloud={handleReadAloud}
                       onOcr={handleOcr}
                       extractText={extractText}
                       extractEntities={extractEntities}
