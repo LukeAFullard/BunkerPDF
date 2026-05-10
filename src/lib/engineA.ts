@@ -123,3 +123,24 @@ export async function encryptPdf(_file: File, _password: string): Promise<Uint8A
   // we will use the pyodide engine instead, so we throw an error here to signal it should be handled via the heavy compute layer.
   throw new Error('Encryption is handled by the Python engine. Please ensure advanced tools are loaded.');
 }
+
+export async function signPdf(file: File, signatureImageBytes: Uint8Array): Promise<Uint8Array> {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+
+  const signatureImage = await pdfDoc.embedPng(signatureImageBytes);
+  const signatureDims = signatureImage.scale(0.5);
+
+  const pages = pdfDoc.getPages();
+  // Add signature to the first page for MVP simplicity
+  const firstPage = pages[0];
+
+  firstPage.drawImage(signatureImage, {
+    x: 50,
+    y: 50,
+    width: signatureDims.width,
+    height: signatureDims.height,
+  });
+
+  return await pdfDoc.save();
+}

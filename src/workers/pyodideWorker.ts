@@ -9,12 +9,14 @@ export type PyodideWorkerMessage = {
     | "RUN_CODE"
     | "EXTRACT_TEXT"
     | "REDACT_DOCUMENT"
+    | "HIGHLIGHT_DOCUMENT"
     | "ENCRYPT_DOCUMENT"
     | "SANITIZE_DOCUMENT";
   code?: string;
   jobId?: string;
   pdfBytes?: Uint8Array;
   redactions?: string[];
+  highlights?: string[];
   password?: string;
 };
 
@@ -127,6 +129,38 @@ bytes(out_bytes)
       const redactedBytes = redactedProxy.toJs();
 
       const resultBytes = new Uint8Array(redactedBytes);
+      self.postMessage({
+        type: "RESULT",
+        jobId,
+        result: resultBytes,
+      } satisfies PyodideWorkerResponse);
+    } else if (type === "HIGHLIGHT_DOCUMENT") {
+      if (!initPromise) initPromise = initializePyodide();
+      await initPromise;
+      if (!pyodide) throw new Error("Pyodide not initialized");
+      if (!pdfBytes) throw new Error("No PDF bytes provided");
+      const { highlights } = e.data;
+      if (!highlights) throw new Error("No highlights provided");
+
+      pyodide.globals.set("doc_bytes", pdfBytes);
+      pyodide.globals.set("highlights", highlights);
+      const highlightCode = `
+import fitz
+doc = fitz.open(stream=bytes(doc_bytes), filetype="pdf")
+strings_to_highlight = highlights.to_py()
+for page in doc:
+    for t in strings_to_highlight:
+        rl = page.search_for(t)
+        for r in rl:
+            page.add_highlight_annot(r)
+out_bytes = doc.tobytes()
+doc.close()
+bytes(out_bytes)
+      `;
+      const highlightedProxy = await pyodide.runPythonAsync(highlightCode);
+      const highlightedBytes = highlightedProxy.toJs();
+
+      const resultBytes = new Uint8Array(highlightedBytes);
       self.postMessage({
         type: "RESULT",
         jobId,
