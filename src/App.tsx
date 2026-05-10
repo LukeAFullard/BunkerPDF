@@ -997,37 +997,39 @@ function App() {
                 if (!activeDoc) return null;
                 const handleOcr = async (doc: PDFDocument) => {
   let isCancelled = false;
-  startProcessing("Starting OCR...", false, () => {
+  const abortController = new AbortController();
+  startProcessing("Starting OCR...", true, () => {
     isCancelled = true;
+    abortController.abort();
     stopProcessing();
   });
 
   try {
     const newFile = await ocrPdf(doc.file, (stage) => {
-    if (!isCancelled) useProcessingStore.getState().updateStage(stage);
-    });
+      if (!isCancelled) useProcessingStore.getState().updateStage(stage);
+    }, abortController.signal);
 
     if (isCancelled) return;
 
     updateDocumentFile(doc.id, newFile);
 
     setErrorState({
-    isOpen: true,
-    title: "OCR Complete",
-    message: "Text has been successfully extracted and overlaid on the document.",
+      isOpen: true,
+      title: "OCR Complete",
+      message: "Text has been successfully extracted and overlaid on the document.",
     });
   } catch (e) {
     if (isCancelled) return;
     console.error(e);
     setErrorState({
-    isOpen: true,
-    title: "OCR Error",
-    message: "An error occurred during text extraction.",
+      isOpen: true,
+      title: "OCR Error",
+      message: "An error occurred during text extraction.",
     });
   } finally {
     if (!isCancelled) stopProcessing();
   }
-  };
+};
   return (
                   <div key={activeDoc.id} className="w-full max-w-2xl">
                     <DocumentCard
