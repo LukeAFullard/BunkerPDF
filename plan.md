@@ -99,7 +99,7 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 **Objective:** Deploy the core differentiator—the Redaction Suite—using edge-native AI.
 * [x] **Redaction Reversal / Audit Tool:** Build a parser that scans incoming PDFs for "fake" redactions (hidden text layers under shapes) and alerts the user.
 * [x] **Sanitize & Send:** A one-click action that strips all metadata (author, history), removes hidden text/scripts, flattens forms/annotations, and verifies no fake redactions exist. On completion, it displays a dismissible, non-exportable in-app checklist of findings to build confidence without implying a legal guarantee.
-* [ ] **OCR Foundation:** Integrate `tesseract.js` for scanned PDFs, a table-stakes feature.
+* [x] **OCR Foundation:** Integrate `tesseract.js` for scanned PDFs, a table-stakes feature.
 * [ ] **Accessibility:** Add offline **Read Aloud (TTS)** using `transformers.js` (e.g., Kitten TTS `onnx-community/kitten-tts-nano-0.1-ONNX`).
 * [ ] **Retention & Trust Features:** Add session continuity (resume unsaved work), Privacy Audit Log (timestamped history of local actions), contextual Progressive Mode promotion (e.g., suggest "Professional" mode if OCR is needed), per-tool time estimates, and dismissible in-workflow trust badges ("Processing in your browser").
 * [ ] **Flatten Forms:** Add ability to remove interactive fields and burn content in.
