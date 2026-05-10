@@ -25,6 +25,7 @@ interface DocumentCardProps {
   onHighlight?: (doc: PDFDocument) => void;
   onSign?: (doc: PDFDocument) => void;
   onAudit?: (doc: PDFDocument) => void;
+  onReadAloud?: (doc: PDFDocument) => void;
   extractText: (bytes: Uint8Array) => Promise<string>;
   extractEntities: (text: string) => Promise<string[]>;
   redactPdf: (bytes: Uint8Array, redactions: string[]) => Promise<Uint8Array>;
@@ -51,6 +52,7 @@ export function DocumentCard({
   onHighlight,
   onSign,
   onAudit,
+  onReadAloud,
   extractText,
   extractEntities,
   redactPdf,
@@ -272,6 +274,7 @@ items={[
             (!isMobile ? { label: "Protect (Password)", onClick: () => onEncrypt?.(doc) } : null),
             (!isMobile ? { label: "Sanitize & Send", onClick: () => onSanitize?.(doc) } : null),
             (!isMobile ? { label: "Audit Redactions", onClick: () => onAudit?.(doc) } : null),
+            (!isMobile ? { label: "Read Aloud (TTS)", onClick: () => onReadAloud?.(doc) } : null),
             { label: "Share (URL)", onClick: () => onShare?.(doc) },
             {
               label: "Remove File",
@@ -402,6 +405,14 @@ items={[
                 title="Check for fake redactions"
               >
                 Audit
+              </button>
+              <button
+                onClick={() => onReadAloud?.(doc)}
+                disabled={isProcessing}
+                className="text-blue-600 hover:text-blue-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded px-1"
+                title="Read out text using TTS"
+              >
+                Read Aloud
               </button>
             </>
           )}
