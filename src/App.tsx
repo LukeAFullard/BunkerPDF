@@ -72,9 +72,11 @@ function App() {
 
   // Promise resolvers mapping
   const nerResolvers = useRef<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     Map<string, { resolve: (val: any) => void; reject: (err: any) => void }>
   >(new Map());
   const pyodideResolvers = useRef<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     Map<string, { resolve: (val: any) => void; reject: (err: any) => void }>
   >(new Map());
 
@@ -247,6 +249,22 @@ function App() {
       pyodideResolvers.current.set(jobId, { resolve, reject });
       pyodideWorkerRef.current.postMessage({
         type: "EXTRACT_TEXT",
+        jobId,
+        pdfBytes: bytes,
+      } satisfies PyodideWorkerMessage);
+    });
+  };
+
+  const auditPdf = (
+    bytes: Uint8Array,
+  ): Promise<{ page: number; text: string }[]> => {
+    return new Promise((resolve, reject) => {
+      if (!pyodideWorkerRef.current)
+        return reject(new Error("Pyodide worker not ready"));
+      const jobId = crypto.randomUUID();
+      pyodideResolvers.current.set(jobId, { resolve, reject });
+      pyodideWorkerRef.current.postMessage({
+        type: "AUDIT_DOCUMENT",
         jobId,
         pdfBytes: bytes,
       } satisfies PyodideWorkerMessage);
@@ -640,7 +658,14 @@ function App() {
       setErrorState({
         isOpen: true,
         title: "Sanitize Complete",
-        message: `Sanitization complete.\n\n- Metadata stripped\n- Annotations removed\n- Fake redactions found: ${fakeRedactions}`,
+        message: (
+          <ul className="list-disc pl-5 text-sm text-gray-700">
+            <li>Metadata stripped (author, history)</li>
+            <li>Annotations and interactive elements flattened</li>
+            <li>Hidden text/scripts removed</li>
+            <li>Fake redactions verified: {fakeRedactions} found</li>
+          </ul>
+        ),
       });
     } catch (e) {
       if (isCancelled) return;
@@ -649,6 +674,63 @@ function App() {
         isOpen: true,
         title: "Sanitize Error",
         message: "An error occurred while sanitizing the PDF.",
+      });
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
+  };
+
+  const handleAudit = async (doc: PDFDocument) => {
+    let isCancelled = false;
+    startProcessing("Auditing document for fake redactions...", true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
+    try {
+      const arrayBuffer = await doc.file.arrayBuffer();
+      const pdfBytes = new Uint8Array(arrayBuffer);
+
+      const fakeRedactions = await auditPdf(pdfBytes);
+      if (isCancelled) return;
+
+      if (fakeRedactions.length === 0) {
+        setErrorState({
+          isOpen: true,
+          title: "Audit Complete",
+          message: "No fake redactions found. The document appears safe.",
+        });
+      } else {
+        const fakeRedactionList = fakeRedactions.map(
+          (fr) => `Page ${fr.page}: "${fr.text}"`,
+        );
+
+        setErrorState({
+          isOpen: true,
+          title: "Fake Redactions Found!",
+          message: (
+            <div>
+              <p className="mb-2 text-red-600 font-semibold">
+                Warning: This document contains hidden text under shapes (fake redactions).
+              </p>
+              <ul className="list-disc pl-5 text-sm text-gray-700 max-h-40 overflow-y-auto">
+                {fakeRedactionList.map((item, idx) => (
+                  <li key={idx} className="break-all">
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ),
+        });
+      }
+    } catch (e) {
+      if (isCancelled) return;
+      console.error(e);
+      setErrorState({
+        isOpen: true,
+        title: "Audit Error",
+        message: "An error occurred while auditing the document.",
       });
     } finally {
       if (!isCancelled) stopProcessing();
@@ -925,6 +1007,7 @@ function App() {
                       onShare={handleShare}
                       onHighlight={handleHighlight}
                       onSign={handleSign}
+                      onAudit={handleAudit}
                       extractText={extractText}
                       extractEntities={extractEntities}
                       redactPdf={redactPdf}

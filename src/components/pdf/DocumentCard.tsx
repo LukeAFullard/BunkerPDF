@@ -23,6 +23,7 @@ interface DocumentCardProps {
   onShare?: (doc: PDFDocument) => void;
   onHighlight?: (doc: PDFDocument) => void;
   onSign?: (doc: PDFDocument) => void;
+  onAudit?: (doc: PDFDocument) => void;
   extractText: (bytes: Uint8Array) => Promise<string>;
   extractEntities: (text: string) => Promise<string[]>;
   redactPdf: (bytes: Uint8Array, redactions: string[]) => Promise<Uint8Array>;
@@ -47,6 +48,7 @@ export function DocumentCard({
   onShare,
   onHighlight,
   onSign,
+  onAudit,
   extractText,
   extractEntities,
   redactPdf,
@@ -267,6 +269,7 @@ items={[
             { label: "Reorder Pages", onClick: () => onReorderPages?.(doc) },
             (!isMobile ? { label: "Protect (Password)", onClick: () => onEncrypt?.(doc) } : null),
             (!isMobile ? { label: "Sanitize & Send", onClick: () => onSanitize?.(doc) } : null),
+            (!isMobile ? { label: "Audit Redactions", onClick: () => onAudit?.(doc) } : null),
             { label: "Share (URL)", onClick: () => onShare?.(doc) },
             {
               label: "Remove File",
@@ -382,6 +385,14 @@ items={[
                 className="text-pink-600 hover:text-pink-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-500 rounded px-1"
               >
                 Sign
+              </button>
+              <button
+                onClick={() => onAudit?.(doc)}
+                disabled={isProcessing}
+                className="text-yellow-600 hover:text-yellow-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-500 rounded px-1"
+                title="Check for fake redactions"
+              >
+                Audit
               </button>
             </>
           )}

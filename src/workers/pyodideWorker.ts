@@ -11,7 +11,8 @@ export type PyodideWorkerMessage = {
     | "REDACT_DOCUMENT"
     | "HIGHLIGHT_DOCUMENT"
     | "ENCRYPT_DOCUMENT"
-    | "SANITIZE_DOCUMENT";
+    | "SANITIZE_DOCUMENT"
+    | "AUDIT_DOCUMENT";
   code?: string;
   jobId?: string;
   pdfBytes?: Uint8Array;
@@ -191,6 +192,52 @@ bytes(out_bytes)
         type: "RESULT",
         jobId,
         result: resultBytes,
+      } satisfies PyodideWorkerResponse);
+    } else if (type === "AUDIT_DOCUMENT") {
+      if (!initPromise) initPromise = initializePyodide();
+      await initPromise;
+      if (!pyodide) throw new Error("Pyodide not initialized");
+      if (!pdfBytes) throw new Error("No PDF bytes provided");
+
+      pyodide.globals.set("doc_bytes", pdfBytes);
+      const auditCode = `
+import fitz
+import json
+
+doc = fitz.open(stream=bytes(doc_bytes), filetype="pdf")
+
+fake_redactions = []
+for page_num, page in enumerate(doc):
+    text_blocks = page.get_text("blocks")
+    drawings = page.get_drawings()
+
+    for d in drawings:
+        fill_color = d.get("fill")
+        if fill_color is not None:
+            rect_d = fitz.Rect(d["rect"])
+            for b in text_blocks:
+                text_content = b[4].strip()
+                if not text_content:
+                    continue
+                rect_b = fitz.Rect(b[:4])
+                intersection = rect_d & rect_b
+
+                if not intersection.is_empty and intersection.get_area() > 0.5 * rect_b.get_area():
+                    fake_redactions.append({
+                        "page": page_num + 1,
+                        "text": text_content
+                    })
+
+doc.close()
+json.dumps(fake_redactions)
+      `;
+      const resultStr = await pyodide.runPythonAsync(auditCode);
+      const resultData = JSON.parse(resultStr);
+
+      self.postMessage({
+        type: "RESULT",
+        jobId,
+        result: resultData,
       } satisfies PyodideWorkerResponse);
     } else if (type === "SANITIZE_DOCUMENT") {
       if (!initPromise) initPromise = initializePyodide();
