@@ -21,6 +21,8 @@ interface DocumentCardProps {
   onEncrypt?: (doc: PDFDocument) => void;
   onSanitize?: (doc: PDFDocument) => void;
   onShare?: (doc: PDFDocument) => void;
+  onHighlight?: (doc: PDFDocument) => void;
+  onSign?: (doc: PDFDocument) => void;
   extractText: (bytes: Uint8Array) => Promise<string>;
   extractEntities: (text: string) => Promise<string[]>;
   redactPdf: (bytes: Uint8Array, redactions: string[]) => Promise<Uint8Array>;
@@ -43,6 +45,8 @@ export function DocumentCard({
   onEncrypt,
   onSanitize,
   onShare,
+  onHighlight,
+  onSign,
   extractText,
   extractEntities,
   redactPdf,
@@ -256,6 +260,8 @@ items={[
             { label: "Extract / Split", onClick: () => onSplit(doc) },
             { label: "Rotate 90°", onClick: () => onRotate?.(doc) },
             { label: "Add Watermark", onClick: () => onWatermark?.(doc) },
+            { label: "Highlight Text", onClick: () => onHighlight?.(doc) },
+            { label: "Sign Document", onClick: () => onSign?.(doc) },
             { label: "Optimize (Compress)", onClick: () => onOptimize?.(doc) },
             { label: "Delete Pages", onClick: () => onDeletePages?.(doc) },
             { label: "Reorder Pages", onClick: () => onReorderPages?.(doc) },
@@ -362,6 +368,20 @@ items={[
                 className="text-indigo-600 hover:text-indigo-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded px-1"
               >
                 Sanitize
+              </button>
+              <button
+                onClick={() => onHighlight?.(doc)}
+                disabled={isProcessing}
+                className="text-teal-600 hover:text-teal-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 rounded px-1"
+              >
+                Highlight
+              </button>
+              <button
+                onClick={() => onSign?.(doc)}
+                disabled={isProcessing}
+                className="text-pink-600 hover:text-pink-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-500 rounded px-1"
+              >
+                Sign
               </button>
             </>
           )}

@@ -91,7 +91,7 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 * [x] **Undo/Redo System:** Implement a robust undo/redo stack (Cmd+Z).
 * [x] **Mobile Scope (Lightweight Utility Mode):** Mobile is strictly a lightweight utility mode (Merge/Split), NOT full workstation parity. Due to RAM, thermal throttling, and Safari WASM limits, heavy processing (Pyodide, OCR, Large PDFs) is too risky for MVP mobile.
 * [x] **Basic Polish:** Implement standard metadata cleaning and password encryption.
-* [ ] **Annotations & Signatures:** Basic highlight/draw tools and signature capture/placement.
+* [x] **Annotations & Signatures:** Basic highlight/draw tools and signature capture/placement.
 * [x] **Sharing:** Implement **WebRTC/P2P sharing** or Base64 URL sharing.
 * [x] **Early Features:** Implement **Viewer Dark Mode** (CSS filter) and **QR & Barcode Decoder** (`@zxing/library`).
 

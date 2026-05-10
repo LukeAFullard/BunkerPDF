@@ -4,6 +4,7 @@ import { useFileStore, type PDFDocument } from "./store/fileStore";
 import { useEngineStore } from "./store/engineStore";
 import { useProcessingStore } from "./store/processingStore";
 import { useUIStore } from "./store/uiStore";
+import { SignatureModal } from "./components/ui/SignatureModal";
 import { Sun, Moon } from "lucide-react";
 import {
   mergePdfs,
@@ -44,6 +45,10 @@ function App() {
     title: string;
     message: React.ReactNode;
   }>({ isOpen: false, title: "", message: "" });
+  const [signatureModalState, setSignatureModalState] = useState<{
+    isOpen: boolean;
+    activeDocId: string | null;
+  }>({ isOpen: false, activeDocId: null });
   const [inputState, setInputState] = useState<{
     isOpen: boolean;
     title: string;
@@ -278,6 +283,24 @@ function App() {
         jobId,
         pdfBytes: bytes,
         password,
+      } satisfies PyodideWorkerMessage);
+    });
+  };
+
+  const highlightPdf = (
+    bytes: Uint8Array,
+    highlights: string[],
+  ): Promise<Uint8Array> => {
+    return new Promise((resolve, reject) => {
+      if (!pyodideWorkerRef.current)
+        return reject(new Error("Pyodide worker not ready"));
+      const jobId = crypto.randomUUID();
+      pyodideResolvers.current.set(jobId, { resolve, reject });
+      pyodideWorkerRef.current.postMessage({
+        type: "HIGHLIGHT_DOCUMENT",
+        jobId,
+        pdfBytes: bytes,
+        highlights,
       } satisfies PyodideWorkerMessage);
     });
   };
@@ -675,6 +698,91 @@ function App() {
     });
   };
 
+  const handleSign = (doc: PDFDocument) => {
+    setSignatureModalState({ isOpen: true, activeDocId: doc.id });
+  };
+
+  const onSignatureConfirm = async (signatureImageBytes: Uint8Array) => {
+    const { activeDocId } = signatureModalState;
+    setSignatureModalState({ isOpen: false, activeDocId: null });
+    if (!activeDocId) return;
+
+    const doc = documents.find((d) => d.id === activeDocId);
+    if (!doc) return;
+
+    let isCancelled = false;
+    startProcessing("Signing document...", true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
+    try {
+      const { signPdf } = await import("./lib/engineA");
+      const signedBytes = await signPdf(doc.file, signatureImageBytes);
+      if (isCancelled) return;
+
+      const standardBuffer = new Uint8Array(signedBytes.length);
+      standardBuffer.set(signedBytes);
+      const newFile = new File([standardBuffer], doc.name, {
+        type: "application/pdf",
+      });
+      updateDocumentFile(doc.id, newFile);
+    } catch (e) {
+      if (isCancelled) return;
+      console.error(e);
+      setErrorState({
+        isOpen: true,
+        title: "Signature Error",
+        message: "An error occurred while signing the PDF.",
+      });
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
+  };
+
+  const handleHighlight = (doc: PDFDocument) => {
+    setInputState({
+      isOpen: true,
+      title: "Highlight Text",
+      message: "Enter the text you want to highlight:",
+      placeholder: "e.g. Important Clause",
+      onConfirm: async (text) => {
+        setInputState((prev) => ({ ...prev, isOpen: false }));
+        if (!text) return;
+
+        let isCancelled = false;
+        startProcessing("Highlighting text...", true, () => {
+          isCancelled = true;
+          stopProcessing();
+        });
+
+        try {
+          const arrayBuffer = await doc.file.arrayBuffer();
+          const pdfBytes = new Uint8Array(arrayBuffer);
+          const highlightedBytes = await highlightPdf(pdfBytes, [text]);
+          if (isCancelled) return;
+
+          const standardBuffer = new Uint8Array(highlightedBytes.length);
+          standardBuffer.set(highlightedBytes);
+          const newFile = new File([standardBuffer], doc.name, {
+            type: "application/pdf",
+          });
+          updateDocumentFile(doc.id, newFile);
+        } catch (e) {
+          if (isCancelled) return;
+          console.error(e);
+          setErrorState({
+            isOpen: true,
+            title: "Highlight Error",
+            message: "An error occurred while highlighting text.",
+          });
+        } finally {
+          if (!isCancelled) stopProcessing();
+        }
+      },
+    });
+  };
+
   const handleReorderPages = (doc: PDFDocument) => {
     setInputState({
       isOpen: true,
@@ -725,6 +833,11 @@ function App() {
   return (
     <div className="App font-sans bg-gray-50 min-h-screen">
       <ProcessingModal />
+      <SignatureModal
+        isOpen={signatureModalState.isOpen}
+        onClose={() => setSignatureModalState({ isOpen: false, activeDocId: null })}
+        onConfirm={onSignatureConfirm}
+      />
       <InputModal
         isOpen={inputState.isOpen}
         title={inputState.title}
@@ -810,6 +923,8 @@ function App() {
                       onEncrypt={handleEncrypt}
                       onSanitize={handleSanitize}
                       onShare={handleShare}
+                      onHighlight={handleHighlight}
+                      onSign={handleSign}
                       extractText={extractText}
                       extractEntities={extractEntities}
                       redactPdf={redactPdf}
