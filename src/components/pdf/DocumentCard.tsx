@@ -33,6 +33,7 @@ interface DocumentCardProps {
   extractEntities: (text: string) => Promise<string[]>;
   extractTables?: (docFile: File) => Promise<Uint8Array>;
   extractMarkdown?: (bytes: Uint8Array) => Promise<string>;
+  extractImages?: (bytes: Uint8Array) => Promise<Uint8Array>;
   redactPdf: (bytes: Uint8Array, redactions: string[]) => Promise<Uint8Array>;
   updateDocumentFile: (
     id: string,
@@ -63,6 +64,7 @@ export function DocumentCard({
   extractEntities,
   extractTables,
   extractMarkdown,
+  extractImages,
   redactPdf,
   updateDocumentFile,
 }: DocumentCardProps) {
@@ -206,6 +208,54 @@ export function DocumentCard({
         isOpen: true,
         title: "Extraction Error",
         message: err.message || "An error occurred while extracting tables.",
+      });
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
+  };
+
+
+  const handleExtractImages = async () => {
+    let isCancelled = false;
+    startProcessing("Initializing Pyodide (First load takes longer)...", true, () => {
+      isCancelled = true;
+    });
+
+    try {
+
+      const pdfBytes = await doc.file.arrayBuffer();
+
+      if (!extractImages) throw new Error("extractImages function not provided.");
+      const result = await extractImages(new Uint8Array(pdfBytes));
+
+      if (isCancelled) return;
+
+
+      const standardBuffer = new Uint8Array(result.length);
+      standardBuffer.set(result);
+      const blob = new Blob([standardBuffer], { type: "application/zip" });
+
+      if (blob.size <= 22) {
+        throw new Error("No images found in the document.");
+      }
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = getSmartOutputName(doc.name, "images").replace(/\.pdf$/i, ".zip");
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      addLog("Extract Images", "Extracted images to ZIP format.", doc.name);
+    } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+      if (isCancelled) return;
+      console.error(err);
+      setErrorState({
+        isOpen: true,
+        title: "Extraction Error",
+        message: err.message || "An error occurred while extracting images.",
       });
     } finally {
       if (!isCancelled) stopProcessing();
@@ -494,6 +544,15 @@ items={[
               >
                 Extract Notes
               </button>
+              <button
+                onClick={handleExtractImages}
+                disabled={isProcessing}
+                className="text-cyan-600 hover:text-cyan-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 rounded px-1"
+                title="Extract all images to ZIP"
+              >
+                Extract Images
+              </button>
+
 
               <button
                 onClick={() => onFlatten?.(doc)}
