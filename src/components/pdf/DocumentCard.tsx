@@ -9,6 +9,7 @@ import { ErrorModal } from "../ui/ErrorModal";
 import { useProcessingStore } from "../../store/processingStore";
 import { ContextMenu } from "../ui/ContextMenu";
 import { decodeBarcodesFromPdf } from "../../lib/barcodeDecoder";
+import { useAuditStore } from "../../store/auditStore";
 
 interface DocumentCardProps {
   doc: PDFDocument;
@@ -30,6 +31,7 @@ interface DocumentCardProps {
   onReadAloud?: (doc: PDFDocument) => void;
   extractText: (bytes: Uint8Array) => Promise<string>;
   extractEntities: (text: string) => Promise<string[]>;
+  extractTables?: (docFile: File) => Promise<Uint8Array>;
   redactPdf: (bytes: Uint8Array, redactions: string[]) => Promise<Uint8Array>;
   updateDocumentFile: (
     id: string,
@@ -58,6 +60,7 @@ export function DocumentCard({
   onReadAloud,
   extractText,
   extractEntities,
+  extractTables,
   redactPdf,
   updateDocumentFile,
 }: DocumentCardProps) {
@@ -90,6 +93,7 @@ export function DocumentCard({
 
   const activeDocumentId = useFileStore((state) => state.activeDocumentId);
   const isActive = activeDocumentId === doc.id;
+  const addLog = useAuditStore((state) => state.addLog);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -126,6 +130,47 @@ export function DocumentCard({
     x: number;
     y: number;
   } | null>(null);
+
+  const handleExtractTables = async () => {
+    if (!extractTables) return;
+    let isCancelled = false;
+    startProcessing("Extracting tables...", true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
+    try {
+      const excelBytes = await extractTables(doc.file);
+      if (isCancelled) return;
+
+      const standardBuffer = new Uint8Array(excelBytes.length);
+      standardBuffer.set(excelBytes);
+
+      const blob = new Blob([standardBuffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = doc.name.replace(/\.pdf$/i, "-tables.xlsx");
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      addLog("Extract Tables", "Extracted tables to Excel format.", doc.name);
+    } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+      if (isCancelled) return;
+      console.error(err);
+      setErrorState({
+        isOpen: true,
+        title: "Extraction Error",
+        message: err.message || "An error occurred while extracting tables.",
+      });
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
+  };
 
   const handleScanCodes = async () => {
     setDetectedCodes(null);
@@ -272,6 +317,7 @@ items={[
             { label: "Add Watermark (~1s)", onClick: () => onWatermark?.(doc) },
             { label: "Highlight Text (~2s)", onClick: () => onHighlight?.(doc) },
             { label: "Sign Document (~2s)", onClick: () => onSign?.(doc) },
+            (!isMobile ? { label: "Extract Tables (Excel) (~10s)", onClick: handleExtractTables } : null),
             { label: "Optimize (Compress) (~5s)", onClick: () => onOptimize?.(doc) },
             { label: "Delete Pages (~1s)", onClick: () => onDeletePages?.(doc) },
             { label: "Reorder Pages (~1s)", onClick: () => onReorderPages?.(doc) },
@@ -390,6 +436,14 @@ items={[
                 title={`Extract text from scanned PDF${complexityMode === 'simple' ? ' (Switches to Professional Mode)' : ''} (Est: ~30s)`}
               >
                 OCR
+              </button>
+              <button
+                onClick={handleExtractTables}
+                disabled={isProcessing}
+                className="text-green-600 hover:text-green-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 rounded px-1"
+                title="Extract Tables to Excel"
+              >
+                Extract Tables
               </button>
 
               <button

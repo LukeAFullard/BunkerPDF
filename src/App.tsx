@@ -4,6 +4,7 @@ import { loadSession, saveSession, clearSession } from "./lib/sessionSync";
 import { useState, useEffect, useRef } from "react";
 import { Dropzone } from "./components/ui/Dropzone";
 import { useFileStore, type PDFDocument } from "./store/fileStore";
+import { PDFDocument as PDFLibDocument } from "pdf-lib";
 import { useEngineStore } from "./store/engineStore";
 import { useProcessingStore } from "./store/processingStore";
 import { useUIStore } from "./store/uiStore";
@@ -285,6 +286,88 @@ function App() {
       pyodideWorkerRef.current?.terminate();
     };
   }, [setAiStatus, setPyodideStatus]);
+
+  const extractTables = async (docFile: File): Promise<Uint8Array> => {
+    const CHUNK_SIZE = 20; // Number of pages per chunk to prevent WASM OOM
+    const arrayBuffer = await docFile.arrayBuffer();
+    const pdfDoc = await PDFLibDocument.load(arrayBuffer);
+    const totalPages = pdfDoc.getPageCount();
+
+    const allTables: unknown[] = [];
+
+    for (let startPage = 0; startPage < totalPages; startPage += CHUNK_SIZE) {
+      const endPage = Math.min(startPage + CHUNK_SIZE, totalPages);
+
+      useProcessingStore.getState().updateStage(`Extracting tables: pages ${startPage + 1}-${endPage}...`);
+
+      const chunkDoc = await PDFLibDocument.create();
+      const copiedPages = await chunkDoc.copyPages(pdfDoc, Array.from({ length: endPage - startPage }, (_, i) => startPage + i));
+      for (const page of copiedPages) {
+        chunkDoc.addPage(page);
+      }
+      const chunkBytes = await chunkDoc.save();
+
+      const chunkJsonStr = await new Promise<string>((resolve, reject) => {
+        const jobId = Math.random().toString(36).substring(7);
+        const handler = (e: MessageEvent) => {
+          const res = e.data as PyodideWorkerResponse;
+          if (res.jobId === jobId) {
+            if (res.type === "RESULT") {
+              pyodideWorkerRef.current?.removeEventListener("message", handler);
+              resolve(res.result as string);
+            } else if (res.type === "ERROR") {
+              pyodideWorkerRef.current?.removeEventListener("message", handler);
+              reject(new Error(res.error));
+            }
+          }
+        };
+        pyodideWorkerRef.current?.addEventListener("message", handler);
+        pyodideWorkerRef.current?.postMessage({
+          type: "EXTRACT_TABLES",
+          jobId,
+          pdfBytes: chunkBytes,
+        });
+      });
+
+      if (chunkJsonStr) {
+        const tablesInChunk = JSON.parse(chunkJsonStr);
+        // adjust page numbers to be absolute instead of relative to chunk
+        const adjustedTables = tablesInChunk.map((table: { page: number; [key: string]: unknown }) => ({
+          ...table,
+          page: table.page + startPage,
+        }));
+        allTables.push(...adjustedTables);
+      }
+    }
+
+    if (allTables.length === 0) {
+      throw new Error("No tables found in the document.");
+    }
+
+    useProcessingStore.getState().updateStage("Converting to Excel format...");
+
+    return new Promise((resolve, reject) => {
+      const jobId = Math.random().toString(36).substring(7);
+      const handler = (e: MessageEvent) => {
+        const res = e.data as PyodideWorkerResponse;
+        if (res.jobId === jobId) {
+          if (res.type === "RESULT") {
+            pyodideWorkerRef.current?.removeEventListener("message", handler);
+            resolve(res.result as Uint8Array);
+          } else if (res.type === "ERROR") {
+            pyodideWorkerRef.current?.removeEventListener("message", handler);
+            reject(new Error(res.error));
+          }
+        }
+      };
+      pyodideWorkerRef.current?.addEventListener("message", handler);
+      pyodideWorkerRef.current?.postMessage({
+        type: "CSV_TO_EXCEL",
+        jobId,
+        csvData: JSON.stringify(allTables),
+      });
+    });
+  };
 
   const extractText = (bytes: Uint8Array): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -1215,6 +1298,7 @@ function App() {
                       onOcr={handleOcr}
                       extractText={extractText}
                       extractEntities={extractEntities}
+                      extractTables={extractTables}
                       redactPdf={redactPdf}
                       updateDocumentFile={updateDocumentFile}
                     />
