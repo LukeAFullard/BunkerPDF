@@ -15,7 +15,8 @@ export type PyodideWorkerMessage = {
     | "AUDIT_DOCUMENT"
     | "EXTRACT_TABLES"
     | "CSV_TO_EXCEL"
-    | "EXTRACT_MARKDOWN";
+    | "EXTRACT_MARKDOWN"
+    | "EXTRACT_IMAGES";
   code?: string;
   jobId?: string;
   pdfBytes?: Uint8Array;
@@ -405,7 +406,53 @@ bytes(excel_bytes)
         jobId,
         result: resultBytes,
       } satisfies PyodideWorkerResponse);
-    } else if (type === "EXTRACT_MARKDOWN") {
+
+    } else if (type === "EXTRACT_IMAGES") {
+      if (!initPromise) initPromise = initializePyodide();
+      await initPromise;
+      if (!pyodide) throw new Error("Pyodide not initialized");
+      if (!pdfBytes) throw new Error("No PDF bytes provided");
+
+      pyodide.globals.set("doc_bytes", pdfBytes);
+      const extractImagesCode = `
+import fitz
+import io
+import zipfile
+
+doc = fitz.open(stream=bytes(doc_bytes), filetype="pdf")
+zip_buffer = io.BytesIO()
+
+with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+    for page_num in range(len(doc)):
+        page = doc[page_num]
+        image_list = page.get_images(full=True)
+        for img_index, img in enumerate(image_list):
+            xref = img[0]
+            try:
+                base_image = doc.extract_image(xref)
+                image_bytes = base_image["image"]
+                image_ext = base_image["ext"]
+                image_name = f"page{page_num+1}_img{img_index+1}.{image_ext}"
+                zip_file.writestr(image_name, image_bytes)
+            except Exception:
+                pass
+
+zip_bytes = zip_buffer.getvalue()
+doc.close()
+del doc, zip_buffer, doc_bytes
+zip_bytes
+`;
+      const zipBytesProxy = await pyodide.runPythonAsync(extractImagesCode);
+      const zipBytes = zipBytesProxy.toJs();
+      zipBytesProxy.destroy();
+
+      self.postMessage({
+        type: "RESULT",
+        jobId,
+        result: zipBytes,
+      } satisfies PyodideWorkerResponse);
+
+} else if (type === "EXTRACT_MARKDOWN") {
       if (!initPromise) initPromise = initializePyodide();
       await initPromise;
       if (!pyodide) throw new Error("Pyodide not initialized");

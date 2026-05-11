@@ -369,6 +369,21 @@ function App() {
     });
   };
 
+
+  const extractImages = (bytes: Uint8Array): Promise<Uint8Array> => {
+    return new Promise((resolve, reject) => {
+      if (!pyodideWorkerRef.current)
+        return reject(new Error("Pyodide worker not ready"));
+      const jobId = crypto.randomUUID();
+      pyodideResolvers.current.set(jobId, { resolve, reject });
+      pyodideWorkerRef.current.postMessage({
+        type: "EXTRACT_IMAGES",
+        jobId,
+        pdfBytes: bytes,
+      });
+    });
+  };
+
   const extractMarkdown = (bytes: Uint8Array): Promise<string> => {
     return new Promise((resolve, reject) => {
       if (!pyodideWorkerRef.current)
@@ -1314,6 +1329,7 @@ function App() {
                       extractEntities={extractEntities}
                       extractTables={extractTables}
                       extractMarkdown={extractMarkdown}
+                      extractImages={extractImages}
                       redactPdf={redactPdf}
                       updateDocumentFile={updateDocumentFile}
                     />
