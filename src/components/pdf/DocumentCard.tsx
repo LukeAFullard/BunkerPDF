@@ -32,6 +32,7 @@ interface DocumentCardProps {
   extractText: (bytes: Uint8Array) => Promise<string>;
   extractEntities: (text: string) => Promise<string[]>;
   extractTables?: (docFile: File) => Promise<Uint8Array>;
+  extractMarkdown?: (bytes: Uint8Array) => Promise<string>;
   redactPdf: (bytes: Uint8Array, redactions: string[]) => Promise<Uint8Array>;
   updateDocumentFile: (
     id: string,
@@ -61,6 +62,7 @@ export function DocumentCard({
   extractText,
   extractEntities,
   extractTables,
+  extractMarkdown,
   redactPdf,
   updateDocumentFile,
 }: DocumentCardProps) {
@@ -130,6 +132,44 @@ export function DocumentCard({
     x: number;
     y: number;
   } | null>(null);
+
+  const handleExtractMarkdown = async () => {
+    if (!extractMarkdown) return;
+    let isCancelled = false;
+    startProcessing("Extracting markdown...", true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
+    try {
+      const buffer = await doc.file.arrayBuffer();
+      const pdfBytes = new Uint8Array(buffer);
+      const markdown = await extractMarkdown(pdfBytes);
+      if (isCancelled) return;
+
+      const blob = new Blob([markdown], { type: "text/markdown" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = doc.name.replace(/\.pdf$/i, ".md");
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      addLog("Extract Markdown", "Extracted document to structured Markdown notes.", doc.name);
+    } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+      if (isCancelled) return;
+      console.error(err);
+      setErrorState({
+        isOpen: true,
+        title: "Extraction Error",
+        message: err.message || "An error occurred while extracting markdown.",
+      });
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
+  };
 
   const handleExtractTables = async () => {
     if (!extractTables) return;
@@ -318,6 +358,7 @@ items={[
             { label: "Highlight Text (~2s)", onClick: () => onHighlight?.(doc) },
             { label: "Sign Document (~2s)", onClick: () => onSign?.(doc) },
             (!isMobile ? { label: "Extract Tables (Excel) (~10s)", onClick: handleExtractTables } : null),
+            (!isMobile ? { label: "Extract Notes (MD) (~5s)", onClick: handleExtractMarkdown } : null),
             { label: "Optimize (Compress) (~5s)", onClick: () => onOptimize?.(doc) },
             { label: "Delete Pages (~1s)", onClick: () => onDeletePages?.(doc) },
             { label: "Reorder Pages (~1s)", onClick: () => onReorderPages?.(doc) },
@@ -444,6 +485,14 @@ items={[
                 title="Extract Tables to Excel"
               >
                 Extract Tables
+              </button>
+              <button
+                onClick={handleExtractMarkdown}
+                disabled={isProcessing}
+                className="text-fuchsia-600 hover:text-fuchsia-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-500 rounded px-1"
+                title="Extract document to Markdown notes"
+              >
+                Extract Notes
               </button>
 
               <button
