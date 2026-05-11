@@ -144,3 +144,13 @@ export async function signPdf(file: File, signatureImageBytes: Uint8Array): Prom
 
   return await pdfDoc.save();
 }
+
+export async function flattenForms(file: File): Promise<Uint8Array> {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+
+  const form = pdfDoc.getForm();
+  form.flatten();
+
+  return await pdfDoc.save();
+}
