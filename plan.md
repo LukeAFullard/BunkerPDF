@@ -107,8 +107,8 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 
 ### Phase 3: Data Extraction & Conversion (Months 12–18)
 **Objective:** Bring in the Pyodide/WASM engine to attract data workers, researchers, and administrators.
-* [ ] **Pyodide Web Worker & Chunking:** Set up the background thread to load the Python environment without freezing the UI. Implement chunking strategies for large PDFs to explicitly prevent WASM Out-Of-Memory (OOM) errors before passing data to Engine C.
-* [ ] **Table Extraction (Sequential Fallback):** Default to `pdfplumber`. If the user is unsatisfied, provide a "Try the other engine" button to re-run with `pymupdf`. If automated extraction fails entirely, surface a manual bounding-box UI in the `pdf.js` viewer as the final fallback. Outputs to clean CSV or **Excel/XLSX**.
+* [x] **Pyodide Web Worker & Chunking:** Set up the background thread to load the Python environment without freezing the UI. Implement chunking strategies for large PDFs to explicitly prevent WASM Out-Of-Memory (OOM) errors before passing data to Engine C.
+* [x] **Table Extraction (Sequential Fallback):** Default to `pdfplumber`. If the user is unsatisfied, provide a "Try the other engine" button to re-run with `pymupdf`. If automated extraction fails entirely, surface a manual bounding-box UI in the `pdf.js` viewer as the final fallback. Outputs to clean CSV or **Excel/XLSX**.
 * [ ] **High-Value Utilities:** Add **Bookmark/Outline Editor**, **Image Extractor** (ZIP download), **Hyperlink Extractor**, **Crop/Resize Pages** (e.g., to A4/Letter), **Custom Page Numbering**, and **"Fast Web View" linearization**.
 * [ ] **Cross-Document Page Reordering:** When multiple files are open, display thumbnail rails side-by-side to allow dragging pages directly between documents.
 * [ ] **Workflow Recipes:** Allow users to save tool sequences (e.g., "OCR → Extract tables → Redact PII → Compress") locally to IndexedDB. One click applies a recipe. Exportable as JSON or shareable via URL to drive organic growth.
