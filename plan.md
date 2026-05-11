@@ -102,7 +102,7 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 * [x] **OCR Foundation:** Integrate `tesseract.js` for scanned PDFs, a table-stakes feature.
 * [x] **Accessibility:** Add offline **Read Aloud (TTS)** using `transformers.js` (e.g., Kitten TTS `onnx-community/kitten-tts-nano-0.1-ONNX`).
 * [x] **Retention & Trust Features:** Add session continuity (resume unsaved work), Privacy Audit Log (timestamped history of local actions), contextual Progressive Mode promotion (e.g., suggest "Professional" mode if OCR is needed), per-tool time estimates, and dismissible in-workflow trust badges ("Processing in your browser").
-* [ ] **Flatten Forms:** Add ability to remove interactive fields and burn content in.
+* [x] **Flatten Forms:** Add ability to remove interactive fields and burn content in.
 * [ ] **PDF to Structured Notes:** Turn PDFs into Markdown/Obsidian files with heading hierarchy and annotations.
 
 ### Phase 3: Data Extraction & Conversion (Months 12–18)

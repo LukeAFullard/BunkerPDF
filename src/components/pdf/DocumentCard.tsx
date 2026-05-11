@@ -22,6 +22,7 @@ interface DocumentCardProps {
   onReorderPages?: (doc: PDFDocument) => void;
   onEncrypt?: (doc: PDFDocument) => void;
   onSanitize?: (doc: PDFDocument) => void;
+  onFlatten?: (doc: PDFDocument) => void;
   onShare?: (doc: PDFDocument) => void;
   onHighlight?: (doc: PDFDocument) => void;
   onSign?: (doc: PDFDocument) => void;
@@ -49,6 +50,7 @@ export function DocumentCard({
   onReorderPages,
   onEncrypt,
   onSanitize,
+  onFlatten,
   onShare,
   onHighlight,
   onSign,
@@ -275,6 +277,7 @@ items={[
             { label: "Reorder Pages (~1s)", onClick: () => onReorderPages?.(doc) },
             (!isMobile ? { label: "Protect (Password) (~2s)", onClick: () => onEncrypt?.(doc) } : null),
             (!isMobile ? { label: "Sanitize & Send (~Instant)", onClick: () => onSanitize?.(doc) } : null),
+            { label: "Flatten Forms (~1s)", onClick: () => onFlatten?.(doc) },
             (!isMobile ? { label: "Audit Redactions (~5s)", onClick: () => onAudit?.(doc) } : null),
             (!isMobile ? { label: "Read Aloud (TTS) (~15s/pg)", onClick: () => onReadAloud?.(doc) } : null),
             { label: "Share (URL)", onClick: () => onShare?.(doc) },
@@ -388,6 +391,17 @@ items={[
               >
                 OCR
               </button>
+
+              <button
+                onClick={() => onFlatten?.(doc)}
+                disabled={isProcessing}
+
+                className="text-stone-600 hover:text-stone-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-500 rounded px-1"
+                title="Flatten Forms"
+              >
+                Flatten
+              </button>
+
               <button
                 onClick={() => onSanitize?.(doc)}
                 disabled={isProcessing}

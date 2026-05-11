@@ -17,6 +17,7 @@ import {
   optimizePdf,
   deletePages,
   reorderPages,
+  flattenForms,
 } from "./lib/engineA";
 import { EngineStatusPill } from "./components/ui/EngineStatusPill";
 import { getSmartOutputName } from "./lib/utils";
@@ -683,6 +684,46 @@ function App() {
     }
   };
 
+
+  const handleFlatten = async (doc: PDFDocument) => {
+    let isCancelled = false;
+    startProcessing("Flattening forms...", true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
+    try {
+      const flattenedBytes = await flattenForms(doc.file);
+      if (isCancelled) return;
+
+      const standardBuffer = new Uint8Array(flattenedBytes.length);
+      standardBuffer.set(flattenedBytes);
+      const newFile = new File([standardBuffer], doc.name, {
+        type: "application/pdf",
+      });
+      updateDocumentFile(doc.id, newFile);
+      addLog("Flatten Forms", "Flattened interactive form fields.", doc.name);
+
+      setErrorState({
+        isOpen: true,
+        title: "Forms Flattened",
+        message: "Interactive form fields have been flattened and burned into the document.",
+      });
+    } catch (e) {
+      if (isCancelled) return;
+      console.error(e);
+      setErrorState({
+        isOpen: true,
+        title: "Flatten Error",
+        message: "An error occurred while flattening the forms.",
+      });
+    } finally {
+      if (!isCancelled) {
+        stopProcessing();
+      }
+    }
+  };
+
   const handleSanitize = async (doc: PDFDocument) => {
 
     let isCancelled = false;
@@ -1165,6 +1206,7 @@ function App() {
                       onReorderPages={handleReorderPages}
                       onEncrypt={handleEncrypt}
                       onSanitize={handleSanitize}
+                      onFlatten={handleFlatten}
                       onShare={handleShare}
                       onHighlight={handleHighlight}
                       onSign={handleSign}
