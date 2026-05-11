@@ -1,3 +1,6 @@
+import { useAuditStore } from "./store/auditStore";
+import { PrivacyAuditLogModal } from "./components/ui/PrivacyAuditLogModal";
+import { loadSession, saveSession, clearSession } from "./lib/sessionSync";
 import { useState, useEffect, useRef } from "react";
 import { Dropzone } from "./components/ui/Dropzone";
 import { useFileStore, type PDFDocument } from "./store/fileStore";
@@ -36,6 +39,9 @@ function App() {
   const documents = useFileStore((state) => state.documents);
   const activeDocumentId = useFileStore((state) => state.activeDocumentId);
   const { isDarkMode, toggleDarkMode } = useUIStore();
+  const addLog = useAuditStore(state => state.addLog);
+  const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
+  const isInitialized = useRef(false);
   const { setAiStatus, setPyodideStatus } = useEngineStore();
   const nerWorkerRef = useRef<Worker | null>(null);
   const pyodideWorkerRef = useRef<Worker | null>(null);
@@ -158,9 +164,34 @@ function App() {
         }
       };
 
-      loadSharedFile();
+      loadSharedFile().finally(() => {
+        isInitialized.current = true;
+      });
+    } else {
+      // Session Sync
+      const restoreSession = async () => {
+        const sessionData = await loadSession();
+        if (sessionData && sessionData.documents.length > 0) {
+          useFileStore.setState({
+            documents: sessionData.documents,
+            activeDocumentId: sessionData.activeId || sessionData.documents[0].id
+          });
+        }
+        isInitialized.current = true;
+      };
+      restoreSession();
     }
   }, []);
+
+  useEffect(() => {
+    // Save session whenever documents change
+    if (!isInitialized.current) return;
+    if (documents.length > 0) {
+      saveSession(documents, activeDocumentId);
+    } else {
+      clearSession();
+    }
+  }, [documents, activeDocumentId]);
 
   useEffect(() => {
 
@@ -399,6 +430,7 @@ function App() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      addLog("Merge", `Merged ${documents.length} files into one.`);
     } catch (e) {
       if (isCancelled) return;
       console.error(e);
@@ -442,6 +474,7 @@ function App() {
         };
       });
       addDocuments(newDocs);
+      addLog("Split", `Split document into ${newDocs.length} pages.`, doc.name);
     } catch (e) {
       if (isCancelled) return;
       console.error(e);
@@ -472,6 +505,7 @@ function App() {
         type: "application/pdf",
       });
       updateDocumentFile(doc.id, newFile);
+      addLog("Rotate", "Rotated document by 90 degrees.", doc.name);
     } catch (e) {
       if (isCancelled) return;
       console.error(e);
@@ -511,6 +545,7 @@ function App() {
             type: "application/pdf",
           });
           updateDocumentFile(doc.id, newFile);
+          addLog("Watermark", `Added watermark: "${text}"`, doc.name);
         } catch (e) {
           if (isCancelled) return;
           console.error(e);
@@ -543,6 +578,7 @@ function App() {
         type: "application/pdf",
       });
       updateDocumentFile(doc.id, newFile);
+      addLog("Optimize", "Compressed and optimized document.", doc.name);
     } catch (e) {
       if (isCancelled) return;
       console.error(e);
@@ -594,6 +630,7 @@ function App() {
             newFile,
             newPageCount > 0 ? newPageCount : undefined,
           );
+          addLog("Delete Pages", `Deleted pages: ${text}`, doc.name);
         } catch (e) {
           if (isCancelled) return;
           console.error(e);
@@ -667,6 +704,7 @@ function App() {
         type: "application/pdf",
       });
       updateDocumentFile(doc.id, newFile);
+      addLog("Sanitize", "Sanitized document by removing metadata and scripts.", doc.name);
 
       setErrorState({
         isOpen: true,
@@ -730,6 +768,7 @@ function App() {
         audioUrl,
         title: `Read Aloud: ${doc.name}`,
       });
+      addLog("Read Aloud", "Generated audio playback for document text.", doc.name);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (e: any) {
@@ -758,6 +797,8 @@ function App() {
 
       const fakeRedactions = await auditPdf(pdfBytes);
       if (isCancelled) return;
+
+      addLog("Audit", `Audited document for fake redactions. Found ${fakeRedactions.length}.`, doc.name);
 
       if (fakeRedactions.length === 0) {
         setErrorState({
@@ -830,6 +871,7 @@ function App() {
             type: "application/pdf",
           });
           updateDocumentFile(doc.id, newFile);
+          addLog("Protect", "Password protected document.", doc.name);
         } catch (e) {
           if (isCancelled) return;
           console.error(e);
@@ -874,6 +916,7 @@ function App() {
         type: "application/pdf",
       });
       updateDocumentFile(doc.id, newFile);
+      addLog("Sign", "Added signature to document.", doc.name);
     } catch (e) {
       if (isCancelled) return;
       console.error(e);
@@ -915,6 +958,7 @@ function App() {
             type: "application/pdf",
           });
           updateDocumentFile(doc.id, newFile);
+          addLog("Highlight", `Highlighted text: "${text}"`, doc.name);
         } catch (e) {
           if (isCancelled) return;
           console.error(e);
@@ -962,6 +1006,7 @@ function App() {
             type: "application/pdf",
           });
           updateDocumentFile(doc.id, newFile);
+          addLog("Reorder Pages", `Reordered pages to: ${text}`, doc.name);
         } catch (e) {
           if (isCancelled) return;
           console.error(e);
@@ -978,7 +1023,11 @@ function App() {
   };
 
   return (
-    <div className="App font-sans bg-gray-50 min-h-screen">
+    <div className="App font-sans bg-gray-50 min-h-screen flex flex-col">
+      <PrivacyAuditLogModal
+        isOpen={isAuditModalOpen}
+        onClose={() => setIsAuditModalOpen(false)}
+      />
       <ProcessingModal />
       <SignatureModal
         isOpen={signatureModalState.isOpen}
@@ -1084,6 +1133,7 @@ function App() {
     if (isCancelled) return;
 
     updateDocumentFile(doc.id, newFile);
+    addLog("OCR", "Extracted text and overlaid it on the document.", doc.name);
 
     setErrorState({
       isOpen: true,
@@ -1132,6 +1182,17 @@ function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {documents.length > 0 && (
+        <footer className="mt-auto p-4 border-t border-gray-200 bg-white text-center">
+          <button
+            onClick={() => setIsAuditModalOpen(true)}
+            className="text-sm text-gray-500 hover:text-gray-800 transition-colors focus-visible:outline-none focus-visible:underline"
+          >
+            View Privacy Audit Log
+          </button>
+        </footer>
       )}
     </div>
   );

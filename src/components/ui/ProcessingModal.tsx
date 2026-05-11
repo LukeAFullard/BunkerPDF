@@ -1,7 +1,10 @@
+import { useState } from 'react';
 import { useProcessingStore } from '../../store/processingStore';
+import { ShieldCheck, X } from 'lucide-react';
 
 export function ProcessingModal() {
   const { isActive, stage, canCancel, onCancel } = useProcessingStore();
+  const [showTrustBadge, setShowTrustBadge] = useState(true);
 
   if (!isActive) return null;
 
@@ -33,6 +36,23 @@ export function ProcessingModal() {
           >
             Cancel
           </button>
+        )}
+
+        {showTrustBadge && (
+          <div className="mt-4 flex items-start gap-2 bg-green-50 p-3 rounded-lg border border-green-100 relative">
+            <ShieldCheck className="text-green-600 shrink-0 mt-0.5" size={16} />
+            <div className="text-xs text-green-800 pr-4">
+              <strong>Processing in your browser</strong>
+              <p className="mt-0.5 opacity-90">No data is sent to any server.</p>
+            </div>
+            <button
+              onClick={() => setShowTrustBadge(false)}
+              className="absolute top-2 right-2 text-green-600 hover:text-green-800 focus-visible:outline-none"
+              aria-label="Dismiss message"
+            >
+              <X size={14} />
+            </button>
+          </div>
         )}
       </div>
     </div>

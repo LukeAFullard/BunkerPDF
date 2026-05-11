@@ -1,3 +1,4 @@
+import { useUIStore } from "../../store/uiStore";
 import { useState } from "react";
 import { PDFThumbnail } from "./PDFThumbnail";
 import { useMobile } from "../../lib/useMobile";
@@ -59,6 +60,7 @@ export function DocumentCard({
   updateDocumentFile,
 }: DocumentCardProps) {
   const isMobile = useMobile();
+  const { complexityMode, setComplexityMode } = useUIStore();
   const [detectedEntities, setDetectedEntities] = useState<string[] | null>(
     null,
   );
@@ -263,18 +265,18 @@ export function DocumentCard({
           y={contextMenuState.y}
           onClose={() => setContextMenuState(null)}
 items={[
-            { label: "Extract / Split", onClick: () => onSplit(doc) },
-            { label: "Rotate 90°", onClick: () => onRotate?.(doc) },
-            { label: "Add Watermark", onClick: () => onWatermark?.(doc) },
-            { label: "Highlight Text", onClick: () => onHighlight?.(doc) },
-            { label: "Sign Document", onClick: () => onSign?.(doc) },
-            { label: "Optimize (Compress)", onClick: () => onOptimize?.(doc) },
-            { label: "Delete Pages", onClick: () => onDeletePages?.(doc) },
-            { label: "Reorder Pages", onClick: () => onReorderPages?.(doc) },
-            (!isMobile ? { label: "Protect (Password)", onClick: () => onEncrypt?.(doc) } : null),
-            (!isMobile ? { label: "Sanitize & Send", onClick: () => onSanitize?.(doc) } : null),
-            (!isMobile ? { label: "Audit Redactions", onClick: () => onAudit?.(doc) } : null),
-            (!isMobile ? { label: "Read Aloud (TTS)", onClick: () => onReadAloud?.(doc) } : null),
+            { label: "Extract / Split (~Instant)", onClick: () => onSplit(doc) },
+            { label: "Rotate 90° (~Instant)", onClick: () => onRotate?.(doc) },
+            { label: "Add Watermark (~1s)", onClick: () => onWatermark?.(doc) },
+            { label: "Highlight Text (~2s)", onClick: () => onHighlight?.(doc) },
+            { label: "Sign Document (~2s)", onClick: () => onSign?.(doc) },
+            { label: "Optimize (Compress) (~5s)", onClick: () => onOptimize?.(doc) },
+            { label: "Delete Pages (~1s)", onClick: () => onDeletePages?.(doc) },
+            { label: "Reorder Pages (~1s)", onClick: () => onReorderPages?.(doc) },
+            (!isMobile ? { label: "Protect (Password) (~2s)", onClick: () => onEncrypt?.(doc) } : null),
+            (!isMobile ? { label: "Sanitize & Send (~Instant)", onClick: () => onSanitize?.(doc) } : null),
+            (!isMobile ? { label: "Audit Redactions (~5s)", onClick: () => onAudit?.(doc) } : null),
+            (!isMobile ? { label: "Read Aloud (TTS) (~15s/pg)", onClick: () => onReadAloud?.(doc) } : null),
             { label: "Share (URL)", onClick: () => onShare?.(doc) },
             {
               label: "Remove File",
@@ -328,6 +330,7 @@ items={[
             onClick={() => onSplit(doc)}
             disabled={isProcessing}
             className="text-blue-600 hover:text-blue-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded px-1"
+            title="Split document into individual pages (Est: Instant)"
           >
             Split
           </button>
@@ -360,6 +363,7 @@ items={[
                 onClick={handleScan}
                 disabled={isProcessing}
                 className="text-purple-600 hover:text-purple-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 rounded px-1"
+                title="Scan for Personally Identifiable Information (Est: ~10s)"
               >
                 Scan PII
               </button>
@@ -367,13 +371,20 @@ items={[
                 onClick={handleScanCodes}
                 disabled={isProcessing}
                 className="text-orange-600 hover:text-orange-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 rounded px-1"
+                title="Scan document for barcodes and QR codes (Est: ~2s per page)"
               >
                 Scan Codes
               </button>
               <button
-                onClick={() => onOcr?.(doc)}
+                onClick={() => {
+                  if (complexityMode === 'simple') {
+                    setComplexityMode('professional');
+                  }
+                  onOcr?.(doc);
+                }}
                 disabled={isProcessing}
                 className="text-orange-600 hover:text-orange-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 rounded px-1"
+                title={`Extract text from scanned PDF${complexityMode === 'simple' ? ' (Switches to Professional Mode)' : ''} (Est: ~30s)`}
               >
                 OCR
               </button>
@@ -381,6 +392,7 @@ items={[
                 onClick={() => onSanitize?.(doc)}
                 disabled={isProcessing}
                 className="text-indigo-600 hover:text-indigo-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded px-1"
+                title="Remove metadata and scripts (Est: Instant)"
               >
                 Sanitize
               </button>
@@ -402,7 +414,7 @@ items={[
                 onClick={() => onAudit?.(doc)}
                 disabled={isProcessing}
                 className="text-yellow-600 hover:text-yellow-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-500 rounded px-1"
-                title="Check for fake redactions"
+                title="Check for fake redactions (Est: ~5s)"
               >
                 Audit
               </button>
@@ -410,7 +422,7 @@ items={[
                 onClick={() => onReadAloud?.(doc)}
                 disabled={isProcessing}
                 className="text-blue-600 hover:text-blue-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded px-1"
-                title="Read out text using TTS"
+                title="Read aloud using local AI (Est: ~15s per page)"
               >
                 Read Aloud
               </button>
