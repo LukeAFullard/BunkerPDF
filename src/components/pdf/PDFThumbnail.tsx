@@ -55,7 +55,7 @@ export function PDFThumbnail({ file, width = 200, className }: PDFThumbnailProps
           ? [outputScale, 0, 0, outputScale, 0, 0]
           : undefined;
 
-        const renderContext: any = {
+        const renderContext: pdfjsLib.RenderParameters = {
           canvasContext: context,
           transform: transform as number[] | undefined,
           viewport: viewport,

@@ -118,6 +118,7 @@ export async function reorderPages(file: File, newOrderIndices: number[]): Promi
   return await newDoc.save();
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function encryptPdf(_file: File, _password: string): Promise<Uint8Array> {
   // For basic polish without extra dependencies (pdf-lib 1.17 doesn't support writing encrypted files natively out of the box),
   // we will use the pyodide engine instead, so we throw an error here to signal it should be handled via the heavy compute layer.
