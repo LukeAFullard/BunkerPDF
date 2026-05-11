@@ -14,7 +14,8 @@ export type PyodideWorkerMessage = {
     | "SANITIZE_DOCUMENT"
     | "AUDIT_DOCUMENT"
     | "EXTRACT_TABLES"
-    | "CSV_TO_EXCEL";
+    | "CSV_TO_EXCEL"
+    | "EXTRACT_MARKDOWN";
   code?: string;
   jobId?: string;
   pdfBytes?: Uint8Array;
@@ -403,6 +404,63 @@ bytes(excel_bytes)
         type: "RESULT",
         jobId,
         result: resultBytes,
+      } satisfies PyodideWorkerResponse);
+    } else if (type === "EXTRACT_MARKDOWN") {
+      if (!initPromise) initPromise = initializePyodide();
+      await initPromise;
+      if (!pyodide) throw new Error("Pyodide not initialized");
+      if (!pdfBytes) throw new Error("No PDF bytes provided");
+
+      pyodide.globals.set("doc_bytes", pdfBytes);
+      const markdownCode = `
+import fitz
+
+doc = fitz.open(stream=bytes(doc_bytes), filetype="pdf")
+markdown_lines = []
+
+for page in doc:
+    blocks_dict = page.get_text("dict").get("blocks", [])
+
+    for block in blocks_dict:
+        if block.get("type") == 0:  # text block
+            block_text = []
+            max_font_size = 0
+
+            for line in block.get("lines", []):
+                for span in line.get("spans", []):
+                    text = span.get("text", "").strip()
+                    if not text:
+                        continue
+                    font_size = span.get("size", 0)
+                    if font_size > max_font_size:
+                        max_font_size = font_size
+                    block_text.append(text)
+
+            combined_text = " ".join(block_text).strip()
+            if not combined_text:
+                continue
+
+            # Simple heuristic for headings
+            if max_font_size > 20:
+                markdown_lines.append(f"# {combined_text}")
+            elif max_font_size > 16:
+                markdown_lines.append(f"## {combined_text}")
+            elif max_font_size > 14:
+                markdown_lines.append(f"### {combined_text}")
+            else:
+                markdown_lines.append(combined_text)
+
+            markdown_lines.append("") # add empty line after block
+
+doc.close()
+"\\n".join(markdown_lines)
+      `;
+      const markdownData = await pyodide.runPythonAsync(markdownCode);
+
+      self.postMessage({
+        type: "RESULT",
+        jobId,
+        result: markdownData,
       } satisfies PyodideWorkerResponse);
     }
   } catch (error: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
