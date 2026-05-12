@@ -109,7 +109,7 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 **Objective:** Bring in the Pyodide/WASM engine to attract data workers, researchers, and administrators.
 * [x] **Pyodide Web Worker & Chunking:** Set up the background thread to load the Python environment without freezing the UI. Implement chunking strategies for large PDFs to explicitly prevent WASM Out-Of-Memory (OOM) errors before passing data to Engine C.
 * [x] **Table Extraction (Sequential Fallback):** Default to `pdfplumber`. If the user is unsatisfied, provide a "Try the other engine" button to re-run with `pymupdf`. If automated extraction fails entirely, surface a manual bounding-box UI in the `pdf.js` viewer as the final fallback. Outputs to clean CSV or **Excel/XLSX**.
-* [ ] **High-Value Utilities:** Add **Bookmark/Outline Editor**, **Image Extractor** (ZIP download) [x], **Hyperlink Extractor** [x], **Crop/Resize Pages** (e.g., to A4/Letter), **Custom Page Numbering** [x], and **"Fast Web View" linearization**.
+* [ ] **High-Value Utilities:** Add **Bookmark/Outline Editor**, **Image Extractor** (ZIP download) [x], **Hyperlink Extractor** [x], **Crop/Resize Pages** (e.g., to A4/Letter) [x], **Custom Page Numbering** [x], and **"Fast Web View" linearization**.
 * [ ] **Cross-Document Page Reordering:** When multiple files are open, display thumbnail rails side-by-side to allow dragging pages directly between documents.
 * [ ] **Workflow Recipes:** Allow users to save tool sequences (e.g., "OCR → Extract tables → Redact PII → Compress") locally to IndexedDB. One click applies a recipe. Exportable as JSON or shareable via URL to drive organic growth.
 * [ ] **Legal Utilities:** Implement **Bates Numbering** for legal professionals.

@@ -219,3 +219,36 @@ export async function addPageNumbers(file: File, position: string = 'bottom-righ
 
   return await pdfDoc.save();
 }
+
+export async function resizePages(file: File, targetSizeStr: string = 'A4'): Promise<Uint8Array> {
+  const { PageSizes } = await import('pdf-lib');
+  const arrayBuffer = await file.arrayBuffer();
+  const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+
+  const targetSize = targetSizeStr.toUpperCase() === 'LETTER' ? PageSizes.Letter : PageSizes.A4;
+  const [targetWidth, targetHeight] = targetSize;
+
+  const pages = pdfDoc.getPages();
+  for (const page of pages) {
+    const { width, height } = page.getSize();
+
+    // Calculate scaling factor to fit content within the new size while maintaining aspect ratio
+    const scale = Math.min(targetWidth / width, targetHeight / height);
+
+    // Scale the content
+    page.scaleContent(scale, scale);
+
+    const scaledWidth = width * scale;
+    const scaledHeight = height * scale;
+
+    // Set the new page size
+    page.setSize(targetWidth, targetHeight);
+
+    // Center the content on the new page
+    const tx = (targetWidth - scaledWidth) / 2;
+    const ty = (targetHeight - scaledHeight) / 2;
+    page.translateContent(tx, ty);
+  }
+
+  return await pdfDoc.save();
+}
