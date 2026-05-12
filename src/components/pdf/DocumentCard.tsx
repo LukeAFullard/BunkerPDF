@@ -21,6 +21,7 @@ interface DocumentCardProps {
   onOptimize?: (doc: PDFDocument) => void;
   onDeletePages?: (doc: PDFDocument) => void;
   onReorderPages?: (doc: PDFDocument) => void;
+  onAddPageNumbers?: (doc: PDFDocument) => void;
   onEncrypt?: (doc: PDFDocument) => void;
   onSanitize?: (doc: PDFDocument) => void;
   onFlatten?: (doc: PDFDocument) => void;
@@ -52,6 +53,7 @@ export function DocumentCard({
   onOptimize,
   onDeletePages,
   onReorderPages,
+  onAddPageNumbers,
   onEncrypt,
   onSanitize,
   onFlatten,
@@ -412,6 +414,7 @@ items={[
             { label: "Optimize (Compress) (~5s)", onClick: () => onOptimize?.(doc) },
             { label: "Delete Pages (~1s)", onClick: () => onDeletePages?.(doc) },
             { label: "Reorder Pages (~1s)", onClick: () => onReorderPages?.(doc) },
+            { label: "Add Page Numbers (~2s)", onClick: () => onAddPageNumbers?.(doc) },
             (!isMobile ? { label: "Protect (Password) (~2s)", onClick: () => onEncrypt?.(doc) } : null),
             (!isMobile ? { label: "Sanitize & Send (~Instant)", onClick: () => onSanitize?.(doc) } : null),
             { label: "Flatten Forms (~1s)", onClick: () => onFlatten?.(doc) },

@@ -17,7 +17,7 @@ import {
   watermarkPdf,
   optimizePdf,
   deletePages,
-  reorderPages,
+  reorderPages, addPageNumbers,
   flattenForms,
 } from "./lib/engineA";
 import { EngineStatusPill } from "./components/ui/EngineStatusPill";
@@ -1127,6 +1127,60 @@ function App() {
     });
   };
 
+
+  const handleAddPageNumbers = (doc: PDFDocument) => {
+    setInputState({
+      isOpen: true,
+      title: "Add Page Numbers",
+      message: "Enter format and position (e.g., 'Page {n} of {total}, bottom-right'). Default is '{n}, bottom-right'.",
+      placeholder: "{n}, bottom-right",
+      defaultValue: "{n}, bottom-right",
+      onConfirm: async (text) => {
+        setInputState((prev) => ({ ...prev, isOpen: false }));
+        if (!text) return;
+
+        let format = "{n}";
+        let position = "bottom-right";
+        const lastCommaIndex = text.lastIndexOf(",");
+        if (lastCommaIndex !== -1) {
+          format = text.substring(0, lastCommaIndex).trim();
+          position = text.substring(lastCommaIndex + 1).trim();
+        } else {
+          format = text.trim();
+        }
+
+        let isCancelled = false;
+        startProcessing("Adding page numbers...", true, () => {
+          isCancelled = true;
+          stopProcessing();
+        });
+
+        try {
+          const numberedBytes = await addPageNumbers(doc.file, position, 1, format);
+          if (isCancelled) return;
+
+          const standardBuffer = new Uint8Array(numberedBytes.length);
+          standardBuffer.set(numberedBytes);
+          const newFile = new File([standardBuffer], doc.name, {
+            type: "application/pdf",
+          });
+          updateDocumentFile(doc.id, newFile);
+          addLog("Add Page Numbers", `Added page numbers with format ${format} at ${position}`, doc.name);
+        } catch (e) {
+          if (isCancelled) return;
+          console.error(e);
+          setErrorState({
+            isOpen: true,
+            title: "Add Page Numbers Error",
+            message: "An error occurred while adding page numbers.",
+          });
+        } finally {
+          if (!isCancelled) stopProcessing();
+        }
+      },
+    });
+  };
+
   const handleReorderPages = (doc: PDFDocument) => {
     setInputState({
       isOpen: true,
@@ -1316,6 +1370,7 @@ function App() {
                       onOptimize={handleOptimize}
                       onDeletePages={handleDeletePages}
                       onReorderPages={handleReorderPages}
+                      onAddPageNumbers={handleAddPageNumbers}
                       onEncrypt={handleEncrypt}
                       onSanitize={handleSanitize}
                       onFlatten={handleFlatten}
