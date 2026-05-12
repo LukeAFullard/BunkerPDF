@@ -1,4 +1,4 @@
-import { PDFDocument, degrees, rgb } from 'pdf-lib';
+import { PDFDocument, degrees, rgb, StandardFonts } from 'pdf-lib';
 
 export async function mergePdfs(files: File[]): Promise<Uint8Array> {
   const mergedPdf = await PDFDocument.create();
@@ -152,6 +152,70 @@ export async function flattenForms(file: File): Promise<Uint8Array> {
 
   const form = pdfDoc.getForm();
   form.flatten();
+
+  return await pdfDoc.save();
+}
+
+export async function addPageNumbers(file: File, position: string = 'bottom-right', startNumber: number = 1, format: string = '{n}'): Promise<Uint8Array> {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+
+  const pages = pdfDoc.getPages();
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica); // Try to embed helvetica
+
+  for (let i = 0; i < pages.length; i++) {
+    const page = pages[i];
+    const { width, height } = page.getSize();
+    const pageNumber = startNumber + i;
+    const text = format.replaceAll('{n}', pageNumber.toString()).replaceAll('{total}', pages.length.toString());
+
+    // Default to 12 pt font size
+    const fontSize = 12;
+    // Calculate approximate text width (simplistic for standard ascii)
+    const textWidth = font.widthOfTextAtSize(text, fontSize);
+
+    let x;
+    let y;
+    const margin = 30; // 30 pt margin from edge
+
+    switch (position) {
+      case 'bottom-right':
+        x = width - textWidth - margin;
+        y = margin;
+        break;
+      case 'bottom-center':
+        x = (width / 2) - (textWidth / 2);
+        y = margin;
+        break;
+      case 'bottom-left':
+        x = margin;
+        y = margin;
+        break;
+      case 'top-right':
+        x = width - textWidth - margin;
+        y = height - margin - fontSize;
+        break;
+      case 'top-center':
+        x = (width / 2) - (textWidth / 2);
+        y = height - margin - fontSize;
+        break;
+      case 'top-left':
+        x = margin;
+        y = height - margin - fontSize;
+        break;
+      default: // bottom-right fallback
+        x = width - textWidth - margin;
+        y = margin;
+    }
+
+    page.drawText(text, {
+      x,
+      y,
+      size: fontSize,
+      font: font,
+      color: rgb(0, 0, 0),
+    });
+  }
 
   return await pdfDoc.save();
 }

@@ -55,7 +55,8 @@ export function PDFThumbnail({ file, width = 200, className }: PDFThumbnailProps
           ? [outputScale, 0, 0, outputScale, 0, 0]
           : undefined;
 
-        const renderContext: pdfjsLib.RenderParameters = {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const renderContext: any = {
           canvasContext: context,
           transform: transform as number[] | undefined,
           viewport: viewport,
