@@ -35,6 +35,7 @@ interface DocumentCardProps {
   extractTables?: (docFile: File) => Promise<Uint8Array>;
   extractMarkdown?: (bytes: Uint8Array) => Promise<string>;
   extractImages?: (bytes: Uint8Array) => Promise<Uint8Array>;
+  extractLinks?: (bytes: Uint8Array) => Promise<string>;
   redactPdf: (bytes: Uint8Array, redactions: string[]) => Promise<Uint8Array>;
   updateDocumentFile: (
     id: string,
@@ -67,6 +68,7 @@ export function DocumentCard({
   extractTables,
   extractMarkdown,
   extractImages,
+  extractLinks,
   redactPdf,
   updateDocumentFile,
 }: DocumentCardProps) {
@@ -216,6 +218,58 @@ export function DocumentCard({
     }
   };
 
+
+  const handleExtractLinks = async () => {
+    if (!extractLinks) return;
+    let isCancelled = false;
+    startProcessing("Extracting links...", true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
+    try {
+      const buffer = await doc.file.arrayBuffer();
+      const pdfBytes = new Uint8Array(buffer);
+      const jsonLinks = await extractLinks(pdfBytes);
+      if (isCancelled) return;
+
+      const links = JSON.parse(jsonLinks) as { page: number; uri: string }[];
+
+      if (links.length === 0) {
+        throw new Error("No links found in the document.");
+      }
+
+      // Convert to CSV
+      const csvRows = ["Page,URI"];
+      for (const link of links) {
+        const escapedUri = link.uri.replace(/"/g, '""');
+        csvRows.push(`${link.page},"${escapedUri}"`);
+      }
+      const csvString = csvRows.join("\n");
+
+      const blob = new Blob([csvString], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = getSmartOutputName(doc.name, "links").replace(/\.pdf$/i, ".csv");
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      addLog("Extract Links", `Extracted ${links.length} links to CSV.`, doc.name);
+    } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+      if (isCancelled) return;
+      console.error(err);
+      setErrorState({
+        isOpen: true,
+        title: "Extraction Error",
+        message: err.message || "An error occurred while extracting links.",
+      });
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
+  };
 
   const handleExtractImages = async () => {
     let isCancelled = false;
@@ -411,6 +465,7 @@ items={[
             { label: "Sign Document (~2s)", onClick: () => onSign?.(doc) },
             (!isMobile ? { label: "Extract Tables (Excel) (~10s)", onClick: handleExtractTables } : null),
             (!isMobile ? { label: "Extract Notes (MD) (~5s)", onClick: handleExtractMarkdown } : null),
+            (!isMobile ? { label: "Extract Links (CSV) (~2s)", onClick: handleExtractLinks } : null),
             { label: "Optimize (Compress) (~5s)", onClick: () => onOptimize?.(doc) },
             { label: "Delete Pages (~1s)", onClick: () => onDeletePages?.(doc) },
             { label: "Reorder Pages (~1s)", onClick: () => onReorderPages?.(doc) },
@@ -554,6 +609,14 @@ items={[
                 title="Extract all images to ZIP"
               >
                 Extract Images
+              </button>
+              <button
+                onClick={handleExtractLinks}
+                disabled={isProcessing}
+                className="text-amber-600 hover:text-amber-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 rounded px-1"
+                title="Extract embedded hyperlinks to CSV"
+              >
+                Extract Links
               </button>
 
 

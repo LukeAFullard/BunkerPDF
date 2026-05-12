@@ -16,7 +16,8 @@ export type PyodideWorkerMessage = {
     | "EXTRACT_TABLES"
     | "CSV_TO_EXCEL"
     | "EXTRACT_MARKDOWN"
-    | "EXTRACT_IMAGES";
+    | "EXTRACT_IMAGES"
+    | "EXTRACT_LINKS";
   code?: string;
   jobId?: string;
   pdfBytes?: Uint8Array;
@@ -452,7 +453,43 @@ zip_bytes
         result: zipBytes,
       } satisfies PyodideWorkerResponse);
 
-} else if (type === "EXTRACT_MARKDOWN") {
+} else if (type === "EXTRACT_LINKS") {
+      if (!initPromise) initPromise = initializePyodide();
+      await initPromise;
+      if (!pyodide) throw new Error("Pyodide not initialized");
+      if (!pdfBytes) throw new Error("No PDF bytes provided");
+
+      pyodide.globals.set("doc_bytes", pdfBytes);
+      const extractLinksCode = `
+import fitz
+import json
+
+doc = fitz.open(stream=bytes(doc_bytes), filetype="pdf")
+links = []
+
+for page_num in range(len(doc)):
+    page = doc[page_num]
+    page_links = page.get_links()
+    for link in page_links:
+        if "uri" in link:
+            links.append({
+                "page": page_num + 1,
+                "uri": link["uri"]
+            })
+
+doc.close()
+del doc, doc_bytes
+json.dumps(links)
+`;
+      const jsonLinks = await pyodide.runPythonAsync(extractLinksCode);
+
+      self.postMessage({
+        type: "RESULT",
+        jobId,
+        result: jsonLinks,
+      } satisfies PyodideWorkerResponse);
+
+    } else if (type === "EXTRACT_MARKDOWN") {
       if (!initPromise) initPromise = initializePyodide();
       await initPromise;
       if (!pyodide) throw new Error("Pyodide not initialized");

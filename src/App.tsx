@@ -384,6 +384,20 @@ function App() {
     });
   };
 
+  const extractLinks = (bytes: Uint8Array): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      if (!pyodideWorkerRef.current)
+        return reject(new Error("Pyodide worker not ready"));
+      const jobId = crypto.randomUUID();
+      pyodideResolvers.current.set(jobId, { resolve, reject });
+      pyodideWorkerRef.current.postMessage({
+        type: "EXTRACT_LINKS",
+        jobId,
+        pdfBytes: bytes,
+      });
+    });
+  };
+
   const extractMarkdown = (bytes: Uint8Array): Promise<string> => {
     return new Promise((resolve, reject) => {
       if (!pyodideWorkerRef.current)
@@ -1139,7 +1153,7 @@ function App() {
         setInputState((prev) => ({ ...prev, isOpen: false }));
         if (!text) return;
 
-        let format = "{n}";
+        let format: string;
         let position = "bottom-right";
         const lastCommaIndex = text.lastIndexOf(",");
         if (lastCommaIndex !== -1) {
@@ -1385,6 +1399,7 @@ function App() {
                       extractTables={extractTables}
                       extractMarkdown={extractMarkdown}
                       extractImages={extractImages}
+                      extractLinks={extractLinks}
                       redactPdf={redactPdf}
                       updateDocumentFile={updateDocumentFile}
                     />

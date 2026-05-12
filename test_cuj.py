@@ -1,7 +1,7 @@
 from playwright.sync_api import sync_playwright
 
 def test_run_cuj(page):
-    page.goto("http://localhost:5173")
+    page.goto("http://localhost:4173")
     page.wait_for_timeout(2000)
 
     with open("test-pymupdf-redact.mjs", "w") as f:
