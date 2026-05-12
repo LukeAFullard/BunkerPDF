@@ -17,7 +17,7 @@ import {
   watermarkPdf,
   optimizePdf,
   deletePages,
-  reorderPages, addPageNumbers,
+  reorderPages, addPageNumbers, resizePages,
   flattenForms,
 } from "./lib/engineA";
 import { EngineStatusPill } from "./components/ui/EngineStatusPill";
@@ -1195,6 +1195,59 @@ function App() {
     });
   };
 
+  const handleResizePages = (doc: PDFDocument) => {
+    setInputState({
+      isOpen: true,
+      title: "Resize Pages",
+      message: "Enter target size (A4 or Letter):",
+      placeholder: "A4",
+      defaultValue: "A4",
+      onConfirm: async (text) => {
+        setInputState((prev) => ({ ...prev, isOpen: false }));
+        if (!text) return;
+
+        const sizeStr = text.trim().toLowerCase();
+        if (sizeStr !== "a4" && sizeStr !== "letter") {
+          setErrorState({
+            isOpen: true,
+            title: "Invalid Size",
+            message: "Size must be 'A4' or 'Letter'.",
+          });
+          return;
+        }
+
+        let isCancelled = false;
+        startProcessing(`Resizing pages to ${sizeStr.toUpperCase()}...`, true, () => {
+          isCancelled = true;
+          stopProcessing();
+        });
+
+        try {
+          const resizedBytes = await resizePages(doc.file, sizeStr.toUpperCase());
+          if (isCancelled) return;
+
+          const standardBuffer = new Uint8Array(resizedBytes.length);
+          standardBuffer.set(resizedBytes);
+          const newFile = new File([standardBuffer], doc.name, {
+            type: "application/pdf",
+          });
+          updateDocumentFile(doc.id, newFile);
+          addLog("Resize Pages", `Resized pages to ${sizeStr.toUpperCase()}`, doc.name);
+        } catch (e) {
+          if (isCancelled) return;
+          console.error(e);
+          setErrorState({
+            isOpen: true,
+            title: "Resize Error",
+            message: "An error occurred while resizing pages.",
+          });
+        } finally {
+          if (!isCancelled) stopProcessing();
+        }
+      },
+    });
+  };
+
   const handleReorderPages = (doc: PDFDocument) => {
     setInputState({
       isOpen: true,
@@ -1385,6 +1438,7 @@ function App() {
                       onDeletePages={handleDeletePages}
                       onReorderPages={handleReorderPages}
                       onAddPageNumbers={handleAddPageNumbers}
+                      onResizePages={handleResizePages}
                       onEncrypt={handleEncrypt}
                       onSanitize={handleSanitize}
                       onFlatten={handleFlatten}

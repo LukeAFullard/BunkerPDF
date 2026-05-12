@@ -22,6 +22,7 @@ interface DocumentCardProps {
   onDeletePages?: (doc: PDFDocument) => void;
   onReorderPages?: (doc: PDFDocument) => void;
   onAddPageNumbers?: (doc: PDFDocument) => void;
+  onResizePages?: (doc: PDFDocument) => void;
   onEncrypt?: (doc: PDFDocument) => void;
   onSanitize?: (doc: PDFDocument) => void;
   onFlatten?: (doc: PDFDocument) => void;
@@ -55,6 +56,7 @@ export function DocumentCard({
   onDeletePages,
   onReorderPages,
   onAddPageNumbers,
+  onResizePages,
   onEncrypt,
   onSanitize,
   onFlatten,
@@ -470,6 +472,7 @@ items={[
             { label: "Delete Pages (~1s)", onClick: () => onDeletePages?.(doc) },
             { label: "Reorder Pages (~1s)", onClick: () => onReorderPages?.(doc) },
             { label: "Add Page Numbers (~2s)", onClick: () => onAddPageNumbers?.(doc) },
+            { label: "Resize to A4/Letter (~2s)", onClick: () => onResizePages?.(doc) },
             (!isMobile ? { label: "Protect (Password) (~2s)", onClick: () => onEncrypt?.(doc) } : null),
             (!isMobile ? { label: "Sanitize & Send (~Instant)", onClick: () => onSanitize?.(doc) } : null),
             { label: "Flatten Forms (~1s)", onClick: () => onFlatten?.(doc) },
@@ -659,6 +662,14 @@ items={[
                 title="Check for fake redactions (Est: ~5s)"
               >
                 Audit
+              </button>
+              <button
+                onClick={() => onResizePages?.(doc)}
+                disabled={isProcessing}
+                className="text-emerald-600 hover:text-emerald-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 rounded px-1"
+                title="Resize all pages to A4 or Letter"
+              >
+                Resize
               </button>
               <button
                 onClick={() => onReadAloud?.(doc)}
