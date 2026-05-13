@@ -9,7 +9,7 @@ import { useEngineStore } from "./store/engineStore";
 import { useProcessingStore } from "./store/processingStore";
 import { useUIStore } from "./store/uiStore";
 import { SignatureModal } from "./components/ui/SignatureModal";
-import { Sun, Moon } from "lucide-react";
+import { Sun, Moon, ChevronDown } from "lucide-react";
 import {
   mergePdfs,
   splitPdf,
@@ -260,6 +260,18 @@ function App() {
   });
 
   const [isCrossReorderOpen, setIsCrossReorderOpen] = useState(false);
+  const [isBatchMenuOpen, setIsBatchMenuOpen] = useState(false);
+  const batchMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (batchMenuRef.current && !batchMenuRef.current.contains(event.target as Node)) {
+        setIsBatchMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // Promise resolvers mapping
   const nerResolvers = useRef<
@@ -821,6 +833,90 @@ function App() {
         title: "Reorder Error",
         message: "An error occurred while reordering pages across documents.",
       });
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
+  };
+
+
+  const handleBatchSanitize = async () => {
+    setIsBatchMenuOpen(false);
+    let isCancelled = false;
+    startProcessing("Batch Sanitizing...", true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
+    try {
+      for (const doc of documents) {
+        if (isCancelled) break;
+        useProcessingStore.getState().updateStage(`Sanitizing ${doc.name}...`);
+        const docBytes = new Uint8Array(await doc.file.arrayBuffer());
+        const sanitizedResult = await sanitizePdf(docBytes);
+        const sanitizedBytes = sanitizedResult.bytes;
+        const standardBuffer = new Uint8Array(sanitizedBytes.length);
+        standardBuffer.set(sanitizedBytes);
+        const newFile = new File([standardBuffer], doc.name, {
+          type: "application/pdf",
+        });
+        updateDocumentFile(doc.id, newFile);
+        addLog("Batch Sanitize", "Removed metadata and flattened form fields", doc.name);
+      }
+      if (!isCancelled) {
+        useUIStore.getState().showFeedbackPrompt("Batch Sanitize");
+      }
+    } catch (e) {
+      if (!isCancelled) {
+        console.error(e);
+        setErrorState({
+          isOpen: true,
+          title: "Batch Sanitize Error",
+          message: "An error occurred during batch sanitization.",
+        });
+      }
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
+  };
+
+  const handleBatchExtractText = async () => {
+    setIsBatchMenuOpen(false);
+    let isCancelled = false;
+    startProcessing("Batch Extracting Text...", true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
+    try {
+      let combinedText = "";
+      for (const doc of documents) {
+        if (isCancelled) break;
+        useProcessingStore.getState().updateStage(`Extracting ${doc.name}...`);
+        const result = await extractMarkdown(new Uint8Array(await doc.file.arrayBuffer()));
+        combinedText += `# ${doc.name}\n\n${result}\n\n---\n\n`;
+      }
+
+      if (!isCancelled) {
+        const blob = new Blob([combinedText], { type: "text/markdown" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `batch-extracted-notes-${Date.now()}.md`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        useUIStore.getState().showFeedbackPrompt("Batch Extract Notes");
+      }
+    } catch (e) {
+      if (!isCancelled) {
+        console.error(e);
+        setErrorState({
+          isOpen: true,
+          title: "Batch Extraction Error",
+          message: "An error occurred during batch text extraction.",
+        });
+      }
     } finally {
       if (!isCancelled) stopProcessing();
     }
@@ -1817,6 +1913,34 @@ function App() {
               >
                 Cross-Document Reorder
               </button>
+
+              <div className="relative" ref={batchMenuRef}>
+                <button
+                  onClick={() => setIsBatchMenuOpen(!isBatchMenuOpen)}
+                  disabled={documents.length < 2 || isGlobalProcessing}
+                  className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium disabled:opacity-50 hover:bg-indigo-700 transition-colors flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+                >
+                  Batch Actions
+                  <ChevronDown size={16} />
+                </button>
+                {isBatchMenuOpen && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50">
+                    <button
+                      onClick={handleBatchSanitize}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                    >
+                      Sanitize All
+                    </button>
+                    <button
+                      onClick={handleBatchExtractText}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                    >
+                      Extract Notes (Combined)
+                    </button>
+                  </div>
+                )}
+              </div>
+
               <button
                 onClick={handleMerge}
                 disabled={documents.length < 2 || isGlobalProcessing}
