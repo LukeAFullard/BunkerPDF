@@ -19,8 +19,10 @@ import {
   deletePages,
   reorderPages, addPageNumbers, resizePages,
   flattenForms,
+  crossDocumentReorderPages,
 } from "./lib/engineA";
 import { EngineStatusPill } from "./components/ui/EngineStatusPill";
+import { CrossDocumentReorder } from "./components/pdf/reorder/CrossDocumentReorder";
 import { getSmartOutputName } from "./lib/utils";
 import { ocrPdf } from "./lib/ocrEngine";
 import { AudioPlayerModal } from "./components/ui/AudioPlayerModal";
@@ -87,6 +89,7 @@ function App() {
     stopProcessing,
     isActive: isGlobalProcessing,
   } = useProcessingStore();
+  const [isCrossReorderOpen, setIsCrossReorderOpen] = useState(false);
 
   // Promise resolvers mapping
   const nerResolvers = useRef<
@@ -556,6 +559,52 @@ function App() {
         text,
       } satisfies NERWorkerMessage);
     });
+  };
+
+  const handleCrossReorderApply = async (newStructures: Record<string, { docId: string; originalPageNumber: number }[]>) => {
+    setIsCrossReorderOpen(false);
+    let isCancelled = false;
+    startProcessing("Applying cross-document changes...", true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
+    try {
+      const originalFiles: Record<string, File> = {};
+      documents.forEach(d => { originalFiles[d.id] = d.file; });
+
+      const newDocsBytes = await crossDocumentReorderPages(originalFiles, newStructures);
+      if (isCancelled) return;
+
+      // Update documents
+      for (const [docId, bytes] of Object.entries(newDocsBytes)) {
+        const standardBuffer = new Uint8Array(bytes.length);
+        standardBuffer.set(bytes);
+        const doc = documents.find(d => d.id === docId);
+        if (doc) {
+          const newFile = new File([standardBuffer], doc.name, { type: "application/pdf" });
+          updateDocumentFile(docId, newFile, newStructures[docId].length);
+        }
+      }
+
+      // Handle removals if a document ends up with 0 pages
+      for (const docId of Object.keys(originalFiles)) {
+        if (!newStructures[docId] || newStructures[docId].length === 0) {
+          removeDocument(docId);
+        }
+      }
+      addLog("Cross Reorder", `Reordered pages across ${Object.keys(originalFiles).length} documents.`);
+    } catch (e) {
+      if (isCancelled) return;
+      console.error(e);
+      setErrorState({
+        isOpen: true,
+        title: "Reorder Error",
+        message: "An error occurred while reordering pages across documents.",
+      });
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
   };
 
   const handleMerge = async () => {
@@ -1366,6 +1415,11 @@ function App() {
           }
         }}
       />
+      <CrossDocumentReorder
+        isOpen={isCrossReorderOpen}
+        onClose={() => setIsCrossReorderOpen(false)}
+        onApply={handleCrossReorderApply}
+      />
       {documents.length === 0 ? (
         <div className="flex flex-col h-screen">
           <header className="p-4 flex justify-between items-center bg-white border-b border-gray-200">
@@ -1396,6 +1450,13 @@ function App() {
                 title="Toggle Dark Mode"
               >
                 {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+              </button>
+              <button
+                onClick={() => setIsCrossReorderOpen(true)}
+                disabled={documents.length < 1 || isGlobalProcessing}
+                className="bg-purple-600 text-white px-4 py-2 rounded-lg font-medium disabled:opacity-50 hover:bg-purple-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2"
+              >
+                Cross-Document Reorder
               </button>
               <button
                 onClick={handleMerge}
