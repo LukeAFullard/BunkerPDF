@@ -47,6 +47,7 @@ interface DocumentCardProps {
     newFile: File,
     newPageCount?: number,
   ) => void;
+  onScanPii?: (doc: PDFDocument) => void;
 }
 
 export function DocumentCard({
@@ -70,6 +71,7 @@ export function DocumentCard({
   onSign,
   onAudit,
   onReadAloud,
+  onScanPii,
   extractText,
   extractEntities,
   extractTables,
@@ -82,7 +84,7 @@ export function DocumentCard({
   updateDocumentFile,
 }: DocumentCardProps) {
   const isMobile = useMobile();
-  const { complexityMode, setComplexityMode } = useUIStore();
+  const { complexityMode, setComplexityMode, activeTool, setActiveTool } = useUIStore();
   const [detectedEntities, setDetectedEntities] = useState<string[] | null>(
     null,
   );
@@ -111,6 +113,65 @@ export function DocumentCard({
   const activeDocumentId = useFileStore((state) => state.activeDocumentId);
   const isActive = activeDocumentId === doc.id;
   const addLog = useAuditStore((state) => state.addLog);
+
+  useEffect(() => {
+    if (isActive && activeTool) {
+      setTimeout(() => {
+        switch (activeTool) {
+          case 'redact':
+            onScanPii?.(doc);
+            break;
+          case 'extract-tables':
+            // Instead of calling handleExtractTables before declaration, we do the logic inline or via an effect dep
+            if (extractTables) {
+              const doExtract = async () => {
+                let isCancelled = false;
+                startProcessing("Extracting tables...", true, () => {
+                  isCancelled = true;
+                  stopProcessing();
+                });
+                try {
+                  const excelBytes = await extractTables(doc.file);
+                  if (isCancelled) return;
+                  const standardBuffer = new Uint8Array(excelBytes.length);
+                  standardBuffer.set(excelBytes);
+                  const blob = new Blob([standardBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = doc.name.replace(/\.pdf$/i, "-tables.xlsx");
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                  addLog("Extract Tables", "Extracted tables to Excel format.", doc.name);
+                  useUIStore.getState().showFeedbackPrompt("Extract Tables");
+                } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+                  if (isCancelled) return;
+                  console.error(err);
+                  setErrorState({ isOpen: true, title: "Extraction Error", message: err.message || "Failed to extract tables." });
+                } finally {
+                  if (!isCancelled) stopProcessing();
+                }
+              };
+              doExtract();
+            }
+            break;
+          case 'watermark':
+            onWatermark?.(doc);
+            break;
+          case 'split':
+            onSplit?.(doc);
+            break;
+          case 'merge':
+            // Merge is a workspace tool, handle via App context? Or just ignore here.
+            break;
+        }
+        setActiveTool(null);
+      }, 500); // small delay to allow UI to settle
+    }
+
+  }, [isActive, activeTool, setActiveTool, doc, onScanPii, onWatermark, onSplit, extractTables, startProcessing, stopProcessing, addLog]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -246,6 +307,7 @@ export function DocumentCard({
       URL.revokeObjectURL(url);
 
       addLog("Extract Markdown", "Extracted document to structured Markdown notes.", doc.name);
+      useUIStore.getState().showFeedbackPrompt("Extract Notes");
     } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
       if (isCancelled) return;
       console.error(err);
@@ -287,6 +349,7 @@ export function DocumentCard({
       URL.revokeObjectURL(url);
 
       addLog("Extract Tables", "Extracted tables to Excel format.", doc.name);
+      useUIStore.getState().showFeedbackPrompt("Extract Tables");
     } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
       if (isCancelled) return;
       console.error(err);
@@ -340,6 +403,7 @@ export function DocumentCard({
       URL.revokeObjectURL(url);
 
       addLog("Extract Links", `Extracted ${links.length} links to CSV.`, doc.name);
+      useUIStore.getState().showFeedbackPrompt("Extract Links");
     } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
       if (isCancelled) return;
       console.error(err);
@@ -387,6 +451,7 @@ export function DocumentCard({
       URL.revokeObjectURL(url);
 
       addLog("Extract Images", "Extracted images to ZIP format.", doc.name);
+      useUIStore.getState().showFeedbackPrompt("Extract Images");
     } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
       if (isCancelled) return;
       console.error(err);
@@ -502,6 +567,7 @@ export function DocumentCard({
       updateDocumentFile(doc.id, newFile);
 
       setDetectedEntities(null); // Clear sidebar after redaction
+      useUIStore.getState().showFeedbackPrompt("Redact");
     } catch (err) {
       if (isCancelled) return;
       console.error(err);

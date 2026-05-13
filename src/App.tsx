@@ -35,6 +35,8 @@ import type { WorkflowRecipe } from "./store/recipeStore";
 import { ErrorModal } from "./components/ui/ErrorModal";
 import { InputModal } from "./components/ui/InputModal";
 import { ProcessingModal } from "./components/ui/ProcessingModal";
+import { FeedbackPrompt } from "./components/ui/FeedbackPrompt";
+import { PWAInstallPrompt } from "./components/ui/PWAInstallPrompt";
 import type { NERWorkerMessage, NERWorkerResponse } from "./workers/nerWorker";
 import type {
   PyodideWorkerMessage,
@@ -270,10 +272,16 @@ function App() {
   >(new Map());
 
 
+  const setActiveTool = useUIStore((state) => state.setActiveTool);
+
   // Check for share payload on load
   useEffect(() => {
     const hash = window.location.hash;
-    if (hash.startsWith('#share=')) {
+    if (hash.startsWith('#tool=')) {
+      const tool = hash.replace('#tool=', '');
+      window.location.hash = ''; // Clear it out so it doesn't stay in URL
+      setActiveTool(tool);
+    } else if (hash.startsWith('#share=')) {
       const base64 = hash.replace('#share=', '');
       window.location.hash = ''; // Clear it out so it doesn't stay in URL
 
@@ -354,6 +362,7 @@ function App() {
       };
       restoreSession();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -1612,6 +1621,8 @@ function App() {
         onClose={() => setIsAuditModalOpen(false)}
       />
       <ProcessingModal />
+      <FeedbackPrompt />
+      <PWAInstallPrompt />
       <SignatureModal
         isOpen={signatureModalState.isOpen}
         onClose={() => setSignatureModalState({ isOpen: false, activeDocId: null })}
