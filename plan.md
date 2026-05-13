@@ -117,7 +117,7 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 * [x] **HTML/Markdown Export:** Extract raw text and headers into developer-friendly formats.
 * [x] **The Office Bridge:** Implement local PDF to DOCX and DOCX to PDF conversion (using fallback to `pymupdf` + `python-docx` if needed based on Phase 1 spike).
 * [x] **Batch Operations:** Allow users to process a folder of PDFs at once (split all, redact all, etc).
-* [ ] **Digital Signature Verification:** Enable checking signature validity, critical for legal/enterprise workflows.
+* [x] **Digital Signature Verification:** Enable checking signature validity, critical for legal/enterprise workflows.
 * [ ] **True Dark PDF Export:** Use `pymupdf` to rewrite PDFs with a dark background and recolored text, while preserving images.
 
 ### Phase 4: Professional Workflows & Scale (Months 19–24)

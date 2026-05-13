@@ -22,7 +22,8 @@ export type PyodideWorkerMessage = {
     | "EXTRACT_BOOKMARKS"
     | "EDIT_BOOKMARKS"
     | "DOCX_TO_PDF"
-    | "PDF_TO_DOCX";
+    | "PDF_TO_DOCX"
+    | "VERIFY_SIGNATURE";
   code?: string;
   jobId?: string;
   pdfBytes?: Uint8Array;
@@ -664,6 +665,50 @@ bytes(pdf_bytes)
         jobId,
         result: resultBytes,
       } satisfies PyodideWorkerResponse);
+    } else if (type === "VERIFY_SIGNATURE") {
+      if (!initPromise) initPromise = initializePyodide();
+      await initPromise;
+      if (!pyodide) throw new Error("Pyodide not initialized");
+      if (!pdfBytes) throw new Error("No PDF bytes provided");
+
+      pyodide.globals.set("pdf_bytes", pdfBytes);
+
+      const pyCode = `
+import fitz
+import json
+
+def verify_signature(pdf_bytes):
+    doc = fitz.open("pdf", bytes(pdf_bytes))
+
+    signatures = []
+    has_signatures = False
+
+    for page in doc:
+        for widget in page.widgets():
+            if widget.field_type == fitz.PDF_WIDGET_TYPE_SIGNATURE:
+                has_signatures = True
+                signatures.append({
+                    "field_name": widget.field_name,
+                    "is_signed": widget.is_signed
+                })
+
+    doc.close()
+    return json.dumps({
+        "has_signatures": has_signatures,
+        "signatures": signatures
+    })
+
+verify_signature(pdf_bytes)
+`;
+      const resultJson = await pyodide.runPythonAsync(pyCode);
+      const resultData = JSON.parse(resultJson);
+
+      self.postMessage({
+        type: "RESULT",
+        jobId,
+        result: resultData,
+      } satisfies PyodideWorkerResponse);
+
     } else if (type === "PDF_TO_DOCX") {
       if (!initPromise) initPromise = initializePyodide();
       await initPromise;
