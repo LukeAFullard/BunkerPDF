@@ -632,6 +632,22 @@ function App() {
     });
   };
 
+  const verifySignature = (
+    bytes: Uint8Array,
+  ): Promise<{ has_signatures: boolean; signatures: { field_name: string; is_signed: boolean }[] }> => {
+    return new Promise((resolve, reject) => {
+      if (!pyodideWorkerRef.current)
+        return reject(new Error("Pyodide worker not ready"));
+      const jobId = crypto.randomUUID();
+      pyodideResolvers.current.set(jobId, { resolve, reject });
+      pyodideWorkerRef.current.postMessage({
+        type: "VERIFY_SIGNATURE",
+        jobId,
+        pdfBytes: bytes,
+      } satisfies PyodideWorkerMessage);
+    });
+  };
+
   const auditPdf = (
     bytes: Uint8Array,
   ): Promise<{ page: number; text: string }[]> => {
@@ -1496,6 +1512,67 @@ function App() {
     }
   };
 
+  const handleVerifySignature = async (doc: PDFDocument) => {
+    let isCancelled = false;
+    startProcessing("Verifying digital signatures...", true, () => {
+      isCancelled = true;
+    });
+
+    try {
+      const arrayBuffer = await doc.file.arrayBuffer();
+      const pdfBytes = new Uint8Array(arrayBuffer);
+
+      const result = await verifySignature(pdfBytes);
+      if (isCancelled) return;
+
+      addLog("Security", `Verified signatures. Found ${result.signatures.length}.`, doc.name);
+
+      if (!result.has_signatures) {
+        setErrorState({
+          isOpen: true,
+          title: "Signature Verification",
+          message: "No digital signatures were found in this document.",
+        });
+      } else {
+        setErrorState({
+          isOpen: true,
+          title: "Signature Verification Complete",
+          message: (
+            <div>
+              <p className="mb-2 text-gray-800 font-semibold">
+                Found {result.signatures.length} signature field(s):
+              </p>
+              <ul className="list-disc pl-5 text-sm text-gray-700 max-h-40 overflow-y-auto">
+                {result.signatures.map((sig, idx) => (
+                  <li key={idx} className="break-all">
+                    <span className="font-medium">{sig.field_name}:</span>{" "}
+                    {sig.is_signed ? (
+                      <span className="text-green-600 font-semibold">Signed</span>
+                    ) : (
+                      <span className="text-orange-600 font-semibold">Unsigned</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ),
+        });
+      }
+    } catch (e) {
+      if (isCancelled) return;
+      console.error(e);
+      setErrorState({
+        isOpen: true,
+        title: "Verification Error",
+        message: "An error occurred while verifying signatures.",
+      });
+    } finally {
+      if (!isCancelled) {
+        stopProcessing();
+      }
+    }
+  };
+
   const handleSanitize = async (doc: PDFDocument) => {
 
     let isCancelled = false;
@@ -2312,6 +2389,7 @@ function App() {
                       onHighlight={handleHighlight}
                       onSign={handleSign}
                       onAudit={handleAudit}
+                      onVerifySignature={handleVerifySignature}
                       onReadAloud={handleReadAloud}
                       onOcr={handleOcr}
                       extractText={extractText}

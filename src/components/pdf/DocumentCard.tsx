@@ -32,6 +32,7 @@ interface DocumentCardProps {
   onHighlight?: (doc: PDFDocument) => void;
   onSign?: (doc: PDFDocument) => void;
   onAudit?: (doc: PDFDocument) => void;
+  onVerifySignature?: (doc: PDFDocument) => void;
   onReadAloud?: (doc: PDFDocument) => void;
   extractText: (bytes: Uint8Array) => Promise<string>;
   extractEntities: (text: string) => Promise<string[]>;
@@ -72,6 +73,7 @@ export function DocumentCard({
   onHighlight,
   onSign,
   onAudit,
+  onVerifySignature,
   onReadAloud,
   onScanPii,
   extractText,
@@ -712,6 +714,7 @@ items={[
             (!isMobile ? { label: "Sanitize & Send (~Instant)", onClick: () => onSanitize?.(doc) } : null),
             { label: "Flatten Forms (~1s)", onClick: () => onFlatten?.(doc) },
             (!isMobile ? { label: "Audit Redactions (~5s)", onClick: () => onAudit?.(doc) } : null),
+            (!isMobile ? { label: "Verify Signatures (~2s)", onClick: () => onVerifySignature?.(doc) } : null),
             (!isMobile ? { label: "Read Aloud (TTS) (~15s/pg)", onClick: () => onReadAloud?.(doc) } : null),
             { label: "Share (URL)", onClick: () => onShare?.(doc) },
             {
@@ -920,6 +923,14 @@ items={[
                 title="Check for fake redactions (Est: ~5s)"
               >
                 Audit
+              </button>
+              <button
+                onClick={() => onVerifySignature?.(doc)}
+                disabled={isProcessing}
+                className="text-blue-500 hover:text-blue-700 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded px-1"
+                title="Verify Digital Signatures (Est: ~2s)"
+              >
+                Verify Sigs
               </button>
               <button
                 onClick={() => onResizePages?.(doc)}
