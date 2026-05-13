@@ -115,7 +115,7 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 * [x] **Legal Utilities:** Implement **Bates Numbering** for legal professionals.
 * [x] **Growth & Engagement UX:** Add deep-link shareable tool URLs (`/#tool=redact`), output quality feedback prompts (👍/👎 post-download), and early PWA install prompts for offline usage.
 * [x] **HTML/Markdown Export:** Extract raw text and headers into developer-friendly formats.
-* [ ] **The Office Bridge:** Implement local PDF to DOCX and DOCX to PDF conversion (using fallback to `pymupdf` + `python-docx` if needed based on Phase 1 spike).
+* [x] **The Office Bridge:** Implement local PDF to DOCX and DOCX to PDF conversion (using fallback to `pymupdf` + `python-docx` if needed based on Phase 1 spike).
 * [ ] **Batch Operations:** Allow users to process a folder of PDFs at once (split all, redact all, etc).
 * [ ] **Digital Signature Verification:** Enable checking signature validity, critical for legal/enterprise workflows.
 * [ ] **True Dark PDF Export:** Use `pymupdf` to rewrite PDFs with a dark background and recolored text, while preserving images.
