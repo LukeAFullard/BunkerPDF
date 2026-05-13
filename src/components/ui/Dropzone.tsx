@@ -11,6 +11,52 @@ interface DropzoneProps {
   onDocxDropped?: (files: File[]) => void;
 }
 
+
+  const getFilesFromDataTransfer = async (dataTransfer: DataTransfer): Promise<File[]> => {
+    const files: File[] = [];
+    if (!dataTransfer.items) {
+      return Array.from(dataTransfer.files);
+    }
+    const promises: Promise<void>[] = [];
+
+    for (let i = 0; i < dataTransfer.items.length; i++) {
+      const item = dataTransfer.items[i];
+      if (item.kind === 'file') {
+        const entry = item.webkitGetAsEntry();
+        if (entry) {
+          promises.push(readEntry(entry, files));
+        } else {
+          const file = item.getAsFile();
+          if (file) files.push(file);
+        }
+      }
+    }
+    await Promise.all(promises);
+    return files;
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const readEntry = async (entry: any, files: File[]): Promise<void> => {
+    if (entry.isFile) {
+      return new Promise((resolve) => {
+        entry.file((file: File) => {
+          files.push(file);
+          resolve();
+        });
+      });
+    } else if (entry.isDirectory) {
+      const dirReader = entry.createReader();
+      return new Promise((resolve) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        dirReader.readEntries(async (entries: any[]) => {
+          const promises = entries.map(e => readEntry(e, files));
+          await Promise.all(promises);
+          resolve();
+        });
+      });
+    }
+  };
+
 export function Dropzone({ onError, onDocxDropped }: DropzoneProps = {}) {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -63,11 +109,11 @@ export function Dropzone({ onError, onDocxDropped }: DropzoneProps = {}) {
 
     if (pdfFiles.length === 0) return;
 
-    const availableSlots = 8 - documents.length;
+    const availableSlots = 50 - documents.length;
     if (pdfFiles.length > availableSlots) {
       handleError(
         'File Limit Reached',
-        `Maximum 8 files allowed. Only ${availableSlots > 0 ? `the next ${availableSlots}` : '0'} will be loaded.`
+        `Maximum 50 files allowed. Only ${availableSlots > 0 ? `the next ${availableSlots}` : '0'} will be loaded.`
       );
       pdfFiles = pdfFiles.slice(0, Math.max(0, availableSlots));
     }
@@ -139,8 +185,7 @@ export function Dropzone({ onError, onDocxDropped }: DropzoneProps = {}) {
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    const files = Array.from(e.dataTransfer.files);
-    handleFiles(files);
+    getFilesFromDataTransfer(e.dataTransfer).then(files => handleFiles(files));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

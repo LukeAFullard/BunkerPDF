@@ -9,7 +9,7 @@ import { useEngineStore } from "./store/engineStore";
 import { useProcessingStore } from "./store/processingStore";
 import { useUIStore } from "./store/uiStore";
 import { SignatureModal } from "./components/ui/SignatureModal";
-import { Sun, Moon } from "lucide-react";
+import { Sun, Moon, ChevronDown } from "lucide-react";
 import {
   mergePdfs,
   splitPdf,
@@ -260,6 +260,18 @@ function App() {
   });
 
   const [isCrossReorderOpen, setIsCrossReorderOpen] = useState(false);
+  const [isBatchMenuOpen, setIsBatchMenuOpen] = useState(false);
+  const batchMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (batchMenuRef.current && !batchMenuRef.current.contains(event.target as Node)) {
+        setIsBatchMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // Promise resolvers mapping
   const nerResolvers = useRef<
@@ -824,6 +836,340 @@ function App() {
     } finally {
       if (!isCancelled) stopProcessing();
     }
+  };
+
+
+  const handleBatchSanitize = async () => {
+    setIsBatchMenuOpen(false);
+    let isCancelled = false;
+    startProcessing("Batch Sanitizing...", true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
+    try {
+      for (const doc of documents) {
+        if (isCancelled) break;
+        useProcessingStore.getState().updateStage(`Sanitizing ${doc.name}...`);
+        const docBytes = new Uint8Array(await doc.file.arrayBuffer());
+        const sanitizedResult = await sanitizePdf(docBytes);
+        const sanitizedBytes = sanitizedResult.bytes;
+        const standardBuffer = new Uint8Array(sanitizedBytes.length);
+        standardBuffer.set(sanitizedBytes);
+        const newFile = new File([standardBuffer], doc.name, {
+          type: "application/pdf",
+        });
+        updateDocumentFile(doc.id, newFile);
+        addLog("Batch Sanitize", "Removed metadata and flattened form fields", doc.name);
+      }
+      if (!isCancelled) {
+        useUIStore.getState().showFeedbackPrompt("Batch Sanitize");
+      }
+    } catch (e) {
+      if (!isCancelled) {
+        console.error(e);
+        setErrorState({
+          isOpen: true,
+          title: "Batch Sanitize Error",
+          message: "An error occurred during batch sanitization.",
+        });
+      }
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
+  };
+
+  const handleBatchExtractText = async () => {
+    setIsBatchMenuOpen(false);
+    let isCancelled = false;
+    startProcessing("Batch Extracting Text...", true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
+    try {
+      let combinedText = "";
+      for (const doc of documents) {
+        if (isCancelled) break;
+        useProcessingStore.getState().updateStage(`Extracting ${doc.name}...`);
+        const result = await extractMarkdown(new Uint8Array(await doc.file.arrayBuffer()));
+        combinedText += `# ${doc.name}\n\n${result}\n\n---\n\n`;
+      }
+
+      if (!isCancelled) {
+        const blob = new Blob([combinedText], { type: "text/markdown" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `batch-extracted-notes-${Date.now()}.md`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        useUIStore.getState().showFeedbackPrompt("Batch Extract Notes");
+      }
+    } catch (e) {
+      if (!isCancelled) {
+        console.error(e);
+        setErrorState({
+          isOpen: true,
+          title: "Batch Extraction Error",
+          message: "An error occurred during batch text extraction.",
+        });
+      }
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
+  };
+
+
+  const handleBatchRename = () => {
+    setIsBatchMenuOpen(false);
+    setInputState({
+      isOpen: true,
+      title: "Batch Rename",
+      message: "Enter the base name for all documents. They will be sequentially numbered (e.g. BaseName_1.pdf).",
+      placeholder: "Project_Report",
+      onConfirm: (text) => {
+        setInputState((prev) => ({ ...prev, isOpen: false }));
+        if (!text) return;
+
+        let counter = 1;
+        for (const doc of documents) {
+          const extension = doc.name.split('.').pop() || 'pdf';
+          const newName = `${text}_${counter}.${extension}`;
+
+          // Re-create the file with the new name
+          const newFile = new File([doc.file], newName, { type: doc.file.type });
+          updateDocumentFile(doc.id, newFile);
+          useFileStore.getState().updateDocument(doc.id, { name: newName });
+          addLog("Batch Rename", `Renamed to ${newName}`, newName);
+          counter++;
+        }
+      },
+    });
+  };
+
+  const handleBatchOptimize = async () => {
+    setIsBatchMenuOpen(false);
+    let isCancelled = false;
+    startProcessing("Batch Optimizing...", true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
+    try {
+      for (const doc of documents) {
+        if (isCancelled) break;
+        useProcessingStore.getState().updateStage(`Optimizing ${doc.name}...`);
+        const optimizedBytes = await optimizePdf(doc.file);
+        if (isCancelled) return;
+        const standardBuffer = new Uint8Array(optimizedBytes.length);
+        standardBuffer.set(optimizedBytes);
+        const newFile = new File([standardBuffer], doc.name, {
+          type: "application/pdf",
+        });
+        updateDocumentFile(doc.id, newFile);
+        addLog("Batch Optimize", "Optimized PDF to reduce file size", doc.name);
+      }
+      if (!isCancelled) {
+        useUIStore.getState().showFeedbackPrompt("Batch Optimize");
+      }
+    } catch (e) {
+      if (!isCancelled) {
+        console.error(e);
+        setErrorState({
+          isOpen: true,
+          title: "Batch Optimize Error",
+          message: "An error occurred during batch optimization.",
+        });
+      }
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
+  };
+
+  const handleBatchWatermark = () => {
+    setIsBatchMenuOpen(false);
+    setInputState({
+      isOpen: true,
+      title: "Batch Watermark",
+      message: "Enter watermark text to apply to all pages of all open documents:",
+      placeholder: "CONFIDENTIAL",
+      onConfirm: async (text) => {
+        setInputState((prev) => ({ ...prev, isOpen: false }));
+        if (!text) return;
+
+        let isCancelled = false;
+        startProcessing("Batch Watermarking...", true, () => {
+          isCancelled = true;
+          stopProcessing();
+        });
+
+        try {
+          for (const doc of documents) {
+            if (isCancelled) break;
+            useProcessingStore.getState().updateStage(`Watermarking ${doc.name}...`);
+            const watermarkedBytes = await watermarkPdf(doc.file, text);
+            if (isCancelled) return;
+            const standardBuffer = new Uint8Array(watermarkedBytes.length);
+            standardBuffer.set(watermarkedBytes);
+            const newFile = new File([standardBuffer], doc.name, {
+              type: "application/pdf",
+            });
+            updateDocumentFile(doc.id, newFile);
+            addLog("Batch Watermark", `Added watermark: ${text}`, doc.name);
+          }
+          if (!isCancelled) {
+            useUIStore.getState().showFeedbackPrompt("Batch Watermark");
+          }
+        } catch (e) {
+          if (!isCancelled) {
+            console.error(e);
+            setErrorState({
+              isOpen: true,
+              title: "Batch Watermark Error",
+              message: "An error occurred while batch watermarking.",
+            });
+          }
+        } finally {
+          if (!isCancelled) stopProcessing();
+        }
+      },
+    });
+  };
+
+  const handleBatchResize = () => {
+    setIsBatchMenuOpen(false);
+    setInputState({
+      isOpen: true,
+      title: "Batch Resize Pages",
+      message: "Select target size for all pages across all open documents. Enter 'A4' or 'Letter':",
+      placeholder: "A4",
+      onConfirm: async (text) => {
+        setInputState((prev) => ({ ...prev, isOpen: false }));
+        if (!text) return;
+        const sizeStr = text.toUpperCase().trim();
+        if (sizeStr !== "A4" && sizeStr !== "LETTER") {
+          setErrorState({
+            isOpen: true,
+            title: "Invalid Size",
+            message: "Please enter either 'A4' or 'Letter'.",
+          });
+          return;
+        }
+
+        let isCancelled = false;
+        startProcessing(`Batch Resizing to ${sizeStr}...`, true, () => {
+          isCancelled = true;
+          stopProcessing();
+        });
+
+        try {
+          for (const doc of documents) {
+            if (isCancelled) break;
+            useProcessingStore.getState().updateStage(`Resizing ${doc.name}...`);
+            const resizedBytes = await resizePages(doc.file, sizeStr as "A4" | "Letter");
+            if (isCancelled) return;
+            const standardBuffer = new Uint8Array(resizedBytes.length);
+            standardBuffer.set(resizedBytes);
+            const newFile = new File([standardBuffer], doc.name, {
+              type: "application/pdf",
+            });
+            updateDocumentFile(doc.id, newFile);
+            addLog("Batch Resize Pages", `Resized pages to ${sizeStr}`, doc.name);
+          }
+          if (!isCancelled) {
+            useUIStore.getState().showFeedbackPrompt("Batch Resize Pages");
+          }
+        } catch (e) {
+          if (!isCancelled) {
+            console.error(e);
+            setErrorState({
+              isOpen: true,
+              title: "Batch Resize Error",
+              message: "An error occurred while resizing pages.",
+            });
+          }
+        } finally {
+          if (!isCancelled) stopProcessing();
+        }
+      },
+    });
+  };
+
+  const handleBatchAddTitlePage = () => {
+    setIsBatchMenuOpen(false);
+    setInputState({
+      isOpen: true,
+      title: "Batch Add Title Page",
+      message: "Enter the text to display on the new title page for all documents:",
+      placeholder: "Title",
+      onConfirm: async (text) => {
+        setInputState((prev) => ({ ...prev, isOpen: false }));
+        if (!text) return;
+
+        let isCancelled = false;
+        startProcessing("Batch Adding Title Pages...", true, () => {
+          isCancelled = true;
+          stopProcessing();
+        });
+
+        try {
+          // Dynamic import of PDFLibDocument and StandardFonts is better here since we don't have it imported explicitly in App.tsx maybe?
+          // Actually, PDFLibDocument is already imported at the top. Let's import StandardFonts if needed or use StandardFonts dynamically
+          const { StandardFonts, rgb } = await import('pdf-lib');
+
+          for (const doc of documents) {
+            if (isCancelled) break;
+            useProcessingStore.getState().updateStage(`Adding title page to ${doc.name}...`);
+
+            const arrayBuffer = await doc.file.arrayBuffer();
+            const pdfDoc = await PDFLibDocument.load(arrayBuffer);
+
+            // Insert blank page at start
+            const page = pdfDoc.insertPage(0, [612, 792]); // Letter size
+            const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+            const textSize = 36;
+            const textWidth = font.widthOfTextAtSize(text, textSize);
+
+            page.drawText(text, {
+              x: (page.getWidth() / 2) - (textWidth / 2),
+              y: (page.getHeight() / 2),
+              size: textSize,
+              font: font,
+              color: rgb(0, 0, 0),
+            });
+
+            const savedBytes = await pdfDoc.save();
+
+            if (isCancelled) return;
+            const standardBuffer = new Uint8Array(savedBytes.length);
+            standardBuffer.set(savedBytes);
+            const newFile = new File([standardBuffer], doc.name, {
+              type: "application/pdf",
+            });
+            updateDocumentFile(doc.id, newFile, doc.pageCount ? doc.pageCount + 1 : undefined);
+            addLog("Batch Add Title Page", `Inserted title page with text: ${text}`, doc.name);
+          }
+          if (!isCancelled) {
+            useUIStore.getState().showFeedbackPrompt("Batch Add Title Page");
+          }
+        } catch (e) {
+          if (!isCancelled) {
+            console.error(e);
+            setErrorState({
+              isOpen: true,
+              title: "Batch Add Title Error",
+              message: "An error occurred while adding title pages.",
+            });
+          }
+        } finally {
+          if (!isCancelled) stopProcessing();
+        }
+      },
+    });
   };
 
   const handleMerge = async () => {
@@ -1817,6 +2163,66 @@ function App() {
               >
                 Cross-Document Reorder
               </button>
+
+              <div className="relative" ref={batchMenuRef}>
+                <button
+                  onClick={() => setIsBatchMenuOpen(!isBatchMenuOpen)}
+                  disabled={documents.length < 2 || isGlobalProcessing}
+                  className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium disabled:opacity-50 hover:bg-indigo-700 transition-colors flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+                >
+                  Batch Actions
+                  <ChevronDown size={16} />
+                </button>
+                {isBatchMenuOpen && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50">
+
+                    <button
+                      onClick={handleBatchRename}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                    >
+                      Rename All
+                    </button>
+                    <button
+                      onClick={handleBatchOptimize}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                    >
+                      Optimize All
+                    </button>
+                    <button
+                      onClick={handleBatchWatermark}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                    >
+                      Watermark All
+                    </button>
+                    <button
+                      onClick={handleBatchResize}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                    >
+                      Resize All
+                    </button>
+                    <button
+                      onClick={handleBatchAddTitlePage}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                    >
+                      Add Title Page to All
+                    </button>
+                    <button
+                      onClick={handleBatchSanitize}
+
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                    >
+                      Sanitize All
+                    </button>
+                    <button
+                      onClick={handleBatchExtractText}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                    >
+                      Extract Notes (Combined)
+                    </button>
+                  </div>
+                )}
+              </div>
+
               <button
                 onClick={handleMerge}
                 disabled={documents.length < 2 || isGlobalProcessing}

@@ -39,7 +39,7 @@ export const useFileStore = create<FileStore>((set) => ({
   activeDocumentId: null,
 
   addDocuments: (docs: PDFDocument[]) => set((state) => {
-    const newDocs = [...state.documents, ...docs].slice(0, 8); // Enforce 8 file cap
+    const newDocs = [...state.documents, ...docs].slice(0, 50); // Enforce 50 file cap
     return {
       documents: newDocs,
       // If there wasn't an active document, set the first new one as active
