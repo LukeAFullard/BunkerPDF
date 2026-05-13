@@ -494,6 +494,38 @@ function App() {
     });
   };
 
+  const extractBookmarks = (bytes: Uint8Array): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      if (!pyodideWorkerRef.current)
+        return reject(new Error("Pyodide worker not ready"));
+      const jobId = crypto.randomUUID();
+      pyodideResolvers.current.set(jobId, { resolve, reject });
+      pyodideWorkerRef.current.postMessage({
+        type: "EXTRACT_BOOKMARKS",
+        jobId,
+        pdfBytes: bytes,
+      });
+    });
+  };
+
+  const editBookmarks = (
+    bytes: Uint8Array,
+    bookmarks: { level: number; title: string; page: number }[]
+  ): Promise<Uint8Array> => {
+    return new Promise((resolve, reject) => {
+      if (!pyodideWorkerRef.current)
+        return reject(new Error("Pyodide worker not ready"));
+      const jobId = crypto.randomUUID();
+      pyodideResolvers.current.set(jobId, { resolve, reject });
+      pyodideWorkerRef.current.postMessage({
+        type: "EDIT_BOOKMARKS",
+        jobId,
+        pdfBytes: bytes,
+        bookmarks,
+      });
+    });
+  };
+
   const redactPdf = (
     bytes: Uint8Array,
     redactions: string[],
@@ -1454,6 +1486,8 @@ function App() {
                       extractMarkdown={extractMarkdown}
                       extractImages={extractImages}
                       extractLinks={extractLinks}
+                      extractBookmarks={extractBookmarks}
+                      editBookmarks={editBookmarks}
                       redactPdf={redactPdf}
                       updateDocumentFile={updateDocumentFile}
                     />

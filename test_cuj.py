@@ -31,7 +31,17 @@ def test_run_cuj(page):
 
     page.screenshot(path="verification/screenshots/menu-verification.png")
 
-    page.get_by_text("Add Watermark").click()
+    # Click coordinate to close context menu
+    page.mouse.click(10, 10)
+    page.wait_for_timeout(1000)
+
+    # Use keyboard to trigger the menu as the previous memory states it was implemented
+    page.locator('div[role="button"][aria-label*="context menu"]').focus()
+    page.keyboard.press("Enter")
+    page.wait_for_timeout(1000)
+
+    # We click using evaluate as playright struggles with portals sometimes
+    page.evaluate('document.evaluate("//button[contains(., \'Add Watermark\')]", document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue.click()')
     page.wait_for_timeout(1000)
 
     page.get_by_placeholder("e.g. CONFIDENTIAL").fill("TEST WATERMARK")

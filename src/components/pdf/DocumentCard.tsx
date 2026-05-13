@@ -10,6 +10,7 @@ import { useProcessingStore } from "../../store/processingStore";
 import { ContextMenu } from "../ui/ContextMenu";
 import { decodeBarcodesFromPdf } from "../../lib/barcodeDecoder";
 import { useAuditStore } from "../../store/auditStore";
+import { BookmarkModal, type Bookmark } from "../ui/BookmarkModal";
 
 interface DocumentCardProps {
   doc: PDFDocument;
@@ -37,6 +38,8 @@ interface DocumentCardProps {
   extractMarkdown?: (bytes: Uint8Array) => Promise<string>;
   extractImages?: (bytes: Uint8Array) => Promise<Uint8Array>;
   extractLinks?: (bytes: Uint8Array) => Promise<string>;
+  extractBookmarks?: (bytes: Uint8Array) => Promise<string>;
+  editBookmarks?: (bytes: Uint8Array, bookmarks: Bookmark[]) => Promise<Uint8Array>;
   redactPdf: (bytes: Uint8Array, redactions: string[]) => Promise<Uint8Array>;
   updateDocumentFile: (
     id: string,
@@ -71,6 +74,8 @@ export function DocumentCard({
   extractMarkdown,
   extractImages,
   extractLinks,
+  extractBookmarks,
+  editBookmarks,
   redactPdf,
   updateDocumentFile,
 }: DocumentCardProps) {
@@ -140,6 +145,79 @@ export function DocumentCard({
     x: number;
     y: number;
   } | null>(null);
+  const [bookmarkModalState, setBookmarkModalState] = useState<{
+    isOpen: boolean;
+    bookmarks: Bookmark[];
+  }>({ isOpen: false, bookmarks: [] });
+
+  const handleEditBookmarks = async () => {
+    if (!extractBookmarks) return;
+    let isCancelled = false;
+    startProcessing("Extracting bookmarks...", true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
+    try {
+      const buffer = await doc.file.arrayBuffer();
+      const pdfBytes = new Uint8Array(buffer);
+      const jsonBookmarks = await extractBookmarks(pdfBytes);
+      if (isCancelled) return;
+
+      const bookmarks = JSON.parse(jsonBookmarks) as Bookmark[];
+
+      setBookmarkModalState({ isOpen: true, bookmarks });
+
+    } catch (e) {
+      if (isCancelled) return;
+      console.error(e);
+      setErrorState({
+        isOpen: true,
+        title: "Bookmark Extraction Error",
+        message: "Failed to extract bookmarks from this document.",
+      });
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
+  };
+
+  const handleSaveBookmarks = async (bookmarks: Bookmark[]) => {
+    setBookmarkModalState({ isOpen: false, bookmarks: [] });
+    if (!editBookmarks) return;
+
+    let isCancelled = false;
+    startProcessing("Saving bookmarks...", true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
+    try {
+      const buffer = await doc.file.arrayBuffer();
+      const pdfBytes = new Uint8Array(buffer);
+      const newBytes = await editBookmarks(pdfBytes, bookmarks);
+      if (isCancelled) return;
+
+      // Need to convert to a regular array to avoid SharedArrayBuffer issues with File constructor
+      const standardBuffer = new Uint8Array(newBytes.length);
+      standardBuffer.set(newBytes);
+      const newFile = new File([standardBuffer], doc.name, {
+        type: "application/pdf",
+      });
+      updateDocumentFile(doc.id, newFile);
+      addLog("Edit Bookmarks", "Updated document bookmarks (TOC)", doc.name);
+    } catch (e) {
+      if (isCancelled) return;
+      console.error(e);
+      setErrorState({
+        isOpen: true,
+        title: "Save Bookmarks Error",
+        message: "Failed to save bookmarks to this document.",
+      });
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
+  };
+
 
   const handleExtractMarkdown = async () => {
     if (!extractMarkdown) return;
@@ -473,6 +551,7 @@ items={[
             { label: "Reorder Pages (~1s)", onClick: () => onReorderPages?.(doc) },
             { label: "Add Page Numbers (~2s)", onClick: () => onAddPageNumbers?.(doc) },
             { label: "Resize to A4/Letter (~2s)", onClick: () => onResizePages?.(doc) },
+            (!isMobile ? { label: "Edit Bookmarks/Outline (~2s)", onClick: handleEditBookmarks } : null),
             (!isMobile ? { label: "Protect (Password) (~2s)", onClick: () => onEncrypt?.(doc) } : null),
             (!isMobile ? { label: "Sanitize & Send (~Instant)", onClick: () => onSanitize?.(doc) } : null),
             { label: "Flatten Forms (~1s)", onClick: () => onFlatten?.(doc) },
@@ -487,6 +566,13 @@ items={[
           ].filter(Boolean) as any} // eslint-disable-line @typescript-eslint/no-explicit-any
         />
       )}
+      <BookmarkModal
+        isOpen={bookmarkModalState.isOpen}
+        bookmarks={bookmarkModalState.bookmarks}
+        maxPages={doc.pageCount || 1}
+        onClose={() => setBookmarkModalState((prev) => ({ ...prev, isOpen: false }))}
+        onSave={handleSaveBookmarks}
+      />
       <ErrorModal
         isOpen={errorState.isOpen}
         title={errorState.title}
