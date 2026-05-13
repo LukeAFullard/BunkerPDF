@@ -702,6 +702,34 @@ function App() {
     });
   };
 
+  const convertDocxToPdf = (bytes: Uint8Array): Promise<Uint8Array> => {
+    return new Promise((resolve, reject) => {
+      if (!pyodideWorkerRef.current)
+        return reject(new Error("Pyodide worker not ready"));
+      const jobId = crypto.randomUUID();
+      pyodideResolvers.current.set(jobId, { resolve, reject });
+      pyodideWorkerRef.current.postMessage({
+        type: "DOCX_TO_PDF",
+        jobId,
+        pdfBytes: bytes,
+      });
+    });
+  };
+
+  const convertPdfToDocx = (bytes: Uint8Array): Promise<Uint8Array> => {
+    return new Promise((resolve, reject) => {
+      if (!pyodideWorkerRef.current)
+        return reject(new Error("Pyodide worker not ready"));
+      const jobId = crypto.randomUUID();
+      pyodideResolvers.current.set(jobId, { resolve, reject });
+      pyodideWorkerRef.current.postMessage({
+        type: "PDF_TO_DOCX",
+        jobId,
+        pdfBytes: bytes,
+      });
+    });
+  };
+
   const editBookmarks = (
     bytes: Uint8Array,
     bookmarks: { level: number; title: string; page: number }[]
@@ -1167,6 +1195,77 @@ function App() {
       });
     } finally {
       if (!isCancelled) stopProcessing();
+    }
+  };
+
+  const handleDocxDropped = async (files: File[]) => {
+    for (const file of files) {
+      let isCancelled = false;
+      startProcessing(`Converting ${file.name} to PDF...`, true, () => {
+        isCancelled = true;
+        stopProcessing();
+      });
+
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const docxBytes = new Uint8Array(arrayBuffer);
+        const pdfBytes = await convertDocxToPdf(docxBytes);
+        if (isCancelled) return;
+
+        const standardBuffer = new Uint8Array(pdfBytes.length);
+        standardBuffer.set(pdfBytes);
+        const newName = file.name.replace(/\.docx$/i, ".pdf");
+        const newFile = new File([standardBuffer], newName, { type: "application/pdf" });
+
+        let pageCount;
+        let isEncrypted = false;
+        let isCorrupt = false;
+
+        try {
+          const { getPdfInfo } = await import('./lib/pdfProcessing');
+          const info = await getPdfInfo(newFile);
+          pageCount = info.pageCount;
+          isEncrypted = info.isEncrypted;
+        } catch (e: unknown) {
+          console.error(`Failed to parse converted PDF info`, e);
+          if (e instanceof Error && e.message === 'CORRUPT_PDF') {
+            isCorrupt = true;
+          }
+        }
+
+        if (isCorrupt) {
+          setErrorState({
+            isOpen: true,
+            title: "Conversion Error",
+            message: "The converted PDF appears to be corrupted.",
+          });
+          continue;
+        }
+
+        useFileStore.getState().addDocuments([
+          {
+            id: crypto.randomUUID(),
+            file: newFile,
+            name: newFile.name,
+            size: newFile.size,
+            lastModified: newFile.lastModified,
+            pageCount,
+            isEncrypted,
+            isCorrupt,
+          },
+        ]);
+        addLog("Convert to PDF", `Converted DOCX to PDF`, file.name);
+      } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+        if (isCancelled) return;
+        console.error(err);
+        setErrorState({
+          isOpen: true,
+          title: "Conversion Error",
+          message: err.message || "Failed to convert DOCX to PDF.",
+        });
+      } finally {
+        if (!isCancelled) stopProcessing();
+      }
     }
   };
 
@@ -1692,6 +1791,7 @@ function App() {
               onError={(title, message) =>
                 setErrorState({ isOpen: true, title, message })
               }
+              onDocxDropped={handleDocxDropped}
             />
           </div>
         </div>
@@ -1819,6 +1919,7 @@ function App() {
                       editBookmarks={editBookmarks}
                       redactPdf={redactPdf}
                       updateDocumentFile={updateDocumentFile}
+                      convertPdfToDocx={convertPdfToDocx}
                     />
                   </div>
                 );

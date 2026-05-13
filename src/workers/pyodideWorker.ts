@@ -20,7 +20,9 @@ export type PyodideWorkerMessage = {
     | "EXTRACT_IMAGES"
     | "EXTRACT_LINKS"
     | "EXTRACT_BOOKMARKS"
-    | "EDIT_BOOKMARKS";
+    | "EDIT_BOOKMARKS"
+    | "DOCX_TO_PDF"
+    | "PDF_TO_DOCX";
   code?: string;
   jobId?: string;
   pdfBytes?: Uint8Array;
@@ -638,6 +640,58 @@ doc.close()
         type: "RESULT",
         jobId,
         result: markdownData,
+      } satisfies PyodideWorkerResponse);
+    } else if (type === "DOCX_TO_PDF") {
+      if (!initPromise) initPromise = initializePyodide();
+      await initPromise;
+      if (!pyodide) throw new Error("Pyodide not initialized");
+      if (!pdfBytes) throw new Error("No DOCX bytes provided");
+
+      pyodide.globals.set("doc_bytes", pdfBytes);
+      const code = `
+import fitz
+doc_fitz = fitz.open(stream=bytes(doc_bytes), filetype="docx")
+pdf_bytes = doc_fitz.convert_to_pdf()
+doc_fitz.close()
+del doc_bytes
+bytes(pdf_bytes)
+      `;
+      const pdfBytesProxy = await pyodide.runPythonAsync(code);
+      const pdfBytesOut = pdfBytesProxy.toJs();
+      const resultBytes = new Uint8Array(pdfBytesOut);
+      self.postMessage({
+        type: "RESULT",
+        jobId,
+        result: resultBytes,
+      } satisfies PyodideWorkerResponse);
+    } else if (type === "PDF_TO_DOCX") {
+      if (!initPromise) initPromise = initializePyodide();
+      await initPromise;
+      if (!pyodide) throw new Error("Pyodide not initialized");
+      if (!pdfBytes) throw new Error("No PDF bytes provided");
+
+      pyodide.globals.set("doc_bytes", pdfBytes);
+      const code = `
+import fitz, docx, io
+pdf_doc = fitz.open(stream=bytes(doc_bytes), filetype="pdf")
+docx_doc = docx.Document()
+for page in pdf_doc:
+    text = page.get_text()
+    if text:
+        docx_doc.add_paragraph(text)
+pdf_doc.close()
+buf = io.BytesIO()
+docx_doc.save(buf)
+del doc_bytes
+bytes(buf.getvalue())
+      `;
+      const docxBytesProxy = await pyodide.runPythonAsync(code);
+      const docxBytesOut = docxBytesProxy.toJs();
+      const resultBytes = new Uint8Array(docxBytesOut);
+      self.postMessage({
+        type: "RESULT",
+        jobId,
+        result: resultBytes,
       } satisfies PyodideWorkerResponse);
     }
   } catch (error: any) { // eslint-disable-line @typescript-eslint/no-explicit-any

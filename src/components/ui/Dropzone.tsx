@@ -8,9 +8,10 @@ import { ErrorModal } from './ErrorModal';
 
 interface DropzoneProps {
   onError?: (title: string, message: React.ReactNode) => void;
+  onDocxDropped?: (files: File[]) => void;
 }
 
-export function Dropzone({ onError }: DropzoneProps = {}) {
+export function Dropzone({ onError, onDocxDropped }: DropzoneProps = {}) {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const addDocuments = useFileStore(state => state.addDocuments);
@@ -27,9 +28,19 @@ export function Dropzone({ onError }: DropzoneProps = {}) {
   const documents = useFileStore(state => state.documents);
 
   const handleFiles = async (files: File[]) => {
+    const docxFiles = files.filter(f => f.name.toLowerCase().endsWith('.docx') || f.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
     let pdfFiles = files.filter(f => f.type === 'application/pdf');
+
+    if (docxFiles.length > 0) {
+      if (onDocxDropped) {
+        onDocxDropped(docxFiles);
+      }
+    }
+
     if (pdfFiles.length === 0) {
-      handleError('Invalid File Type', 'Please upload PDF files only.');
+      if (docxFiles.length === 0) {
+        handleError('Invalid File Type', 'Please upload PDF or DOCX files only.');
+      }
       return;
     }
 
@@ -188,14 +199,14 @@ export function Dropzone({ onError }: DropzoneProps = {}) {
           type="file"
           ref={fileInputRef}
           onChange={handleFileInput}
-          accept="application/pdf"
+          accept="application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx"
           multiple
           className="hidden"
         />
         <div className="bg-blue-100 text-blue-600 p-6 rounded-full mb-6 group-hover:scale-110 transition-transform">
           <Upload size={48} strokeWidth={1.5} />
         </div>
-        <h2 className="text-2xl font-bold mb-2">Drop a PDF here to begin</h2>
+        <h2 className="text-2xl font-bold mb-2">Drop a PDF or DOCX here to begin</h2>
         <p className="text-gray-500 mb-6">or click to browse files</p>
 
         <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 px-4 py-2 rounded-full font-medium">

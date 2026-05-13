@@ -43,6 +43,7 @@ interface DocumentCardProps {
   extractBookmarks?: (bytes: Uint8Array) => Promise<string>;
   editBookmarks?: (bytes: Uint8Array, bookmarks: Bookmark[]) => Promise<Uint8Array>;
   redactPdf: (bytes: Uint8Array, redactions: string[]) => Promise<Uint8Array>;
+  convertPdfToDocx?: (bytes: Uint8Array) => Promise<Uint8Array>;
   updateDocumentFile: (
     id: string,
     newFile: File,
@@ -84,6 +85,7 @@ export function DocumentCard({
   editBookmarks,
   redactPdf,
   updateDocumentFile,
+  convertPdfToDocx,
 }: DocumentCardProps) {
   const isMobile = useMobile();
   const { complexityMode, setComplexityMode, activeTool, setActiveTool } = useUIStore();
@@ -317,6 +319,48 @@ export function DocumentCard({
         isOpen: true,
         title: "Extraction Error",
         message: err.message || "An error occurred while extracting markdown.",
+      });
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
+  };
+
+  const handleExportDocx = async () => {
+    if (!convertPdfToDocx) return;
+    let isCancelled = false;
+    startProcessing("Exporting to DOCX...", true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
+    try {
+      const buffer = await doc.file.arrayBuffer();
+      const pdfBytes = new Uint8Array(buffer);
+      const docxBytes = await convertPdfToDocx(pdfBytes);
+      if (isCancelled) return;
+
+      const standardBuffer = new Uint8Array(docxBytes.length);
+      standardBuffer.set(docxBytes);
+
+      const blob = new Blob([standardBuffer], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = doc.name.replace(/\.pdf$/i, ".docx");
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      addLog("Export DOCX", "Exported document to DOCX format.", doc.name);
+      useUIStore.getState().showFeedbackPrompt("Export DOCX");
+    } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+      if (isCancelled) return;
+      console.error(err);
+      setErrorState({
+        isOpen: true,
+        title: "Export Error",
+        message: err.message || "An error occurred while exporting DOCX.",
       });
     } finally {
       if (!isCancelled) stopProcessing();
@@ -655,6 +699,7 @@ items={[
             (!isMobile ? { label: "Extract Tables (Excel) (~10s)", onClick: handleExtractTables } : null),
             (!isMobile ? { label: "Extract Notes (MD) (~5s)", onClick: handleExtractMarkdown } : null),
             (!isMobile ? { label: "Extract Web (HTML) (~5s)", onClick: handleExtractHtml } : null),
+            (!isMobile ? { label: "Export DOCX (~10s)", onClick: handleExportDocx } : null),
             (!isMobile ? { label: "Extract Links (CSV) (~2s)", onClick: handleExtractLinks } : null),
             { label: "Optimize (Compress) (~5s)", onClick: () => onOptimize?.(doc) },
             { label: "Delete Pages (~1s)", onClick: () => onDeletePages?.(doc) },
@@ -809,6 +854,14 @@ items={[
                 title="Extract document to HTML format"
               >
                 Extract Web
+              </button>
+              <button
+                onClick={handleExportDocx}
+                disabled={isProcessing}
+                className="text-blue-600 hover:text-blue-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded px-1"
+                title="Export document to DOCX format"
+              >
+                Export DOCX
               </button>
               <button
                 onClick={handleExtractImages}
