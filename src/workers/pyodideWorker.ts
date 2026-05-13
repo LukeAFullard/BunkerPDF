@@ -16,6 +16,7 @@ export type PyodideWorkerMessage = {
     | "EXTRACT_TABLES"
     | "CSV_TO_EXCEL"
     | "EXTRACT_MARKDOWN"
+    | "EXTRACT_HTML"
     | "EXTRACT_IMAGES"
     | "EXTRACT_LINKS"
     | "EXTRACT_BOOKMARKS"
@@ -552,6 +553,33 @@ json.dumps(links)
         type: "RESULT",
         jobId,
         result: jsonLinks,
+      } satisfies PyodideWorkerResponse);
+
+    } else if (type === "EXTRACT_HTML") {
+      if (!initPromise) initPromise = initializePyodide();
+      await initPromise;
+      if (!pyodide) throw new Error("Pyodide not initialized");
+      if (!pdfBytes) throw new Error("No PDF bytes provided");
+
+      pyodide.globals.set("doc_bytes", pdfBytes);
+      const htmlCode = `
+import fitz
+
+doc = fitz.open(stream=bytes(doc_bytes), filetype="pdf")
+html_lines = []
+
+for page in doc:
+    html_lines.append(page.get_text("html"))
+
+doc.close()
+"\\n<hr>\\n".join(html_lines)
+      `;
+      const htmlData = await pyodide.runPythonAsync(htmlCode);
+
+      self.postMessage({
+        type: "RESULT",
+        jobId,
+        result: htmlData,
       } satisfies PyodideWorkerResponse);
 
     } else if (type === "EXTRACT_MARKDOWN") {

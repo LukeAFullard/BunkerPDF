@@ -114,7 +114,7 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 * [x] **Workflow Recipes:** Allow users to save tool sequences (e.g., "OCR → Extract tables → Redact PII → Compress") locally to IndexedDB. One click applies a recipe. Exportable as JSON or shareable via URL to drive organic growth.
 * [x] **Legal Utilities:** Implement **Bates Numbering** for legal professionals.
 * [x] **Growth & Engagement UX:** Add deep-link shareable tool URLs (`/#tool=redact`), output quality feedback prompts (👍/👎 post-download), and early PWA install prompts for offline usage.
-* [ ] **HTML/Markdown Export:** Extract raw text and headers into developer-friendly formats.
+* [x] **HTML/Markdown Export:** Extract raw text and headers into developer-friendly formats.
 * [ ] **The Office Bridge:** Implement local PDF to DOCX and DOCX to PDF conversion (using fallback to `pymupdf` + `python-docx` if needed based on Phase 1 spike).
 * [ ] **Batch Operations:** Allow users to process a folder of PDFs at once (split all, redact all, etc).
 * [ ] **Digital Signature Verification:** Enable checking signature validity, critical for legal/enterprise workflows.
