@@ -37,6 +37,7 @@ interface DocumentCardProps {
   extractEntities: (text: string) => Promise<string[]>;
   extractTables?: (docFile: File) => Promise<Uint8Array>;
   extractMarkdown?: (bytes: Uint8Array) => Promise<string>;
+  extractHtml?: (bytes: Uint8Array) => Promise<string>;
   extractImages?: (bytes: Uint8Array) => Promise<Uint8Array>;
   extractLinks?: (bytes: Uint8Array) => Promise<string>;
   extractBookmarks?: (bytes: Uint8Array) => Promise<string>;
@@ -76,6 +77,7 @@ export function DocumentCard({
   extractEntities,
   extractTables,
   extractMarkdown,
+  extractHtml,
   extractImages,
   extractLinks,
   extractBookmarks,
@@ -315,6 +317,45 @@ export function DocumentCard({
         isOpen: true,
         title: "Extraction Error",
         message: err.message || "An error occurred while extracting markdown.",
+      });
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
+  };
+
+  const handleExtractHtml = async () => {
+    if (!extractHtml) return;
+    let isCancelled = false;
+    startProcessing("Extracting HTML...", true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
+    try {
+      const buffer = await doc.file.arrayBuffer();
+      const pdfBytes = new Uint8Array(buffer);
+      const html = await extractHtml(pdfBytes);
+      if (isCancelled) return;
+
+      const blob = new Blob([html], { type: "text/html" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = doc.name.replace(/\.pdf$/i, ".html");
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      addLog("Extract HTML", "Extracted document to HTML format.", doc.name);
+      useUIStore.getState().showFeedbackPrompt("Extract Web");
+    } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+      if (isCancelled) return;
+      console.error(err);
+      setErrorState({
+        isOpen: true,
+        title: "Extraction Error",
+        message: err.message || "An error occurred while extracting HTML.",
       });
     } finally {
       if (!isCancelled) stopProcessing();
@@ -613,6 +654,7 @@ items={[
             { label: "Sign Document (~2s)", onClick: () => onSign?.(doc) },
             (!isMobile ? { label: "Extract Tables (Excel) (~10s)", onClick: handleExtractTables } : null),
             (!isMobile ? { label: "Extract Notes (MD) (~5s)", onClick: handleExtractMarkdown } : null),
+            (!isMobile ? { label: "Extract Web (HTML) (~5s)", onClick: handleExtractHtml } : null),
             (!isMobile ? { label: "Extract Links (CSV) (~2s)", onClick: handleExtractLinks } : null),
             { label: "Optimize (Compress) (~5s)", onClick: () => onOptimize?.(doc) },
             { label: "Delete Pages (~1s)", onClick: () => onDeletePages?.(doc) },
@@ -759,6 +801,14 @@ items={[
                 title="Extract document to Markdown notes"
               >
                 Extract Notes
+              </button>
+              <button
+                onClick={handleExtractHtml}
+                disabled={isProcessing}
+                className="text-orange-600 hover:text-orange-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 rounded px-1"
+                title="Extract document to HTML format"
+              >
+                Extract Web
               </button>
               <button
                 onClick={handleExtractImages}
