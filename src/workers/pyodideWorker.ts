@@ -17,7 +17,9 @@ export type PyodideWorkerMessage = {
     | "CSV_TO_EXCEL"
     | "EXTRACT_MARKDOWN"
     | "EXTRACT_IMAGES"
-    | "EXTRACT_LINKS";
+    | "EXTRACT_LINKS"
+    | "EXTRACT_BOOKMARKS"
+    | "EDIT_BOOKMARKS";
   code?: string;
   jobId?: string;
   pdfBytes?: Uint8Array;
@@ -25,6 +27,7 @@ export type PyodideWorkerMessage = {
   highlights?: string[];
   password?: string;
   csvData?: string;
+  bookmarks?: { level: number; title: string; page: number }[];
 };
 
 export type PyodideWorkerResponse = {
@@ -453,7 +456,69 @@ zip_bytes
         result: zipBytes,
       } satisfies PyodideWorkerResponse);
 
-} else if (type === "EXTRACT_LINKS") {
+} else if (type === "EXTRACT_BOOKMARKS") {
+      if (!initPromise) initPromise = initializePyodide();
+      await initPromise;
+      if (!pyodide) throw new Error("Pyodide not initialized");
+      if (!pdfBytes) throw new Error("No PDF bytes provided");
+
+      pyodide.globals.set("doc_bytes", pdfBytes);
+      const extractBookmarksCode = `
+import fitz
+import json
+
+doc = fitz.open(stream=bytes(doc_bytes), filetype="pdf")
+toc = doc.get_toc()
+doc.close()
+del doc, doc_bytes
+
+formatted_toc = [{"level": item[0], "title": item[1], "page": item[2]} for item in toc]
+json.dumps(formatted_toc)
+`;
+      const jsonBookmarks = await pyodide.runPythonAsync(extractBookmarksCode);
+
+      self.postMessage({
+        type: "RESULT",
+        jobId,
+        result: jsonBookmarks,
+      } satisfies PyodideWorkerResponse);
+
+    } else if (type === "EDIT_BOOKMARKS") {
+      if (!initPromise) initPromise = initializePyodide();
+      await initPromise;
+      if (!pyodide) throw new Error("Pyodide not initialized");
+      if (!pdfBytes) throw new Error("No PDF bytes provided");
+
+      const bookmarksMessage = e.data.bookmarks || [];
+      const toc = bookmarksMessage.map(b => [b.level, b.title, b.page]);
+
+      pyodide.globals.set("doc_bytes", pdfBytes);
+      pyodide.globals.set("toc_data", toc);
+
+      const editBookmarksCode = `
+import fitz
+
+doc = fitz.open(stream=bytes(doc_bytes), filetype="pdf")
+# Convert JS proxy list to python list of lists
+py_toc = [[item[0], item[1], item[2]] for item in toc_data]
+doc.set_toc(py_toc)
+
+out_bytes = doc.write()
+doc.close()
+del doc, doc_bytes, toc_data
+out_bytes
+`;
+      const outBytesProxy = await pyodide.runPythonAsync(editBookmarksCode);
+      const outBytes = outBytesProxy.toJs();
+      outBytesProxy.destroy();
+
+      self.postMessage({
+        type: "RESULT",
+        jobId,
+        result: outBytes,
+      } satisfies PyodideWorkerResponse);
+
+    } else if (type === "EXTRACT_LINKS") {
       if (!initPromise) initPromise = initializePyodide();
       await initPromise;
       if (!pyodide) throw new Error("Pyodide not initialized");
