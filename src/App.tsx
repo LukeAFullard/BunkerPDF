@@ -17,7 +17,7 @@ import {
   watermarkPdf,
   optimizePdf,
   deletePages,
-  reorderPages, addPageNumbers, resizePages,
+  reorderPages, addPageNumbers, addBatesNumbers, resizePages,
   flattenForms,
   crossDocumentReorderPages,
 } from "./lib/engineA";
@@ -248,6 +248,7 @@ function App() {
     placeholder: string;
     defaultValue?: string;
     onConfirm: (val: string) => void;
+    onCancel?: () => void;
   }>({
     isOpen: false,
     title: "",
@@ -1390,6 +1391,66 @@ function App() {
   };
 
 
+  const handleBatesNumbering = (doc: PDFDocument) => {
+    setInputState({
+      isOpen: true,
+      title: "Bates Numbering",
+      message: "Enter Prefix, Start Number, Padding, Position (e.g. 'EXHIBIT-, 1, 6, bottom-right'). Defaults to '1, 6, bottom-right'.",
+      placeholder: "EXHIBIT-, 1, 6, bottom-right",
+      defaultValue: ", 1, 6, bottom-right",
+      onConfirm: async (text) => {
+        setInputState((prev) => ({ ...prev, isOpen: false }));
+        if (!text) return;
+
+        let prefix = "";
+        let startNumber = 1;
+        let padding = 6;
+        let position = "bottom-right";
+
+        const parts = text.split(",").map(p => p.trim());
+        if (parts.length > 0 && parts[0] !== "") prefix = parts[0];
+        if (parts.length > 1 && !isNaN(parseInt(parts[1]))) startNumber = parseInt(parts[1]);
+        if (parts.length > 2 && !isNaN(parseInt(parts[2]))) padding = parseInt(parts[2]);
+        if (parts.length > 3 && parts[3] !== "") position = parts[3];
+
+        let isCancelled = false;
+        startProcessing("Adding Bates numbers...", true, () => {
+          isCancelled = true;
+          stopProcessing();
+        });
+
+        try {
+          const numberedBytes = await addBatesNumbers(doc.file, prefix, startNumber, padding, position);
+          if (isCancelled) return;
+
+          const standardBuffer = new Uint8Array(numberedBytes.length);
+          standardBuffer.set(numberedBytes);
+          const newFile = new File([standardBuffer], doc.name, {
+            type: "application/pdf",
+          });
+
+          await updateDocumentFile(doc.id, newFile);
+          addLog("Bates Numbering", `Added Bates numbers: ${prefix} at ${position}`, doc.name);
+
+          if (!isCancelled) {
+            stopProcessing();
+          }
+        } catch (error) {
+          console.error("Bates numbering error:", error);
+          if (!isCancelled) {
+            stopProcessing();
+            setErrorState({
+              isOpen: true,
+              title: "Bates Numbering Error",
+              message: "An error occurred while adding Bates numbers.",
+            });
+          }
+        }
+      },
+      onCancel: () => setInputState((prev) => ({ ...prev, isOpen: false })),
+    });
+  };
+
   const handleAddPageNumbers = (doc: PDFDocument) => {
     setInputState({
       isOpen: true,
@@ -1563,7 +1624,13 @@ function App() {
         placeholder={inputState.placeholder}
         defaultValue={inputState.defaultValue}
         onConfirm={inputState.onConfirm}
-        onCancel={() => setInputState((prev) => ({ ...prev, isOpen: false }))}
+        onCancel={() => {
+          if (inputState.onCancel) {
+            inputState.onCancel();
+          } else {
+            setInputState((prev) => ({ ...prev, isOpen: false }));
+          }
+        }}
       />
       <ErrorModal
         isOpen={errorState.isOpen}
@@ -1705,6 +1772,7 @@ function App() {
                       onDeletePages={handleDeletePages}
                       onReorderPages={handleReorderPages}
                       onAddPageNumbers={handleAddPageNumbers}
+                      onBatesNumbering={handleBatesNumbering}
                       onResizePages={handleResizePages}
                       onEncrypt={handleEncrypt}
                       onSanitize={handleSanitize}

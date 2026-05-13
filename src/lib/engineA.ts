@@ -220,6 +220,68 @@ export async function addPageNumbers(file: File, position: string = 'bottom-righ
   return await pdfDoc.save();
 }
 
+export async function addBatesNumbers(file: File, prefix: string = '', startNumber: number = 1, padding: number = 6, position: string = 'bottom-right'): Promise<Uint8Array> {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+
+  const pages = pdfDoc.getPages();
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+  for (let i = 0; i < pages.length; i++) {
+    const page = pages[i];
+    const { width, height } = page.getSize();
+    const currentNumber = (startNumber + i).toString().padStart(padding, '0');
+    const text = `${prefix}${currentNumber}`;
+
+    const fontSize = 12;
+    const textWidth = font.widthOfTextAtSize(text, fontSize);
+
+    let x;
+    let y;
+    const margin = 30;
+
+    switch (position) {
+      case 'bottom-right':
+        x = width - textWidth - margin;
+        y = margin;
+        break;
+      case 'bottom-center':
+        x = (width / 2) - (textWidth / 2);
+        y = margin;
+        break;
+      case 'bottom-left':
+        x = margin;
+        y = margin;
+        break;
+      case 'top-right':
+        x = width - textWidth - margin;
+        y = height - margin - fontSize;
+        break;
+      case 'top-center':
+        x = (width / 2) - (textWidth / 2);
+        y = height - margin - fontSize;
+        break;
+      case 'top-left':
+        x = margin;
+        y = height - margin - fontSize;
+        break;
+      default:
+        x = width - textWidth - margin;
+        y = margin;
+    }
+
+    page.drawText(text, {
+      x,
+      y,
+      size: fontSize,
+      font: font,
+      color: rgb(0, 0, 0),
+    });
+  }
+
+  return await pdfDoc.save();
+}
+
 export async function resizePages(file: File, targetSizeStr: string = 'A4'): Promise<Uint8Array> {
   const { PageSizes } = await import('pdf-lib');
   const arrayBuffer = await file.arrayBuffer();

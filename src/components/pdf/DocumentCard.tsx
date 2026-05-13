@@ -23,6 +23,7 @@ interface DocumentCardProps {
   onDeletePages?: (doc: PDFDocument) => void;
   onReorderPages?: (doc: PDFDocument) => void;
   onAddPageNumbers?: (doc: PDFDocument) => void;
+  onBatesNumbering?: (doc: PDFDocument) => void;
   onResizePages?: (doc: PDFDocument) => void;
   onEncrypt?: (doc: PDFDocument) => void;
   onSanitize?: (doc: PDFDocument) => void;
@@ -59,6 +60,7 @@ export function DocumentCard({
   onDeletePages,
   onReorderPages,
   onAddPageNumbers,
+  onBatesNumbering,
   onResizePages,
   onEncrypt,
   onSanitize,
@@ -550,6 +552,7 @@ items={[
             { label: "Delete Pages (~1s)", onClick: () => onDeletePages?.(doc) },
             { label: "Reorder Pages (~1s)", onClick: () => onReorderPages?.(doc) },
             { label: "Add Page Numbers (~2s)", onClick: () => onAddPageNumbers?.(doc) },
+            { label: "Bates Numbering (~2s)", onClick: () => onBatesNumbering?.(doc) },
             { label: "Resize to A4/Letter (~2s)", onClick: () => onResizePages?.(doc) },
             (!isMobile ? { label: "Edit Bookmarks/Outline (~2s)", onClick: handleEditBookmarks } : null),
             (!isMobile ? { label: "Protect (Password) (~2s)", onClick: () => onEncrypt?.(doc) } : null),
