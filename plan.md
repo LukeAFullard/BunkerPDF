@@ -111,7 +111,7 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 * [x] **Table Extraction (Sequential Fallback):** Default to `pdfplumber`. If the user is unsatisfied, provide a "Try the other engine" button to re-run with `pymupdf`. If automated extraction fails entirely, surface a manual bounding-box UI in the `pdf.js` viewer as the final fallback. Outputs to clean CSV or **Excel/XLSX**.
 * [x] **High-Value Utilities:** Add **Bookmark/Outline Editor** [x], **Image Extractor** (ZIP download) [x], **Hyperlink Extractor** [x], **Crop/Resize Pages** (e.g., to A4/Letter) [x], **Custom Page Numbering** [x], and **"Fast Web View" linearization** (Dropped - no longer supported by PyMuPDF).
 * [x] **Cross-Document Page Reordering:** When multiple files are open, display thumbnail rails side-by-side to allow dragging pages directly between documents.
-* [ ] **Workflow Recipes:** Allow users to save tool sequences (e.g., "OCR → Extract tables → Redact PII → Compress") locally to IndexedDB. One click applies a recipe. Exportable as JSON or shareable via URL to drive organic growth.
+* [x] **Workflow Recipes:** Allow users to save tool sequences (e.g., "OCR → Extract tables → Redact PII → Compress") locally to IndexedDB. One click applies a recipe. Exportable as JSON or shareable via URL to drive organic growth.
 * [ ] **Legal Utilities:** Implement **Bates Numbering** for legal professionals.
 * [ ] **Growth & Engagement UX:** Add deep-link shareable tool URLs (`/#tool=redact`), output quality feedback prompts (👍/👎 post-download), and early PWA install prompts for offline usage.
 * [ ] **HTML/Markdown Export:** Extract raw text and headers into developer-friendly formats.

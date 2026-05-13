@@ -30,6 +30,8 @@ import { generateSpeech } from "./lib/ttsEngine";
 import { createWavFile } from "./lib/audioUtils";
 import { DocumentCard } from "./components/pdf/DocumentCard";
 import { FileTabs } from "./components/ui/FileTabs";
+import { RecipeMenu } from "./components/ui/RecipeMenu";
+import type { WorkflowRecipe } from "./store/recipeStore";
 import { ErrorModal } from "./components/ui/ErrorModal";
 import { InputModal } from "./components/ui/InputModal";
 import { ProcessingModal } from "./components/ui/ProcessingModal";
@@ -52,6 +54,176 @@ function App() {
   const removeDocument = useFileStore((state) => state.removeDocument);
   const updateDocumentFile = useFileStore((state) => state.updateDocumentFile);
   const addDocuments = useFileStore((state) => state.addDocuments);
+  const {
+    startProcessing,
+    stopProcessing,
+    isActive: isGlobalProcessing,
+  } = useProcessingStore();
+
+  const handleApplyRecipe = async (recipe: WorkflowRecipe) => {
+    const activeDoc = documents.find((doc) => doc.id === activeDocumentId);
+    if (!activeDoc) return;
+
+    // Use current state to fetch the active doc safely for sequential steps
+    let currentDoc = activeDoc;
+    let isCancelled = false;
+
+    startProcessing(`Running recipe: ${recipe.name}`, true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
+    try {
+      for (const step of recipe.steps) {
+        if (isCancelled) break;
+        useProcessingStore.getState().updateStage(`Executing: ${step}`);
+
+        const docFromState = useFileStore.getState().documents.find(d => d.id === currentDoc.id);
+        if (!docFromState) throw new Error("Document lost during processing");
+        currentDoc = docFromState;
+
+        // Perform the step
+        if (step === 'optimize') {
+          const optimizedBytes = await optimizePdf(currentDoc.file);
+          if (isCancelled) break;
+          const standardBuffer = new Uint8Array(optimizedBytes.length);
+          standardBuffer.set(optimizedBytes);
+          const newFile = new File([standardBuffer], currentDoc.name, { type: "application/pdf" });
+          useFileStore.getState().updateDocumentFile(currentDoc.id, newFile);
+          addLog("Recipe", `Applied Optimize`, currentDoc.name);
+        } else if (step === 'flatten') {
+          const flattenedBytes = await flattenForms(currentDoc.file);
+          if (isCancelled) break;
+          const standardBuffer = new Uint8Array(flattenedBytes.length);
+          standardBuffer.set(flattenedBytes);
+          const newFile = new File([standardBuffer], currentDoc.name, { type: "application/pdf" });
+          useFileStore.getState().updateDocumentFile(currentDoc.id, newFile);
+          addLog("Recipe", `Applied Flatten`, currentDoc.name);
+        } else if (step === 'sanitize') {
+          const arrayBuffer = await currentDoc.file.arrayBuffer();
+          const { bytes } = await sanitizePdf(new Uint8Array(arrayBuffer));
+          if (isCancelled) break;
+          const standardBuffer = new Uint8Array(bytes.length);
+          standardBuffer.set(bytes);
+          const newFile = new File([standardBuffer], currentDoc.name, { type: "application/pdf" });
+          useFileStore.getState().updateDocumentFile(currentDoc.id, newFile);
+          addLog("Recipe", `Applied Sanitize`, currentDoc.name);
+        } else if (step === 'ocr') {
+          const abortController = new AbortController();
+          const newFile = await ocrPdf(currentDoc.file, (stage) => {
+             if (!isCancelled) useProcessingStore.getState().updateStage(`OCR: ${stage}`);
+          }, abortController.signal);
+          if (isCancelled) {
+             abortController.abort();
+             break;
+          }
+          useFileStore.getState().updateDocumentFile(currentDoc.id, newFile);
+          addLog("Recipe", `Applied OCR`, currentDoc.name);
+        } else if (step === 'redact') {
+          useProcessingStore.getState().updateStage(`Redacting (Auto PII)...`);
+          const arrayBuffer = await currentDoc.file.arrayBuffer();
+          const pdfBytes = new Uint8Array(arrayBuffer);
+
+          if (!extractText || !extractEntities || !redactPdf) {
+             throw new Error("Missing functions for auto redaction");
+          }
+
+          const text = await extractText(pdfBytes);
+          if (isCancelled) break;
+          const entities = await extractEntities(text);
+          if (isCancelled) break;
+
+          if (entities && entities.length > 0) {
+             const redactedBytes = await redactPdf(pdfBytes, entities);
+             if (isCancelled) break;
+             const standardBuffer = new Uint8Array(redactedBytes.length);
+             standardBuffer.set(redactedBytes);
+             const newFile = new File([standardBuffer], currentDoc.name, { type: "application/pdf" });
+             useFileStore.getState().updateDocumentFile(currentDoc.id, newFile);
+             addLog("Recipe", `Auto Redacted ${entities.length} PII items`, currentDoc.name);
+          } else {
+             addLog("Recipe", `No PII found for redaction`, currentDoc.name);
+          }
+        } else if (step === 'extract-tables') {
+           if (extractTables) {
+             const excelBytes = await extractTables(currentDoc.file);
+             if (isCancelled) break;
+             const standardBuffer = new Uint8Array(excelBytes.length);
+             standardBuffer.set(excelBytes);
+             const blob = new Blob([standardBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+             const url = URL.createObjectURL(blob);
+             const a = document.createElement("a");
+             a.href = url;
+             a.download = currentDoc.name.replace(/\.pdf$/i, "-tables.xlsx");
+             document.body.appendChild(a);
+             a.click();
+             document.body.removeChild(a);
+             URL.revokeObjectURL(url);
+             addLog("Recipe", `Extracted Tables`, currentDoc.name);
+           }
+        } else if (step === 'extract-images') {
+           if (extractImages) {
+             const pdfBytes = await currentDoc.file.arrayBuffer();
+             const result = await extractImages(new Uint8Array(pdfBytes));
+             if (isCancelled) break;
+             const standardBuffer = new Uint8Array(result.length);
+             standardBuffer.set(result);
+             const blob = new Blob([standardBuffer], { type: "application/zip" });
+             if (blob.size > 22) {
+               const url = URL.createObjectURL(blob);
+               const a = document.createElement("a");
+               a.href = url;
+               a.download = currentDoc.name.replace(/\.pdf$/i, "-images.zip");
+               document.body.appendChild(a);
+               a.click();
+               document.body.removeChild(a);
+               URL.revokeObjectURL(url);
+             }
+             addLog("Recipe", `Extracted Images`, currentDoc.name);
+           }
+        } else if (step === 'extract-text') {
+           if (extractText) {
+             const buffer = await currentDoc.file.arrayBuffer();
+             const text = await extractText(new Uint8Array(buffer));
+             if (isCancelled) break;
+             const blob = new Blob([text], { type: "text/plain" });
+             const url = URL.createObjectURL(blob);
+             const a = document.createElement("a");
+             a.href = url;
+             a.download = currentDoc.name.replace(/\.pdf$/i, "-text.txt");
+             document.body.appendChild(a);
+             a.click();
+             document.body.removeChild(a);
+             URL.revokeObjectURL(url);
+             addLog("Recipe", `Extracted Text`, currentDoc.name);
+           }
+        } else {
+          // Other steps need UI interaction usually (like manual Redact bounding boxes or Merge files)
+          // We can skip or show a notice
+          console.warn(`Step ${step} requires manual UI interaction or is not supported in recipes yet.`);
+        }
+      }
+
+      if (!isCancelled) {
+        setErrorState({
+          isOpen: true,
+          title: "Recipe Complete",
+          message: `Successfully executed ${recipe.name}.`
+        });
+      }
+    } catch (err: unknown) {
+      if (!isCancelled) {
+        console.error("Recipe error:", err);
+        setErrorState({
+          isOpen: true,
+          title: "Recipe Error",
+          message: err instanceof Error ? err.message : "Failed to execute recipe."
+        });
+      }
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
+  };
 
   const clearAll = useFileStore((state) => state.clearAll);
   const [errorState, setErrorState] = useState<{
@@ -84,11 +256,6 @@ function App() {
     onConfirm: () => {},
   });
 
-  const {
-    startProcessing,
-    stopProcessing,
-    isActive: isGlobalProcessing,
-  } = useProcessingStore();
   const [isCrossReorderOpen, setIsCrossReorderOpen] = useState(false);
 
   // Promise resolvers mapping
@@ -1475,7 +1642,14 @@ function App() {
           </div>
 
           <div className="flex flex-col">
-            <FileTabs />
+            <div className="flex justify-between items-center border-b border-gray-200">
+              <div className="flex-1 overflow-hidden">
+                <FileTabs />
+              </div>
+              <div className="px-2 border-l border-gray-200 h-full flex items-center bg-gray-50/50">
+                <RecipeMenu onApplyRecipe={handleApplyRecipe} />
+              </div>
+            </div>
 
             <div className="mt-4 flex justify-center">
               {(() => {
