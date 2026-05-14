@@ -328,29 +328,26 @@ export async function crossDocumentReorderPages(
     loadedDocs[docId] = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
   }
 
-  // Build new documents based on new structures
+// Build new documents based on new structures
   for (const docId of Object.keys(newStructures)) {
     const pagesInfo = newStructures[docId];
     if (pagesInfo.length === 0) continue; // Skip if no pages are left in this doc
 
     const newDoc = await PDFDocument.create();
 
-    // Group page indices by source document to optimize copyPages and prevent resource duplication
+    // Group page indices by source document to optimize copyPages
     const sourceDocToIndices: Record<string, number[]> = {};
     for (const pageInfo of pagesInfo) {
       if (!sourceDocToIndices[pageInfo.docId]) {
         sourceDocToIndices[pageInfo.docId] = [];
       }
-      // Only add unique indices to avoid unnecessary copying overhead.
-      // PDF-lib supports mapping multiple copied instances if needed.
       const index = pageInfo.originalPageNumber - 1;
-      if (!sourceDocToIndices[pageInfo.docId].includes(index)) {
-         sourceDocToIndices[pageInfo.docId].push(index);
-      }
+      // We must copy the page each time it is used to avoid identical reference issues in pdf-lib
+      sourceDocToIndices[pageInfo.docId].push(index);
     }
 
     // Perform batched copy for each source document
-    const copiedPagesMap: Record<string, Record<number, any>> = {}; // eslint-disable-line @typescript-eslint/no-explicit-any
+    const copiedPagesMap: Record<string, Record<number, any[]>> = {}; // eslint-disable-line @typescript-eslint/no-explicit-any
     for (const sourceDocId of Object.keys(sourceDocToIndices)) {
       const sourceDoc = loadedDocs[sourceDocId];
       const indicesToCopy = sourceDocToIndices[sourceDocId];
@@ -358,7 +355,11 @@ export async function crossDocumentReorderPages(
         const copiedPages = await newDoc.copyPages(sourceDoc, indicesToCopy);
         copiedPagesMap[sourceDocId] = {};
         for (let i = 0; i < indicesToCopy.length; i++) {
-           copiedPagesMap[sourceDocId][indicesToCopy[i]] = copiedPages[i];
+           const index = indicesToCopy[i];
+           if (!copiedPagesMap[sourceDocId][index]) {
+             copiedPagesMap[sourceDocId][index] = [];
+           }
+           copiedPagesMap[sourceDocId][index].push(copiedPages[i]);
         }
       }
     }
@@ -368,9 +369,8 @@ export async function crossDocumentReorderPages(
       const sourceDocId = pageInfo.docId;
       const index = pageInfo.originalPageNumber - 1;
 
-      if (copiedPagesMap[sourceDocId] && copiedPagesMap[sourceDocId][index]) {
-         // PDF-lib allows adding the same copied page instance multiple times if needed in the structure
-         newDoc.addPage(copiedPagesMap[sourceDocId][index]);
+      if (copiedPagesMap[sourceDocId] && copiedPagesMap[sourceDocId][index] && copiedPagesMap[sourceDocId][index].length > 0) {
+         newDoc.addPage(copiedPagesMap[sourceDocId][index].shift());
       }
     }
 

@@ -771,7 +771,7 @@ items={[
             (!isMobile ? { label: "Verify Signatures (~2s)", onClick: () => onVerifySignature?.(doc) } : null),
             (!isMobile ? { label: "Read Aloud (TTS) (~15s/pg)", onClick: () => onReadAloud?.(doc) } : null),
             { variant: "separator" },
-            { label: "Share (URL)", onClick: () => onShare?.(doc) },
+            { label: "Share (URL, <64KB only)", onClick: () => onShare?.(doc) },
             {
               label: "Remove File",
               variant: "danger",
