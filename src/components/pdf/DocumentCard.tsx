@@ -45,6 +45,7 @@ interface DocumentCardProps {
   editBookmarks?: (bytes: Uint8Array, bookmarks: Bookmark[]) => Promise<Uint8Array>;
   redactPdf: (bytes: Uint8Array, redactions: string[]) => Promise<Uint8Array>;
   convertPdfToDocx?: (bytes: Uint8Array) => Promise<Uint8Array>;
+  exportPdfToDark?: (bytes: Uint8Array) => Promise<Uint8Array>;
   updateDocumentFile: (
     id: string,
     newFile: File,
@@ -88,6 +89,7 @@ export function DocumentCard({
   redactPdf,
   updateDocumentFile,
   convertPdfToDocx,
+  exportPdfToDark,
 }: DocumentCardProps) {
   const isMobile = useMobile();
   const { complexityMode, setComplexityMode, activeTool, setActiveTool } = useUIStore();
@@ -321,6 +323,49 @@ export function DocumentCard({
         isOpen: true,
         title: "Extraction Error",
         message: err.message || "An error occurred while extracting markdown.",
+      });
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
+  };
+
+
+  const handleExportDark = async () => {
+    if (!exportPdfToDark) return;
+    let isCancelled = false;
+    startProcessing("Exporting to True Dark PDF...", true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
+    try {
+      const buffer = await doc.file.arrayBuffer();
+      const pdfBytes = new Uint8Array(buffer);
+      const newPdfBytes = await exportPdfToDark(pdfBytes);
+      if (isCancelled) return;
+
+      const standardBuffer = new Uint8Array(newPdfBytes.length);
+      standardBuffer.set(newPdfBytes);
+
+      const blob = new Blob([standardBuffer], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = doc.name.replace(/\.pdf$/i, "-dark.pdf");
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      addLog("Export Dark", "Exported document to True Dark Mode.", doc.name);
+      useUIStore.getState().showFeedbackPrompt("Export Dark");
+    } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+      if (isCancelled) return;
+      console.error(err);
+      setErrorState({
+        isOpen: true,
+        title: "Export Error",
+        message: err.message || "An error occurred while exporting Dark PDF.",
       });
     } finally {
       if (!isCancelled) stopProcessing();
@@ -702,6 +747,7 @@ items={[
             (!isMobile ? { label: "Extract Notes (MD) (~5s)", onClick: handleExtractMarkdown } : null),
             (!isMobile ? { label: "Extract Web (HTML) (~5s)", onClick: handleExtractHtml } : null),
             (!isMobile ? { label: "Export DOCX (~10s)", onClick: handleExportDocx } : null),
+            (!isMobile ? { label: "Export True Dark (~10s)", onClick: handleExportDark } : null),
             (!isMobile ? { label: "Extract Links (CSV) (~2s)", onClick: handleExtractLinks } : null),
             { label: "Optimize (Compress) (~5s)", onClick: () => onOptimize?.(doc) },
             { label: "Delete Pages (~1s)", onClick: () => onDeletePages?.(doc) },
@@ -857,6 +903,14 @@ items={[
                 title="Extract document to HTML format"
               >
                 Extract Web
+              </button>
+              <button
+                onClick={handleExportDark}
+                disabled={isProcessing}
+                className="text-gray-900 dark:text-gray-100 hover:text-gray-600 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 rounded px-1"
+                title="Export true dark PDF"
+              >
+                Export Dark
               </button>
               <button
                 onClick={handleExportDocx}
