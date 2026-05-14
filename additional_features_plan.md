@@ -6,7 +6,7 @@
 
 ## Wave 0 — Quick wins (1–2 sprints, no architecture changes)
 
-These features require no new engines, no new dependencies, and no significant backend work. They close obvious commodity gaps and should ship before any Wave 1 work begins.
+These features require no new engines, no new dependencies, and no significant backend work. They close obvious commodity gaps and should ship before any Wave 1 work begins. Good first step.
 
 ---
 
