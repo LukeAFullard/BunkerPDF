@@ -1540,7 +1540,7 @@ function App() {
         setErrorState({
           isOpen: true,
           title: "Share Error",
-          message: "This file is too large to share via URL (limit is ~64KB).",
+          message: "This file is too large to share via URL (limit is ~64KB). Please use alternative sharing methods for larger files.",
         });
         return;
       }
@@ -1834,6 +1834,43 @@ function App() {
       if (!isCancelled) stopProcessing();
     }
   };
+
+  const handleOcr = async (doc: PDFDocument) => {
+  let isCancelled = false;
+  const abortController = new AbortController();
+  startProcessing("Starting OCR...", true, () => {
+    isCancelled = true;
+    abortController.abort();
+    stopProcessing();
+  });
+
+  try {
+    const newFile = await ocrPdf(doc.file, (stage) => {
+      if (!isCancelled) useProcessingStore.getState().updateStage(stage);
+    }, abortController.signal);
+
+    if (isCancelled) return;
+
+    updateDocumentFile(doc.id, newFile);
+    addLog("OCR", "Extracted text and overlaid it on the document.", doc.name);
+
+    setErrorState({
+      isOpen: true,
+      title: "OCR Complete",
+      message: "Text has been successfully extracted and overlaid on the document.",
+    });
+  } catch (e) {
+    if (isCancelled) return;
+    console.error(e);
+    setErrorState({
+      isOpen: true,
+      title: "OCR Error",
+      message: "An error occurred during text extraction.",
+    });
+  } finally {
+    if (!isCancelled) stopProcessing();
+  }
+};
 
   const handleAudit = async (doc: PDFDocument) => {
     let isCancelled = false;
@@ -2335,7 +2372,7 @@ function App() {
               <div className="relative" ref={batchMenuRef}>
                 <button
                   onClick={() => setIsBatchMenuOpen(!isBatchMenuOpen)}
-                  disabled={documents.length < 2 || isGlobalProcessing}
+                  disabled={documents.length < 1 || isGlobalProcessing}
                   className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium disabled:opacity-50 hover:bg-indigo-700 transition-colors flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
                 >
                   Batch Actions
@@ -2432,42 +2469,6 @@ function App() {
                   (doc) => doc.id === activeDocumentId,
                 );
                 if (!activeDoc) return null;
-                const handleOcr = async (doc: PDFDocument) => {
-  let isCancelled = false;
-  const abortController = new AbortController();
-  startProcessing("Starting OCR...", true, () => {
-    isCancelled = true;
-    abortController.abort();
-    stopProcessing();
-  });
-
-  try {
-    const newFile = await ocrPdf(doc.file, (stage) => {
-      if (!isCancelled) useProcessingStore.getState().updateStage(stage);
-    }, abortController.signal);
-
-    if (isCancelled) return;
-
-    updateDocumentFile(doc.id, newFile);
-    addLog("OCR", "Extracted text and overlaid it on the document.", doc.name);
-
-    setErrorState({
-      isOpen: true,
-      title: "OCR Complete",
-      message: "Text has been successfully extracted and overlaid on the document.",
-    });
-  } catch (e) {
-    if (isCancelled) return;
-    console.error(e);
-    setErrorState({
-      isOpen: true,
-      title: "OCR Error",
-      message: "An error occurred during text extraction.",
-    });
-  } finally {
-    if (!isCancelled) stopProcessing();
-  }
-};
   return (
                   <div key={activeDoc.id} className="w-full max-w-2xl">
                     <DocumentCard
