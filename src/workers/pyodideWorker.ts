@@ -718,7 +718,7 @@ def verify_signature(pdf_bytes):
                 has_signatures = True
                 signatures.append({
                     "field_name": widget.field_name,
-                    "is_signed": widget.is_signed
+                    "is_signed": bool(widget.field_value)
                 })
 
     doc.close()
@@ -791,14 +791,16 @@ for page in doc:
 out_bytes = doc.tobytes()
 doc.close()
 del doc_bytes
-out_bytes
+bytes(out_bytes)
 `;
-      const resultBytes = await pyodide.runPythonAsync(code);
+      const resultProxy = await pyodide.runPythonAsync(code);
+      const resultBytes = resultProxy.toJs();
+      const outputBytes = new Uint8Array(resultBytes);
 
       self.postMessage({
         type: "RESULT",
         jobId,
-        result: resultBytes,
+        result: outputBytes,
       } satisfies PyodideWorkerResponse);
 
 } else if (type === "PDF_TO_DOCX") {
