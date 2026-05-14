@@ -24,11 +24,13 @@ export type PyodideWorkerMessage = {
     | "DOCX_TO_PDF"
     | "PDF_TO_DOCX"
     | "VERIFY_SIGNATURE"
-    | "EXPORT_DARK";
+    | "EXPORT_DARK"
+    | "EXTRACT_PAGE_TEXT";
   code?: string;
   jobId?: string;
   pdfBytes?: Uint8Array;
   redactions?: string[];
+  pageNum?: number;
   highlights?: string[];
   password?: string;
   csvData?: string;
@@ -71,7 +73,7 @@ const initializePyodide = async () => {
 };
 
 self.onmessage = async (e: MessageEvent<PyodideWorkerMessage>) => {
-  const { type, code, jobId, pdfBytes, redactions } = e.data;
+  const { type, code, jobId, pdfBytes, redactions, pageNum } = e.data;
 
   try {
     if (type === "INIT") {
@@ -109,6 +111,32 @@ text = ""
 for page in doc:
     text += page.get_text() + " "
 doc.close()
+text
+      `;
+      const text = await pyodide.runPythonAsync(extractCode);
+      self.postMessage({
+        type: "RESULT",
+        jobId,
+        result: text,
+      } satisfies PyodideWorkerResponse);
+    } else if (type === "EXTRACT_PAGE_TEXT") {
+      if (!initPromise) initPromise = initializePyodide();
+      await initPromise;
+      if (!pyodide) throw new Error("Pyodide not initialized");
+      if (!pdfBytes) throw new Error("No PDF bytes provided");
+      if (pageNum === undefined) throw new Error("No pageNum provided");
+
+      pyodide.globals.set("doc_bytes", pdfBytes);
+      pyodide.globals.set("target_page", pageNum);
+      const extractCode = `
+import fitz
+doc = fitz.open(stream=bytes(doc_bytes), filetype="pdf")
+text = ""
+if target_page < len(doc):
+    text = doc[target_page].get_text()
+doc.close()
+del doc_bytes
+del target_page
 text
       `;
       const text = await pyodide.runPythonAsync(extractCode);

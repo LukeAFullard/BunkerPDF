@@ -17,12 +17,39 @@ def test_run_cuj(page):
     page.wait_for_timeout(2000)
     page.screenshot(path="verification/screenshots/pre-verification.png")
 
+
     try:
-        page.get_by_role("button", name="Close").click(timeout=1000)
+        page.locator("button.absolute.top-4.right-4").click(timeout=1000)
     except:
         pass
 
+    try:
+        # close error modal if present
+        page.locator("button.text-gray-500.hover\\:bg-gray-100.hover\\:text-gray-700.rounded-lg.p-1.5").click(timeout=1000)
+    except:
+        pass
+
+    try:
+        page.get_by_text("Close").click(timeout=1000)
+    except:
+        pass
+
+
+
     page.wait_for_timeout(1000)
+
+
+    # Search specific test
+    page.get_by_role("button", name="Index").click()
+    page.wait_for_timeout(10000)
+    page.get_by_placeholder("Search across all open documents...").fill("test")
+    page.locator("form").get_by_role("button", name="Search").click()
+    page.wait_for_timeout(5000)
+    page.screenshot(path="verification/screenshots/search_results.png")
+    # Verify Search modal has results
+    assert page.get_by_text("test.pdf").first.is_visible(), "Search results did not contain expected text"
+
+
 
     # Use keyboard to trigger the menu as the previous memory states it was implemented
     page.locator('div[role="button"][aria-label*="context menu"]').focus()

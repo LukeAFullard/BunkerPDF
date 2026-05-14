@@ -7,8 +7,11 @@ import { useFileStore, type PDFDocument } from "./store/fileStore";
 import { PDFDocument as PDFLibDocument } from "pdf-lib";
 import { useEngineStore } from "./store/engineStore";
 import { useProcessingStore } from "./store/processingStore";
+import { useSearchStore, type DocumentSegment } from "./store/searchStore";
 import { useUIStore } from "./store/uiStore";
 import { SignatureModal } from "./components/ui/SignatureModal";
+import { SearchModal } from "./components/ui/SearchModal";
+import { generateEmbedding } from "./lib/searchEngine";
 import { Sun, Moon, ChevronDown, FileDiff } from "lucide-react";
 import {
   mergePdfs,
@@ -51,6 +54,52 @@ function App() {
   const addLog = useAuditStore(state => state.addLog);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
   const [isDiffModalOpen, setIsDiffModalOpen] = useState(false);
+  const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+
+  const { isIndexing, setIndexingState, addSegments } = useSearchStore();
+
+  const handleIndexDocuments = async () => {
+    if (isIndexing || documents.length === 0) return;
+    setIndexingState(true, 0);
+
+    const newSegments: DocumentSegment[] = [];
+    let processedPages = 0;
+    const totalPages = documents.reduce((sum, doc) => sum + (doc.pageCount || 1), 0);
+
+    try {
+      for (const doc of documents) {
+        const fileBuffer = await doc.file.arrayBuffer();
+        const bytes = new Uint8Array(fileBuffer);
+        const pageCount = doc.pageCount || 1;
+
+        for (let i = 0; i < pageCount; i++) {
+          const text = await extractTextFromPage(bytes, i);
+
+          if (text && text.trim().length > 10) { // Only index meaningful text
+            const embedding = await generateEmbedding(text.trim());
+            newSegments.push({
+              id: `${doc.id}-${i}`,
+              docId: doc.id,
+              docName: doc.name,
+              pageNumber: i + 1,
+              text: text.trim(),
+              embedding,
+            });
+          }
+
+          processedPages++;
+          setIndexingState(true, Math.round((processedPages / totalPages) * 100));
+        }
+      }
+
+      addSegments(newSegments);
+    } catch (e) {
+      console.error("Error indexing documents", e);
+    } finally {
+      setIndexingState(false, 100);
+      setIsSearchModalOpen(true);
+    }
+  };
   const isInitialized = useRef(false);
   const { setAiStatus, setPyodideStatus } = useEngineStore();
   const nerWorkerRef = useRef<Worker | null>(null);
@@ -654,6 +703,21 @@ function App() {
         type: "EXTRACT_TEXT",
         jobId,
         pdfBytes: bytes,
+      } satisfies PyodideWorkerMessage);
+    });
+  };
+
+  const extractTextFromPage = (bytes: Uint8Array, pageNum: number): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      if (!pyodideWorkerRef.current)
+        return reject(new Error("Pyodide worker not ready"));
+      const jobId = crypto.randomUUID();
+      pyodideResolvers.current.set(jobId, { resolve, reject });
+      pyodideWorkerRef.current.postMessage({
+        type: "EXTRACT_PAGE_TEXT",
+        jobId,
+        pdfBytes: bytes,
+        pageNum,
       } satisfies PyodideWorkerMessage);
     });
   };
@@ -2349,6 +2413,12 @@ function App() {
                 <FileTabs />
               </div>
               <div className="px-2 border-l border-gray-200 h-full flex items-center bg-gray-50/50">
+                <button onClick={() => setIsSearchModalOpen(true)} className="mr-2 px-3 py-1.5 text-sm font-medium bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg> Search
+                </button>
+                <button onClick={handleIndexDocuments} className="mr-2 px-3 py-1.5 text-sm font-medium bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center gap-2" title="Index all documents for search">
+                  Index
+                </button>
                 <button onClick={() => setIsDiffModalOpen(true)} className="mr-2 px-3 py-1.5 text-sm font-medium bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center gap-2">
                   <FileDiff className="w-4 h-4" /> Compare
                 </button>
@@ -2454,6 +2524,12 @@ function App() {
           </button>
         </footer>
       )}
+
+      <SearchModal
+        isOpen={isSearchModalOpen}
+        onClose={() => setIsSearchModalOpen(false)}
+
+      />
     </div>
   );
 }
