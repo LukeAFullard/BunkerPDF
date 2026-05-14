@@ -25,7 +25,8 @@ export type PyodideWorkerMessage = {
     | "PDF_TO_DOCX"
     | "VERIFY_SIGNATURE"
     | "EXPORT_DARK"
-    | "EXTRACT_PAGE_TEXT";
+    | "EXTRACT_PAGE_TEXT"
+    | "EXTRACT_ANNOTATIONS";
   code?: string;
   jobId?: string;
   pdfBytes?: Uint8Array;
@@ -489,7 +490,47 @@ zip_bytes
         result: zipBytes,
       } satisfies PyodideWorkerResponse);
 
-} else if (type === "EXTRACT_BOOKMARKS") {
+} else if (type === "EXTRACT_ANNOTATIONS") {
+      if (!initPromise) initPromise = initializePyodide();
+      await initPromise;
+      if (!pyodide) throw new Error("Pyodide not initialized");
+      if (!pdfBytes) throw new Error("No PDF bytes provided");
+
+      pyodide.globals.set("doc_bytes", pdfBytes);
+      const extractAnnotationsCode = `
+import fitz
+import json
+
+doc = fitz.open(stream=bytes(doc_bytes), filetype="pdf")
+annotations = []
+
+for page_num in range(len(doc)):
+    page = doc[page_num]
+    for annot in page.annots():
+        # Get content (text), author, date, and type
+        annot_type = annot.type[1] if annot.type else "Unknown"
+        content = annot.info.get("content", "")
+        author = annot.info.get("title", "")
+        date = annot.info.get("creationDate", "")
+
+        # Only add if it's somewhat meaningful
+        if annot_type != "Unknown":
+            annotations.append({
+                "page": page_num + 1,
+                "type": annot_type,
+                "content": content,
+                "author": author,
+                "date": date
+            })
+
+doc.close()
+del doc, doc_bytes
+json.dumps(annotations)
+      `;
+
+      const result = await pyodide.runPythonAsync(extractAnnotationsCode);
+      self.postMessage({ type: "RESULT", jobId, result });
+    } else if (type === "EXTRACT_BOOKMARKS") {
       if (!initPromise) initPromise = initializePyodide();
       await initPromise;
       if (!pyodide) throw new Error("Pyodide not initialized");

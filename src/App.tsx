@@ -627,6 +627,29 @@ function App() {
     });
   };
 
+  const extractAnnotations = (bytes: Uint8Array): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const jobId = Math.random().toString(36).substring(7);
+      const handleMessage = (e: MessageEvent<PyodideWorkerResponse>) => {
+        if (e.data.jobId === jobId) {
+          if (e.data.type === "RESULT") {
+            pyodideWorkerRef.current!.removeEventListener("message", handleMessage);
+            resolve(e.data.result as string);
+          } else if (e.data.type === "ERROR") {
+            pyodideWorkerRef.current!.removeEventListener("message", handleMessage);
+            reject(new Error(e.data.error || "Failed to extract annotations"));
+          }
+        }
+      };
+      pyodideWorkerRef.current!.addEventListener("message", handleMessage);
+      pyodideWorkerRef.current!.postMessage({
+        type: "EXTRACT_ANNOTATIONS",
+        jobId,
+        pdfBytes: bytes,
+      });
+    });
+  };
+
   const extractLinks = (bytes: Uint8Array): Promise<string> => {
     return new Promise((resolve, reject) => {
       if (!pyodideWorkerRef.current)
@@ -2499,6 +2522,7 @@ function App() {
                       extractHtml={extractHtml}
                       extractImages={extractImages}
                       extractLinks={extractLinks}
+              extractAnnotations={extractAnnotations}
                       extractBookmarks={extractBookmarks}
                       editBookmarks={editBookmarks}
                       redactPdf={redactPdf}

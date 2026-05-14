@@ -41,6 +41,7 @@ interface DocumentCardProps {
   extractHtml?: (bytes: Uint8Array) => Promise<string>;
   extractImages?: (bytes: Uint8Array) => Promise<Uint8Array>;
   extractLinks?: (bytes: Uint8Array) => Promise<string>;
+  extractAnnotations?: (bytes: Uint8Array) => Promise<string>;
   extractBookmarks?: (bytes: Uint8Array) => Promise<string>;
   editBookmarks?: (bytes: Uint8Array, bookmarks: Bookmark[]) => Promise<Uint8Array>;
   redactPdf: (bytes: Uint8Array, redactions: string[]) => Promise<Uint8Array>;
@@ -84,6 +85,7 @@ export function DocumentCard({
   extractHtml,
   extractImages,
   extractLinks,
+  extractAnnotations,
   extractBookmarks,
   editBookmarks,
   redactPdf,
@@ -496,6 +498,77 @@ export function DocumentCard({
   };
 
 
+    const handleExtractAnnotations = async () => {
+    if (!extractAnnotations) return;
+    let isCancelled = false;
+    startProcessing("Extracting annotations...", true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
+    try {
+      const buffer = await doc.file.arrayBuffer();
+      const pdfBytes = new Uint8Array(buffer);
+      const resultJson = await extractAnnotations(pdfBytes);
+      if (isCancelled) return;
+
+      const annotations = JSON.parse(resultJson);
+
+      if (annotations.length === 0) {
+        setErrorState({
+          isOpen: true,
+          title: "No Annotations Found",
+          message: "This document does not contain any readable annotations or comments.",
+        });
+        return;
+      }
+
+      // Convert to CSV
+      const header = "Page,Type,Author,Date,Content\n";
+      const csvContent =
+        header +
+        annotations
+          .map((a: { page: number, type: string, author: string, date: string, content: string }) => {
+            const escapeField = (field: string | number) => {
+              if (field === undefined || field === null) return '""';
+              const str = String(field);
+              return '"' + str.replace(/"/g, '""') + '"';
+            };
+            return [
+              escapeField(a.page),
+              escapeField(a.type),
+              escapeField(a.author),
+              escapeField(a.date),
+              escapeField(a.content)
+            ].join(",");
+          })
+          .join("\n");
+
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${doc.name.replace(/\.pdf$/i, "")}-annotations-${Date.now()}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      addLog("Extract Annotations", `Extracted ${annotations.length} annotations to CSV.`, doc.name);
+      useUIStore.getState().showFeedbackPrompt("Extract Annotations");
+    } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+      if (isCancelled) return;
+      console.error(err);
+      setErrorState({
+        isOpen: true,
+        title: "Extraction Error",
+        message: err.message || "An error occurred while extracting annotations.",
+      });
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
+  };
+
   const handleExtractLinks = async () => {
     if (!extractLinks) return;
     let isCancelled = false;
@@ -749,6 +822,7 @@ items={[
             (!isMobile ? { label: "Export DOCX (~10s)", onClick: handleExportDocx } : null),
             (!isMobile ? { label: "Export True Dark (~10s)", onClick: handleExportDark } : null),
             (!isMobile ? { label: "Extract Links (CSV) (~2s)", onClick: handleExtractLinks } : null),
+            (!isMobile ? { label: "Reviewer Portal (CSV) (~2s)", onClick: handleExtractAnnotations } : null),
             { label: "Optimize (Compress) (~5s)", onClick: () => onOptimize?.(doc) },
             { label: "Delete Pages (~1s)", onClick: () => onDeletePages?.(doc) },
             { label: "Reorder Pages (~1s)", onClick: () => onReorderPages?.(doc) },
@@ -935,6 +1009,15 @@ items={[
                 title="Extract embedded hyperlinks to CSV"
               >
                 Extract Links
+              </button>
+
+              <button
+                onClick={handleExtractAnnotations}
+                disabled={isProcessing}
+                className="text-stone-600 hover:text-stone-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-500 rounded px-1"
+                title="Reviewer Portal: Extract annotations to CSV"
+              >
+                Reviewer Portal
               </button>
 
 
