@@ -9,7 +9,7 @@ import { useEngineStore } from "./store/engineStore";
 import { useProcessingStore } from "./store/processingStore";
 import { useUIStore } from "./store/uiStore";
 import { SignatureModal } from "./components/ui/SignatureModal";
-import { Sun, Moon, ChevronDown } from "lucide-react";
+import { Sun, Moon, ChevronDown, FileDiff } from "lucide-react";
 import {
   mergePdfs,
   splitPdf,
@@ -30,6 +30,7 @@ import { generateSpeech } from "./lib/ttsEngine";
 import { createWavFile } from "./lib/audioUtils";
 import { DocumentCard } from "./components/pdf/DocumentCard";
 import { FileTabs } from "./components/ui/FileTabs";
+import { DiffModal } from "./components/pdf/diff/DiffModal";
 import { RecipeMenu } from "./components/ui/RecipeMenu";
 import type { WorkflowRecipe } from "./store/recipeStore";
 import { ErrorModal } from "./components/ui/ErrorModal";
@@ -49,6 +50,7 @@ function App() {
   const { isDarkMode, toggleDarkMode } = useUIStore();
   const addLog = useAuditStore(state => state.addLog);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
+  const [isDiffModalOpen, setIsDiffModalOpen] = useState(false);
   const isInitialized = useRef(false);
   const { setAiStatus, setPyodideStatus } = useEngineStore();
   const nerWorkerRef = useRef<Worker | null>(null);
@@ -2180,6 +2182,7 @@ function App() {
         isOpen={isAuditModalOpen}
         onClose={() => setIsAuditModalOpen(false)}
       />
+      {isDiffModalOpen && <DiffModal onClose={() => setIsDiffModalOpen(false)} extractText={extractText} />}
       <ProcessingModal />
       <FeedbackPrompt />
       <PWAInstallPrompt />
@@ -2346,6 +2349,9 @@ function App() {
                 <FileTabs />
               </div>
               <div className="px-2 border-l border-gray-200 h-full flex items-center bg-gray-50/50">
+                <button onClick={() => setIsDiffModalOpen(true)} className="mr-2 px-3 py-1.5 text-sm font-medium bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center gap-2">
+                  <FileDiff className="w-4 h-4" /> Compare
+                </button>
                 <RecipeMenu onApplyRecipe={handleApplyRecipe} />
               </div>
             </div>
