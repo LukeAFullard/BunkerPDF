@@ -604,6 +604,30 @@ function App() {
     });
   };
 
+
+  const exportPdfToDark = (bytes: Uint8Array): Promise<Uint8Array> => {
+    return new Promise((resolve, reject) => {
+      const jobId = Math.random().toString(36).substring(7);
+      const handler = (e: MessageEvent) => {
+        const res = e.data as PyodideWorkerResponse;
+        if (res.jobId === jobId) {
+          pyodideWorkerRef.current?.removeEventListener("message", handler);
+          if (res.type === "RESULT") {
+            resolve(res.result);
+          } else if (res.type === "ERROR") {
+            reject(new Error(res.error));
+          }
+        }
+      };
+      pyodideWorkerRef.current?.addEventListener("message", handler);
+      pyodideWorkerRef.current?.postMessage({
+        type: "EXPORT_DARK",
+        jobId,
+        pdfBytes: bytes,
+      });
+    });
+  };
+
   const extractHtml = (bytes: Uint8Array): Promise<string> => {
     return new Promise((resolve, reject) => {
       if (!pyodideWorkerRef.current)
@@ -2404,6 +2428,7 @@ function App() {
                       redactPdf={redactPdf}
                       updateDocumentFile={updateDocumentFile}
                       convertPdfToDocx={convertPdfToDocx}
+                      exportPdfToDark={exportPdfToDark}
                     />
                   </div>
                 );

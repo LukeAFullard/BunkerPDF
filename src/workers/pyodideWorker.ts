@@ -23,7 +23,8 @@ export type PyodideWorkerMessage = {
     | "EDIT_BOOKMARKS"
     | "DOCX_TO_PDF"
     | "PDF_TO_DOCX"
-    | "VERIFY_SIGNATURE";
+    | "VERIFY_SIGNATURE"
+    | "EXPORT_DARK";
   code?: string;
   jobId?: string;
   pdfBytes?: Uint8Array;
@@ -709,7 +710,70 @@ verify_signature(pdf_bytes)
         result: resultData,
       } satisfies PyodideWorkerResponse);
 
-    } else if (type === "PDF_TO_DOCX") {
+    } else if (type === "EXPORT_DARK") {
+      if (!initPromise) initPromise = initializePyodide();
+      await initPromise;
+      if (!pyodide) throw new Error("Pyodide not initialized");
+      if (!pdfBytes) throw new Error("No PDF bytes provided");
+
+      pyodide.globals.set("doc_bytes", pdfBytes);
+      const code = `
+import fitz
+import re
+
+def invert_colors(match):
+    parts = match.group(0).split()
+    op = parts[-1]
+    try:
+        if op in (b'g', b'G'):
+            val = float(parts[0])
+            if val < 0.5: return b"0.85 " + op
+        elif op in (b'rg', b'RG'):
+            r, g, b = float(parts[0]), float(parts[1]), float(parts[2])
+            lum = 0.299*r + 0.587*g + 0.114*b
+            if lum < 0.5:
+                return f"{1.0-r:.3g} {1.0-g:.3g} {1.0-b:.3g} ".encode() + op
+    except Exception:
+        pass
+    return match.group(0)
+
+doc = fitz.open(stream=bytes(doc_bytes), filetype="pdf")
+
+for page in doc:
+    page.clean_contents()
+    for xref in page.get_contents():
+        stream = doc.xref_stream(xref)
+        if not stream: continue
+        stream = re.sub(rb'\\b([0-9.]+)\\s+([gG])\\b', invert_colors, stream)
+        stream = re.sub(rb'\\b([0-9.]+)\\s+([0-9.]+)\\s+([0-9.]+)\\s+([rR]g)\\b', invert_colors, stream)
+        doc.update_stream(xref, stream)
+    page.draw_rect(page.rect, color=(0.12, 0.12, 0.12), fill=(0.12, 0.12, 0.12), overlay=False)
+
+    for img in page.get_images(full=True):
+        xref = img[0]
+        try:
+            pix = fitz.Pixmap(doc, xref)
+            if pix.n - pix.alpha < 3:
+                pix = fitz.Pixmap(fitz.csRGB, pix)
+            pix.gamma_with(1.5)
+            page.replace_image(xref, pixmap=pix)
+        except Exception:
+            pass
+
+out_bytes = doc.tobytes()
+doc.close()
+del doc_bytes
+out_bytes
+`;
+      const resultBytes = await pyodide.runPythonAsync(code);
+
+      self.postMessage({
+        type: "RESULT",
+        jobId,
+        result: resultBytes,
+      } satisfies PyodideWorkerResponse);
+
+} else if (type === "PDF_TO_DOCX") {
       if (!initPromise) initPromise = initializePyodide();
       await initPromise;
       if (!pyodide) throw new Error("Pyodide not initialized");
