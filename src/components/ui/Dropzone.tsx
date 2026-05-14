@@ -9,6 +9,7 @@ import { ErrorModal } from './ErrorModal';
 interface DropzoneProps {
   onError?: (title: string, message: React.ReactNode) => void;
   onDocxDropped?: (files: File[]) => void;
+  onImagesDropped?: (files: File[]) => void;
 }
 
 
@@ -57,7 +58,7 @@ interface DropzoneProps {
     }
   };
 
-export function Dropzone({ onError, onDocxDropped }: DropzoneProps = {}) {
+export function Dropzone({ onError, onDocxDropped, onImagesDropped }: DropzoneProps = {}) {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const addDocuments = useFileStore(state => state.addDocuments);
@@ -75,6 +76,7 @@ export function Dropzone({ onError, onDocxDropped }: DropzoneProps = {}) {
 
   const handleFiles = async (files: File[]) => {
     const docxFiles = files.filter(f => f.name.toLowerCase().endsWith('.docx') || f.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    const imageFiles = files.filter(f => f.type.startsWith('image/'));
     let pdfFiles = files.filter(f => f.type === 'application/pdf');
 
     if (docxFiles.length > 0) {
@@ -83,9 +85,15 @@ export function Dropzone({ onError, onDocxDropped }: DropzoneProps = {}) {
       }
     }
 
+    if (imageFiles.length > 0) {
+      if (onImagesDropped) {
+        onImagesDropped(imageFiles);
+      }
+    }
+
     if (pdfFiles.length === 0) {
-      if (docxFiles.length === 0) {
-        handleError('Invalid File Type', 'Please upload PDF or DOCX files only.');
+      if (docxFiles.length === 0 && imageFiles.length === 0) {
+        handleError('Invalid File Type', 'Please upload PDF, DOCX, or Image files only.');
       }
       return;
     }
@@ -244,14 +252,14 @@ export function Dropzone({ onError, onDocxDropped }: DropzoneProps = {}) {
           type="file"
           ref={fileInputRef}
           onChange={handleFileInput}
-          accept="application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx"
+          accept="application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,image/*"
           multiple
           className="hidden"
         />
         <div className="bg-blue-100 text-blue-600 p-6 rounded-full mb-6 group-hover:scale-110 transition-transform">
           <Upload size={48} strokeWidth={1.5} />
         </div>
-        <h2 className="text-2xl font-bold mb-2">Drop a PDF or DOCX here to begin</h2>
+        <h2 className="text-2xl font-bold mb-2">Drop a PDF, DOCX, or Image here to begin</h2>
         <p className="text-gray-500 mb-6">or click to browse files</p>
 
         <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 px-4 py-2 rounded-full font-medium">

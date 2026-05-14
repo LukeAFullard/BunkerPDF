@@ -10,7 +10,7 @@ These features require no new engines, no new dependencies, and no significant b
 
 ---
 
-### [ ] 0.1 Images → PDF
+### [x] 0.1 Images → PDF
 
 **Feasibility Note:** Highly feasible. `pdf-lib` is already integrated. Canvas API can handle image formats and `pdf-lib` can embed JPG/PNG natively.
 
