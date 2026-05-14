@@ -10,7 +10,9 @@ These features require no new engines, no new dependencies, and no significant b
 
 ---
 
-### 0.1 Images → PDF
+### [ ] 0.1 Images → PDF
+
+**Feasibility Note:** Highly feasible. `pdf-lib` is already integrated. Canvas API can handle image formats and `pdf-lib` can embed JPG/PNG natively.
 
 **What:** Convert one or more JPG, PNG, TIFF, WebP, or BMP files into a single PDF. Each image becomes one page. Users can reorder images before conversion.
 
@@ -42,7 +44,9 @@ These features require no new engines, no new dependencies, and no significant b
 
 ---
 
-### 0.2 Unlock / remove PDF password
+### [ ] 0.2 Unlock / remove PDF password
+
+**Feasibility Note:** Highly feasible. `pdf-lib` can handle standard RC4 decryption. For AES-256, PyMuPDF via Pyodide is fully capable.
 
 **What:** Given a password-protected PDF and the correct password, produce an unlocked copy with no password required to open.
 
@@ -74,7 +78,9 @@ These features require no new engines, no new dependencies, and no significant b
 
 ---
 
-### 0.3 Document integrity / provenance hash
+### [ ] 0.3 Document integrity / provenance hash
+
+**Feasibility Note:** Highly feasible. The Web Crypto API (`window.crypto.subtle`) is universally supported and requires no external dependencies.
 
 **What:** Generate a cryptographic SHA-256 fingerprint of a document at a specific point in time. Produce a downloadable "certificate" JSON that can later be used to verify the document has not been altered.
 
@@ -118,7 +124,9 @@ These features require no new engines, no new dependencies, and no significant b
 
 ---
 
-### 0.4 Privacy risk score dashboard
+### [ ] 0.4 Privacy risk score dashboard
+
+**Feasibility Note:** Feasible. Metadata inspection via `pdf-lib` and NER via `transformers.js` are well within current capabilities. Fake redaction checking can be complex but is achievable using pdf.js layer inspection.
 
 **What:** When a document loads, automatically run a suite of lightweight checks and display a single 0–100 "Privacy Score" alongside a list of specific findings. Each finding links directly to the tool that remediates it.
 
@@ -170,7 +178,9 @@ These features build on the Pyodide layer and should land once Phase 3's Web Wor
 
 ---
 
-### 1.1 PDF → Excel (XLSX) — dedicated UX entry point
+### [ ] 1.1 PDF → Excel (XLSX) — dedicated UX entry point
+
+**Feasibility Note:** Feasible with an adjustment. *Memory Note:* `pdfplumber` cannot be installed in Pyodide because `pypdfium2` lacks a pure Python wheel. Table extraction should use `pymupdf` combined with `pandas` and `openpyxl`.
 
 **What:** A named "PDF to Excel" tool that extracts all tables from a document and writes them to a properly formatted `.xlsx` file, with one worksheet per table or per page.
 
@@ -207,7 +217,9 @@ These features build on the Pyodide layer and should land once Phase 3's Web Wor
 
 ---
 
-### 1.2 PDF → PowerPoint (PPTX) — image-based
+### [ ] 1.2 PDF → PowerPoint (PPTX) — image-based
+
+**Feasibility Note:** Feasible, provided `python-pptx` is pure Python and installs in Pyodide. Image rendering via PyMuPDF works, but strict memory chunking will be required to prevent WASM Out-Of-Memory (OOM) errors.
 
 **What:** Convert each page of a PDF to a high-resolution image and insert it as a full-slide image in a `.pptx` file. The result is not an editable presentation but a faithful, lossless page-by-page representation.
 
@@ -239,7 +251,9 @@ These features build on the Pyodide layer and should land once Phase 3's Web Wor
 
 ---
 
-### 1.3 Repair / recover PDF
+### [ ] 1.3 Repair / recover PDF
+
+**Feasibility Note:** Highly feasible. PyMuPDF is very resilient and its `garbage=4` save flag is an effective way to reconstruct broken xref tables.
 
 **What:** Attempt to open, recover, and re-save a corrupt or truncated PDF. Surface what was recovered and what was lost.
 
@@ -275,7 +289,9 @@ These features build on the Pyodide layer and should land once Phase 3's Web Wor
 
 ---
 
-### 1.4 TXT / Markdown → PDF
+### [ ] 1.4 TXT / Markdown → PDF
+
+**Feasibility Note:** Feasible. Pure text is easy. Markdown requires an HTML parser (e.g. `marked`) and manually calculating layout/coordinates with `pdf-lib` can be tedious but definitely possible.
 
 **What:** Convert plain text or Markdown files to a clean, typeset PDF. This is the achievable subset of "Office formats → PDF" that does not require LibreOffice.
 
@@ -311,7 +327,9 @@ These features build on Engine B and involve running or extending language model
 
 ---
 
-### 2.1 Local AI chat with PDF ("ChatPDF but private")
+### [ ] 2.1 Local AI chat with PDF ("ChatPDF but private")
+
+**Feasibility Note:** Moderately feasible but high risk. A 2GB model via WebLLM is pushing the absolute boundaries of browser WASM memory limits (typically 2GB-4GB). A strong cloud fallback and strict memory checks are mandatory.
 
 **What:** A conversational interface allowing users to ask natural-language questions about the currently loaded document and receive cited, grounded answers — entirely in the browser, with no data transmitted to any server.
 
@@ -359,7 +377,9 @@ The approach uses Retrieval-Augmented Generation (RAG) with a local embedding mo
 
 ---
 
-### 2.2 PDF translate
+### [ ] 2.2 PDF translate
+
+**Feasibility Note:** Feasible but layout preservation is complex. `transformers.js` can run translation models, but dynamically resizing text to fit original bounding boxes without breaking layout will have edge cases.
 
 **What:** Translate the text content of a PDF into another language while preserving the original layout, and produce a new PDF with the translated text in place.
 
@@ -395,7 +415,9 @@ The approach uses Retrieval-Augmented Generation (RAG) with a local embedding mo
 
 ---
 
-### 2.3 AI summariser — dedicated tool surface
+### [ ] 2.3 AI summariser — dedicated tool surface
+
+**Feasibility Note:** Feasible. Local summarization via `transformers.js` works well, but input chunking/hierarchical summarization is necessary to fit within the model's context window.
 
 **What:** A standalone "Summarise" tool that produces a structured, length-configurable summary of the document with section-level breakdowns. Distinct from the Structured Notes tool.
 
@@ -428,7 +450,9 @@ The approach uses Retrieval-Augmented Generation (RAG) with a local embedding mo
 
 ---
 
-### 2.4 AI flashcard / quiz generator
+### [ ] 2.4 AI flashcard / quiz generator
+
+**Feasibility Note:** Feasible. Prompting local LLMs for structured data is achievable. Exporting to Anki `.apkg` using `sql.js` and `JSZip` is a pure JS solution that avoids backend requirements.
 
 **What:** Extract key concepts, definitions, and relationships from a PDF and produce a set of question-and-answer flashcards, exportable to Anki (`.apkg`) or CSV.
 
@@ -463,7 +487,9 @@ The approach uses Retrieval-Augmented Generation (RAG) with a local embedding mo
 
 ---
 
-### 2.5 Local AI content / AI-text detector
+### [ ] 2.5 Local AI content / AI-text detector
+
+**Feasibility Note:** Feasible. A lightweight BERT classifier model running via `transformers.js` can process chunks of text extracted locally without too much overhead.
 
 **What:** Scan a PDF for passages that are likely to have been generated by an AI language model. Display a per-passage probability score and a document-level estimate.
 
@@ -500,7 +526,9 @@ These features have a more specific audience but high conversion value within th
 
 ---
 
-### 3.1 HIPAA / GDPR compliance checker
+### [ ] 3.1 HIPAA / GDPR compliance checker
+
+**Feasibility Note:** Highly feasible. Relies on Regex and NER (already planned via `transformers.js`). Main risk is legal/accuracy, not technical implementation.
 
 **What:** Scan a document for data patterns that match the identifiers listed in HIPAA's Safe Harbor standard or GDPR's categories of personal data. Produce a compliance findings report with specific remediation steps.
 
@@ -535,7 +563,9 @@ Names, geographic data smaller than state, dates other than year, phone numbers,
 
 ---
 
-### 3.2 Contract / legal clause highlighter
+### [ ] 3.2 Contract / legal clause highlighter
+
+**Feasibility Note:** Highly feasible. Extends the NER pattern matching pipeline used in other features. UI integration with pdf.js highlights is straightforward.
 
 **What:** Automatically detect and label common legal clause types in contracts, flagging high-risk provisions for user review.
 
@@ -573,7 +603,9 @@ Names, geographic data smaller than state, dates other than year, phone numbers,
 
 ---
 
-### 3.3 PDF → Anki export (standalone, without chat)
+### [ ] 3.3 PDF → Anki export (standalone, without chat)
+
+**Feasibility Note:** Highly feasible. Pure client-side JS implementation using `sql.js` and `JSZip`. Doesn't require heavy Pyodide/WASM compute.
 
 **What:** A lightweight path to Anki export that does not require the full AI flashcard generator — useful for users who have already highlighted passages and want to export their highlights as cards.
 
