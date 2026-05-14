@@ -121,7 +121,7 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 * [x] **True Dark PDF Export:** Use `pymupdf` to rewrite PDFs with a dark background and recolored text, while preserving images.
 
 ### Phase 4: Professional Workflows & Scale (Months 19–24)
-* [ ] **Enterprise Air-Gapped Deployment:** Establish the ultimate business moat by packaging the static build for self-hosted, air-gapped, internal-only enterprise deployments.
+* [x] **Enterprise Air-Gapped Deployment:** Establish the ultimate business moat by packaging the static build for self-hosted, air-gapped, internal-only enterprise deployments.
 
 **Objective:** Finalize the enterprise-tier features that ensure high retention.
 * [x] **Context-Aware Diff (Track Changes):** Build the semantic comparison tool for two PDF versions.

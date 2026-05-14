@@ -58,3 +58,29 @@ A GitHub Action is already configured in the repository (`.github/workflows/depl
 1. Ensure GitHub Actions are enabled in your repository settings (**Settings > Actions > General**).
 2. Ensure GitHub Pages is configured to deploy from GitHub Actions (**Settings > Pages > Source: GitHub Actions**).
 3. Any push to the `main` branch will automatically build and deploy to your GitHub Pages URL.
+## Enterprise Air-Gapped Deployment (Docker)
+
+For enterprise environments that require strict data isolation and zero external network calls, BunkerPDF can be deployed as an air-gapped Docker container.
+
+### Prerequisites
+- Docker installed on the host machine.
+
+### Building the Image
+Run the following command from the root of the repository to build the Docker image:
+
+```bash
+docker build -t bunkerpdf-enterprise .
+```
+
+### Running the Container
+Start the container and map it to your desired port (e.g., port 8080):
+
+```bash
+docker run -d -p 8080:80 --name bunkerpdf bunkerpdf-enterprise
+```
+
+The application will be accessible at `http://localhost:8080` (or the IP of the host machine).
+
+### Important Notes for Air-Gapped Deployments
+- The custom `nginx.conf` included in the repository automatically sets the required `Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy` headers necessary for WebAssembly features to function securely.
+- Since the application processes everything client-side using edge AI and WASM, no data ever leaves the user's browser, satisfying strict compliance and security requirements.
