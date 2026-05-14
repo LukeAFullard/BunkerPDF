@@ -46,6 +46,8 @@ import type {
   PyodideWorkerMessage,
   PyodideWorkerResponse,
 } from "./workers/pyodideWorker";
+import { ImageReorderRail, type ImageItem } from "./components/ui/ImageReorderRail";
+import { convertImagesToPdf } from "./lib/engineA";
 
 function App() {
   const documents = useFileStore((state) => state.documents);
@@ -294,6 +296,9 @@ function App() {
     isOpen: boolean;
     activeDocId: string | null;
   }>({ isOpen: false, activeDocId: null });
+
+  const [pendingImages, setPendingImages] = useState<ImageItem[]>([]);
+  const [imageFitMode, setImageFitMode] = useState<'fit' | 'original' | 'a4'>('a4');
   const [inputState, setInputState] = useState<{
     isOpen: boolean;
     title: string;
@@ -2351,13 +2356,65 @@ function App() {
             </div>
             <EngineStatusPill />
           </header>
-          <div className="flex-1">
+          <div className="flex-1 flex flex-col pb-8">
             <Dropzone
               onError={(title, message) =>
                 setErrorState({ isOpen: true, title, message })
               }
               onDocxDropped={handleDocxDropped}
+              onImagesDropped={(files) => {
+                const newItems = files.map((file) => ({
+                  id: crypto.randomUUID(),
+                  file,
+                  previewUrl: URL.createObjectURL(file),
+                }));
+                setPendingImages((prev) => [...prev, ...newItems]);
+              }}
             />
+            {pendingImages.length > 0 && (
+              <ImageReorderRail
+                images={pendingImages}
+                setImages={setPendingImages}
+                onConvert={async () => {
+                  try {
+                    startProcessing("Converting images to PDF...", false, () => stopProcessing());
+                    const files = pendingImages.map((i) => i.file);
+                    const pdfBytes = await convertImagesToPdf(files, imageFitMode);
+
+                    const newFileName = `${files[0].name.replace(/\.[^/.]+$/, "")}-combined-${Date.now()}.pdf`;
+                    // ensure ArrayBuffer compatibility
+                    const standardBuffer = new Uint8Array(pdfBytes.length);
+                    standardBuffer.set(pdfBytes);
+
+                    const blob = new Blob([standardBuffer], { type: "application/pdf" });
+                    const newFile = new File([blob], newFileName, { type: "application/pdf", lastModified: Date.now() });
+
+                    addDocuments([{
+                      id: crypto.randomUUID(),
+                      file: newFile,
+                      name: newFile.name,
+                      size: newFile.size,
+                      lastModified: newFile.lastModified,
+                    }]);
+
+                    pendingImages.forEach(img => URL.revokeObjectURL(img.previewUrl));
+                    setPendingImages([]);
+                    stopProcessing();
+                  } catch (e: unknown) {
+                    stopProcessing();
+                    const message = e instanceof Error ? e.message : "An error occurred.";
+                    setErrorState({ isOpen: true, title: "Image Conversion Failed", message });
+                  }
+                }}
+                onCancel={() => {
+                  pendingImages.forEach(img => URL.revokeObjectURL(img.previewUrl));
+                  setPendingImages([]);
+                }}
+                fitMode={imageFitMode}
+                setFitMode={setImageFitMode}
+                isProcessing={isGlobalProcessing}
+              />
+            )}
           </div>
         </div>
       ) : (

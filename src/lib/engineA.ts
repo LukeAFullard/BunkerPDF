@@ -1,5 +1,75 @@
 import { PDFDocument, degrees, rgb, StandardFonts } from 'pdf-lib';
 
+export async function convertImagesToPdf(files: File[], fitMode: 'fit' | 'original' | 'a4' = 'a4'): Promise<Uint8Array> {
+  const { PageSizes } = await import('pdf-lib');
+  const pdfDoc = await PDFDocument.create();
+
+  for (const file of files) {
+    let imageBytes = new Uint8Array(await file.arrayBuffer());
+    let embedder;
+
+    // We can embed jpg or png directly.
+    if (file.type === 'image/jpeg' || file.type === 'image/jpg') {
+      embedder = await pdfDoc.embedJpg(imageBytes);
+    } else if (file.type === 'image/png') {
+      embedder = await pdfDoc.embedPng(imageBytes);
+    } else {
+      // Transcode other formats to PNG via canvas
+      const bitmap = await createImageBitmap(file);
+      const canvas = document.createElement('canvas');
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Could not get canvas context');
+      ctx.drawImage(bitmap, 0, 0);
+
+      const pngBlob = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob(resolve, 'image/png');
+      });
+
+      if (!pngBlob) throw new Error('Failed to transcode image to PNG');
+      imageBytes = new Uint8Array(await pngBlob.arrayBuffer());
+      embedder = await pdfDoc.embedPng(imageBytes);
+    }
+
+    const { width: imgW, height: imgH } = embedder.scale(1);
+    let pageW, pageH;
+
+    if (fitMode === 'original') {
+      pageW = imgW;
+      pageH = imgH;
+    } else {
+      // both fit and a4 use A4 boundaries, but A4 mode enforces the page size
+      pageW = PageSizes.A4[0];
+      pageH = PageSizes.A4[1];
+    }
+
+    // calculate dimensions
+    const scale = fitMode === 'original' ? 1 : Math.min(pageW / imgW, pageH / imgH);
+    const scaledW = imgW * scale;
+    const scaledH = imgH * scale;
+
+    let page;
+    if (fitMode === 'fit') {
+      // Fit to page means the page is exactly the size of the scaled image
+      page = pdfDoc.addPage([scaledW, scaledH]);
+      page.drawImage(embedder, { x: 0, y: 0, width: scaledW, height: scaledH });
+    } else if (fitMode === 'a4') {
+      // A4 means page is A4 and image is centered
+      page = pdfDoc.addPage(PageSizes.A4);
+      const x = (pageW - scaledW) / 2;
+      const y = (pageH - scaledH) / 2;
+      page.drawImage(embedder, { x, y, width: scaledW, height: scaledH });
+    } else {
+      // Original means page is exactly the image size
+      page = pdfDoc.addPage([pageW, pageH]);
+      page.drawImage(embedder, { x: 0, y: 0, width: scaledW, height: scaledH });
+    }
+  }
+
+  return await pdfDoc.save();
+}
+
 export async function mergePdfs(files: File[]): Promise<Uint8Array> {
   const mergedPdf = await PDFDocument.create();
 
