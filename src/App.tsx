@@ -2241,7 +2241,7 @@ function App() {
   };
 
   return (
-    <div className="App font-sans bg-gray-50 min-h-screen flex flex-col">
+    <div className={`App font-sans min-h-screen flex flex-col ${isDarkMode ? "dark bg-gray-900 text-gray-100" : "bg-gray-50 text-gray-900"}`}>
       <PrivacyAuditLogModal
         isOpen={isAuditModalOpen}
         onClose={() => setIsAuditModalOpen(false)}
@@ -2294,8 +2294,8 @@ function App() {
       />
       {documents.length === 0 ? (
         <div className="flex flex-col h-screen">
-          <header className="p-4 flex justify-between items-center bg-white border-b border-gray-200">
-            <div className="font-bold text-xl text-gray-800 tracking-tight">
+          <header className={`p-4 flex justify-between items-center border-b ${isDarkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"}`}>
+            <div className={`font-bold text-xl tracking-tight ${isDarkMode ? "text-gray-100" : "text-gray-800"}`}>
               BunkerPDF
             </div>
             <EngineStatusPill />
@@ -2319,7 +2319,7 @@ function App() {
             <div className="flex gap-4 items-center">
               <button
                 onClick={toggleDarkMode}
-                className="p-2 rounded-lg text-gray-600 hover:bg-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400"
+                className={`p-2 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 ${isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-600 hover:bg-gray-200"}`}
                 title="Toggle Dark Mode"
               >
                 {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}

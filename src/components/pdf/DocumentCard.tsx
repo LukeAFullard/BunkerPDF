@@ -1,5 +1,5 @@
 import { useUIStore } from "../../store/uiStore";
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { PDFThumbnail } from "./PDFThumbnail";
 import { useMobile } from "../../lib/useMobile";
 import { type PDFDocument, useFileStore } from "../../store/fileStore";
@@ -121,13 +121,56 @@ export function DocumentCard({
   const activeDocumentId = useFileStore((state) => state.activeDocumentId);
   const isActive = activeDocumentId === doc.id;
   const addLog = useAuditStore((state) => state.addLog);
+  const isDarkMode = useUIStore((state) => state.isDarkMode);
+
+  const handleScan = useCallback(async () => {
+    setDetectedEntities(null);
+    setSelectedEntities(new Set());
+
+    let isCancelled = false;
+    startProcessing("Extracting text...", true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
+    try {
+      const buffer = await doc.file.arrayBuffer();
+      const pdfBytes = new Uint8Array(buffer);
+
+      const text = await extractText(pdfBytes);
+      if (isCancelled) return;
+
+      if (!text || text.trim() === "") {
+        setDetectedEntities([]);
+        return;
+      }
+
+      updateStage("Scanning for PII...");
+      const entities = await extractEntities(text);
+      if (isCancelled) return;
+
+      setDetectedEntities(entities);
+      setSelectedEntities(new Set(entities)); // pre-select all
+    } catch (err) {
+      if (isCancelled) return;
+      console.error(err);
+      setErrorState({
+        isOpen: true,
+        title: "Scan Error",
+        message: "An error occurred while scanning the document.",
+      });
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
+  }, [doc.file, extractEntities, extractText, startProcessing, stopProcessing, updateStage]);
 
   useEffect(() => {
     if (isActive && activeTool) {
       setTimeout(() => {
         switch (activeTool) {
           case 'redact':
-            onScanPii?.(doc);
+            if (onScanPii) onScanPii(doc);
+            else handleScan();
             break;
           case 'extract-tables':
             // Instead of calling handleExtractTables before declaration, we do the logic inline or via an effect dep
@@ -179,7 +222,7 @@ export function DocumentCard({
       }, 500); // small delay to allow UI to settle
     }
 
-  }, [isActive, activeTool, setActiveTool, doc, onScanPii, onWatermark, onSplit, extractTables, startProcessing, stopProcessing, addLog]);
+  }, [isActive, activeTool, setActiveTool, doc, onScanPii, onWatermark, onSplit, extractTables, startProcessing, stopProcessing, addLog, handleScan]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -553,6 +596,7 @@ export function DocumentCard({
     let isCancelled = false;
     startProcessing("Initializing Pyodide (First load takes longer)...", true, () => {
       isCancelled = true;
+      stopProcessing();
     });
 
     try {
@@ -631,47 +675,6 @@ export function DocumentCard({
     }
   };
 
-  const handleScan = async () => {
-    setDetectedEntities(null);
-    setSelectedEntities(new Set());
-
-    let isCancelled = false;
-    startProcessing("Extracting text...", true, () => {
-      isCancelled = true;
-      stopProcessing();
-    });
-
-    try {
-      const buffer = await doc.file.arrayBuffer();
-      const pdfBytes = new Uint8Array(buffer);
-
-      const text = await extractText(pdfBytes);
-      if (isCancelled) return;
-
-      if (!text || text.trim() === "") {
-        setDetectedEntities([]);
-        return;
-      }
-
-      updateStage("Scanning for PII...");
-      const entities = await extractEntities(text);
-      if (isCancelled) return;
-
-      setDetectedEntities(entities);
-      setSelectedEntities(new Set(entities)); // pre-select all
-    } catch (err) {
-      if (isCancelled) return;
-      console.error(err);
-      setErrorState({
-        isOpen: true,
-        title: "Scan Error",
-        message: "An error occurred while scanning the document.",
-      });
-    } finally {
-      if (!isCancelled) stopProcessing();
-    }
-  };
-
   const handleRedact = async () => {
     if (selectedEntities.size === 0) return;
 
@@ -731,7 +734,7 @@ export function DocumentCard({
   };
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col hover:shadow-md transition-shadow relative">
+    <div className={`rounded-xl border shadow-sm flex flex-col hover:shadow-md transition-shadow relative ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-100" : "bg-white border-gray-200 text-gray-900"}`}>
       {contextMenuState && (
         <ContextMenu
           x={contextMenuState.x}
@@ -740,15 +743,18 @@ export function DocumentCard({
 items={[
             { label: "Extract / Split (~Instant)", onClick: () => onSplit(doc) },
             { label: "Rotate 90° (~Instant)", onClick: () => onRotate?.(doc) },
+            { variant: "separator" },
             { label: "Add Watermark (~1s)", onClick: () => onWatermark?.(doc) },
             { label: "Highlight Text (~2s)", onClick: () => onHighlight?.(doc) },
             { label: "Sign Document (~2s)", onClick: () => onSign?.(doc) },
+            { variant: "separator" },
             (!isMobile ? { label: "Extract Tables (Excel) (~10s)", onClick: handleExtractTables } : null),
             (!isMobile ? { label: "Extract Notes (MD) (~5s)", onClick: handleExtractMarkdown } : null),
             (!isMobile ? { label: "Extract Web (HTML) (~5s)", onClick: handleExtractHtml } : null),
             (!isMobile ? { label: "Export DOCX (~10s)", onClick: handleExportDocx } : null),
             (!isMobile ? { label: "Export True Dark (~10s)", onClick: handleExportDark } : null),
             (!isMobile ? { label: "Extract Links (CSV) (~2s)", onClick: handleExtractLinks } : null),
+            { variant: "separator" },
             { label: "Optimize (Compress) (~5s)", onClick: () => onOptimize?.(doc) },
             { label: "Delete Pages (~1s)", onClick: () => onDeletePages?.(doc) },
             { label: "Reorder Pages (~1s)", onClick: () => onReorderPages?.(doc) },
@@ -756,12 +762,15 @@ items={[
             { label: "Bates Numbering (~2s)", onClick: () => onBatesNumbering?.(doc) },
             { label: "Resize to A4/Letter (~2s)", onClick: () => onResizePages?.(doc) },
             (!isMobile ? { label: "Edit Bookmarks/Outline (~2s)", onClick: handleEditBookmarks } : null),
+            { variant: "separator" },
             (!isMobile ? { label: "Protect (Password) (~2s)", onClick: () => onEncrypt?.(doc) } : null),
             (!isMobile ? { label: "Sanitize & Send (~Instant)", onClick: () => onSanitize?.(doc) } : null),
             { label: "Flatten Forms (~1s)", onClick: () => onFlatten?.(doc) },
+            { variant: "separator" },
             (!isMobile ? { label: "Audit Redactions (~5s)", onClick: () => onAudit?.(doc) } : null),
             (!isMobile ? { label: "Verify Signatures (~2s)", onClick: () => onVerifySignature?.(doc) } : null),
             (!isMobile ? { label: "Read Aloud (TTS) (~15s/pg)", onClick: () => onReadAloud?.(doc) } : null),
+            { variant: "separator" },
             { label: "Share (URL)", onClick: () => onShare?.(doc) },
             {
               label: "Remove File",
@@ -809,7 +818,7 @@ items={[
           <h3 className="font-semibold text-lg truncate" title={doc.name}>
             {doc.name}
           </h3>
-          <div className="text-gray-500 text-sm mt-1">
+          <div className={`text-sm mt-1 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
             <p>Size: {(doc.size / 1024 / 1024).toFixed(2)} MB</p>
             <p>
               Pages:{" "}
@@ -817,209 +826,99 @@ items={[
             </p>
           </div>
         </div>
-        <div className="mt-4 pt-4 border-t border-gray-100 flex flex-wrap gap-2">
-          <button
-            onClick={() => onSplit(doc)}
-            disabled={isProcessing}
-            className="text-blue-600 hover:text-blue-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded px-1"
-            title="Split document into individual pages (Est: Instant)"
-          >
-            Split
-          </button>
-          <button
-            onClick={() => undo(doc.id)}
-            disabled={isProcessing || !canUndo}
-            className="text-gray-600 hover:text-gray-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 rounded px-1"
-            title="Undo (Cmd+Z)"
-          >
-            Undo
-          </button>
-          <button
-            onClick={() => redo(doc.id)}
-            disabled={isProcessing || !canRedo}
-            className="text-gray-600 hover:text-gray-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 rounded px-1"
-            title="Redo (Cmd+Shift+Z)"
-          >
-            Redo
-          </button>
-          <button
-            onClick={handleDownload}
-            disabled={isProcessing}
-            className="text-green-600 hover:text-green-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 rounded px-1"
-          >
-            Download
-          </button>
-          {!isMobile && (
-            <>
-              <button
-                onClick={handleScan}
-                disabled={isProcessing}
-                className="text-purple-600 hover:text-purple-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 rounded px-1"
-                title="Scan for Personally Identifiable Information (Est: ~10s)"
-              >
-                Scan PII
-              </button>
-              <button
-                onClick={handleScanCodes}
-                disabled={isProcessing}
-                className="text-orange-600 hover:text-orange-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 rounded px-1"
-                title="Scan document for barcodes and QR codes (Est: ~2s per page)"
-              >
-                Scan Codes
-              </button>
-              <button
-                onClick={() => {
-                  if (complexityMode === 'simple') {
-                    setComplexityMode('professional');
-                  }
-                  onOcr?.(doc);
-                }}
-                disabled={isProcessing}
-                className="text-orange-600 hover:text-orange-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 rounded px-1"
-                title={`Extract text from scanned PDF${complexityMode === 'simple' ? ' (Switches to Professional Mode)' : ''} (Est: ~30s)`}
-              >
-                OCR
-              </button>
-              <button
-                onClick={handleExtractTables}
-                disabled={isProcessing}
-                className="text-green-600 hover:text-green-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 rounded px-1"
-                title="Extract Tables to Excel"
-              >
-                Extract Tables
-              </button>
-              <button
-                onClick={handleExtractMarkdown}
-                disabled={isProcessing}
-                className="text-fuchsia-600 hover:text-fuchsia-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-500 rounded px-1"
-                title="Extract document to Markdown notes"
-              >
-                Extract Notes
-              </button>
-              <button
-                onClick={handleExtractHtml}
-                disabled={isProcessing}
-                className="text-orange-600 hover:text-orange-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 rounded px-1"
-                title="Extract document to HTML format"
-              >
-                Extract Web
-              </button>
-              <button
-                onClick={handleExportDark}
-                disabled={isProcessing}
-                className="text-gray-900 dark:text-gray-100 hover:text-gray-600 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 rounded px-1"
-                title="Export true dark PDF"
-              >
-                Export Dark
-              </button>
-              <button
-                onClick={handleExportDocx}
-                disabled={isProcessing}
-                className="text-blue-600 hover:text-blue-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded px-1"
-                title="Export document to DOCX format"
-              >
-                Export DOCX
-              </button>
-              <button
-                onClick={handleExtractImages}
-                disabled={isProcessing}
-                className="text-cyan-600 hover:text-cyan-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 rounded px-1"
-                title="Extract all images to ZIP"
-              >
-                Extract Images
-              </button>
-              <button
-                onClick={handleExtractLinks}
-                disabled={isProcessing}
-                className="text-amber-600 hover:text-amber-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 rounded px-1"
-                title="Extract embedded hyperlinks to CSV"
-              >
-                Extract Links
-              </button>
 
+        <div className="mt-4 pt-4 border-t border-gray-100">
+          <div className="flex gap-2 mb-2">
+            <button
+              onClick={() => undo(doc.id)}
+              disabled={isProcessing || !canUndo}
+              className="text-gray-600 hover:text-gray-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 rounded px-1"
+              title="Undo (Cmd+Z)"
+            >
+              Undo
+            </button>
+            <button
+              onClick={() => redo(doc.id)}
+              disabled={isProcessing || !canRedo}
+              className="text-gray-600 hover:text-gray-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 rounded px-1"
+              title="Redo (Cmd+Shift+Z)"
+            >
+              Redo
+            </button>
+            <button
+              onClick={handleDownload}
+              disabled={isProcessing}
+              className="text-green-600 hover:text-green-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 rounded px-1 ml-auto"
+            >
+              Download
+            </button>
+            <button
+              onClick={() => onRemove(doc.id)}
+              disabled={isProcessing}
+              className="text-red-500 hover:text-red-700 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 rounded px-1"
+            >
+              Remove
+            </button>
+          </div>
 
-              <button
-                onClick={() => onFlatten?.(doc)}
-                disabled={isProcessing}
+          <details className="mb-2">
+            <summary className="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300 select-none">Extract & Export</summary>
+            <div className="flex flex-wrap gap-2 mt-2">
+              <button onClick={() => onSplit(doc)} disabled={isProcessing} className="text-blue-600 hover:text-blue-800 text-sm font-medium disabled:opacity-50">Split</button>
+              {!isMobile && (
+                <>
+                  <button onClick={handleExtractTables} disabled={isProcessing} className="text-green-600 hover:text-green-800 text-sm font-medium disabled:opacity-50">Extract Tables</button>
+                  <button onClick={handleExtractMarkdown} disabled={isProcessing} className="text-fuchsia-600 hover:text-fuchsia-800 text-sm font-medium disabled:opacity-50">Extract Notes</button>
+                  <button onClick={handleExtractHtml} disabled={isProcessing} className="text-orange-600 hover:text-orange-800 text-sm font-medium disabled:opacity-50">Extract Web</button>
+                  <button onClick={handleExportDocx} disabled={isProcessing} className="text-blue-600 hover:text-blue-800 text-sm font-medium disabled:opacity-50">Export DOCX</button>
+                  <button onClick={handleExportDark} disabled={isProcessing} className="text-gray-900 dark:text-gray-100 hover:text-gray-600 text-sm font-medium disabled:opacity-50">Export Dark</button>
+                  <button onClick={handleExtractImages} disabled={isProcessing} className="text-cyan-600 hover:text-cyan-800 text-sm font-medium disabled:opacity-50">Extract Images</button>
+                  <button onClick={handleExtractLinks} disabled={isProcessing} className="text-amber-600 hover:text-amber-800 text-sm font-medium disabled:opacity-50">Extract Links</button>
+                </>
+              )}
+            </div>
+          </details>
 
-                className="text-stone-600 hover:text-stone-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-500 rounded px-1"
-                title="Flatten Forms"
-              >
-                Flatten
-              </button>
+          <details className="mb-2">
+            <summary className="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300 select-none">Modify & Secure</summary>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {!isMobile && (
+                <>
+                  <button onClick={() => onFlatten?.(doc)} disabled={isProcessing} className="text-stone-600 hover:text-stone-800 text-sm font-medium disabled:opacity-50">Flatten</button>
+                  <button onClick={() => onSanitize?.(doc)} disabled={isProcessing} className="text-indigo-600 hover:text-indigo-800 text-sm font-medium disabled:opacity-50">Sanitize</button>
+                  <button onClick={() => onHighlight?.(doc)} disabled={isProcessing} className="text-teal-600 hover:text-teal-800 text-sm font-medium disabled:opacity-50">Highlight</button>
+                  <button onClick={() => onSign?.(doc)} disabled={isProcessing} className="text-pink-600 hover:text-pink-800 text-sm font-medium disabled:opacity-50">Sign</button>
+                  <button onClick={() => onResizePages?.(doc)} disabled={isProcessing} className="text-emerald-600 hover:text-emerald-800 text-sm font-medium disabled:opacity-50">Resize</button>
+                  <button onClick={() => onAudit?.(doc)} disabled={isProcessing} className="text-yellow-600 hover:text-yellow-800 text-sm font-medium disabled:opacity-50">Audit</button>
+                  <button onClick={() => onVerifySignature?.(doc)} disabled={isProcessing} className="text-blue-500 hover:text-blue-700 text-sm font-medium disabled:opacity-50">Verify Sigs</button>
+                </>
+              )}
+            </div>
+          </details>
 
-              <button
-                onClick={() => onSanitize?.(doc)}
-                disabled={isProcessing}
-                className="text-indigo-600 hover:text-indigo-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded px-1"
-                title="Remove metadata and scripts (Est: Instant)"
-              >
-                Sanitize
-              </button>
-              <button
-                onClick={() => onHighlight?.(doc)}
-                disabled={isProcessing}
-                className="text-teal-600 hover:text-teal-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 rounded px-1"
-              >
-                Highlight
-              </button>
-              <button
-                onClick={() => onSign?.(doc)}
-                disabled={isProcessing}
-                className="text-pink-600 hover:text-pink-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-500 rounded px-1"
-              >
-                Sign
-              </button>
-              <button
-                onClick={() => onAudit?.(doc)}
-                disabled={isProcessing}
-                className="text-yellow-600 hover:text-yellow-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-500 rounded px-1"
-                title="Check for fake redactions (Est: ~5s)"
-              >
-                Audit
-              </button>
-              <button
-                onClick={() => onVerifySignature?.(doc)}
-                disabled={isProcessing}
-                className="text-blue-500 hover:text-blue-700 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded px-1"
-                title="Verify Digital Signatures (Est: ~2s)"
-              >
-                Verify Sigs
-              </button>
-              <button
-                onClick={() => onResizePages?.(doc)}
-                disabled={isProcessing}
-                className="text-emerald-600 hover:text-emerald-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 rounded px-1"
-                title="Resize all pages to A4 or Letter"
-              >
-                Resize
-              </button>
-              <button
-                onClick={() => onReadAloud?.(doc)}
-                disabled={isProcessing}
-                className="text-blue-600 hover:text-blue-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded px-1"
-                title="Read aloud using local AI (Est: ~15s per page)"
-              >
-                Read Aloud
-              </button>
-            </>
-          )}
+          <details>
+            <summary className="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300 select-none">Analyze (AI)</summary>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {!isMobile && (
+                <>
+                  <button onClick={handleScan} disabled={isProcessing} className="text-purple-600 hover:text-purple-800 text-sm font-medium disabled:opacity-50">Scan PII</button>
+                  <button onClick={handleScanCodes} disabled={isProcessing} className="text-orange-600 hover:text-orange-800 text-sm font-medium disabled:opacity-50">Scan Codes</button>
+                  <button onClick={() => { if (complexityMode === 'simple') setComplexityMode('professional'); onOcr?.(doc); }} disabled={isProcessing} className="text-orange-600 hover:text-orange-800 text-sm font-medium disabled:opacity-50">OCR</button>
+                  <button onClick={() => onReadAloud?.(doc)} disabled={isProcessing} className="text-blue-600 hover:text-blue-800 text-sm font-medium disabled:opacity-50">Read Aloud</button>
+                </>
+              )}
+            </div>
+          </details>
+
           {isMobile && (
-            <span className="text-xs bg-gray-100 text-gray-500 px-2 py-1 rounded">Mobile Utility Mode</span>
+            <span className="text-xs bg-gray-100 text-gray-500 px-2 py-1 rounded block mt-2">Mobile Utility Mode</span>
           )}
-          <button
-            onClick={() => onRemove(doc.id)}
-            disabled={isProcessing}
-            className="text-red-500 hover:text-red-700 text-sm font-medium disabled:opacity-50 ml-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 rounded px-1"
-          >
-            Remove
-          </button>
         </div>
       </div>
 
       {/* PII Sidebar / Overlay */}
       {detectedEntities !== null && (
-        <div className="absolute top-0 left-full ml-4 w-64 bg-white border border-gray-200 rounded-xl shadow-lg p-4 z-10">
+        <div className="absolute top-0 right-0 lg:left-full lg:ml-4 w-64 bg-white border border-gray-200 rounded-xl shadow-lg p-4 z-20">
           <div className="flex justify-between items-center mb-4">
             <h4 className="font-semibold text-gray-800">Detected PII</h4>
             <button
