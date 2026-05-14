@@ -806,6 +806,20 @@ function App() {
     });
   };
 
+  const extractAnnotations = (bytes: Uint8Array): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      if (!pyodideWorkerRef.current)
+        return reject(new Error("Pyodide worker not ready"));
+      const jobId = crypto.randomUUID();
+      pyodideResolvers.current.set(jobId, { resolve, reject });
+      pyodideWorkerRef.current.postMessage({
+        type: "EXTRACT_ANNOTATIONS",
+        pdfBytes: bytes,
+        jobId,
+      } satisfies PyodideWorkerMessage);
+    });
+  };
+
   const extractBookmarks = (bytes: Uint8Array): Promise<string> => {
     return new Promise((resolve, reject) => {
       if (!pyodideWorkerRef.current)
@@ -2500,6 +2514,7 @@ function App() {
                       extractHtml={extractHtml}
                       extractImages={extractImages}
                       extractLinks={extractLinks}
+                      extractAnnotations={extractAnnotations}
                       extractBookmarks={extractBookmarks}
                       editBookmarks={editBookmarks}
                       redactPdf={redactPdf}

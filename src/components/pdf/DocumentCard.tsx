@@ -41,6 +41,7 @@ interface DocumentCardProps {
   extractHtml?: (bytes: Uint8Array) => Promise<string>;
   extractImages?: (bytes: Uint8Array) => Promise<Uint8Array>;
   extractLinks?: (bytes: Uint8Array) => Promise<string>;
+  extractAnnotations?: (bytes: Uint8Array) => Promise<string>;
   extractBookmarks?: (bytes: Uint8Array) => Promise<string>;
   editBookmarks?: (bytes: Uint8Array, bookmarks: Bookmark[]) => Promise<Uint8Array>;
   redactPdf: (bytes: Uint8Array, redactions: string[]) => Promise<Uint8Array>;
@@ -84,6 +85,7 @@ export function DocumentCard({
   extractHtml,
   extractImages,
   extractLinks,
+  extractAnnotations,
   extractBookmarks,
   editBookmarks,
   redactPdf,
@@ -592,6 +594,59 @@ export function DocumentCard({
     }
   };
 
+  const handleExtractAnnotations = async () => {
+    if (!extractAnnotations) return;
+    let isCancelled = false;
+    startProcessing("Extracting annotations...", true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
+    try {
+      const buffer = await doc.file.arrayBuffer();
+      const pdfBytes = new Uint8Array(buffer);
+      const jsonAnnotations = await extractAnnotations(pdfBytes);
+      if (isCancelled) return;
+
+      const annotations = JSON.parse(jsonAnnotations) as { page: number; type: string; content: string }[];
+
+      if (annotations.length === 0) {
+        throw new Error("No annotations found in the document.");
+      }
+
+      // Convert to CSV
+      const csvRows = ["Page,Type,Content"];
+      for (const annot of annotations) {
+        const escapedContent = annot.content.replace(/"/g, '""');
+        csvRows.push(`${annot.page},"${annot.type}","${escapedContent}"`);
+      }
+      const csvString = csvRows.join("\n");
+
+      const blob = new Blob([csvString], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = getSmartOutputName(doc.name, "annotations").replace(/\.pdf$/i, ".csv");
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      addLog("Extract Annotations", `Extracted ${annotations.length} annotations to CSV.`, doc.name);
+      useUIStore.getState().showFeedbackPrompt("Extract Annotations");
+    } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+      if (isCancelled) return;
+      console.error(err);
+      setErrorState({
+        isOpen: true,
+        title: "Extraction Error",
+        message: err.message || "An error occurred while extracting annotations.",
+      });
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
+  };
+
   const handleExtractImages = async () => {
     let isCancelled = false;
     startProcessing("Initializing Pyodide (First load takes longer)...", true, () => {
@@ -754,6 +809,7 @@ items={[
             (!isMobile ? { label: "Export DOCX (~10s)", onClick: handleExportDocx } : null),
             (!isMobile ? { label: "Export True Dark (~10s)", onClick: handleExportDark } : null),
             (!isMobile ? { label: "Extract Links (CSV) (~2s)", onClick: handleExtractLinks } : null),
+            (!isMobile ? { label: "Extract Annotations (CSV) (~2s)", onClick: handleExtractAnnotations } : null),
             { variant: "separator" },
             { label: "Optimize (Compress) (~5s)", onClick: () => onOptimize?.(doc) },
             { label: "Delete Pages (~1s)", onClick: () => onDeletePages?.(doc) },
@@ -874,6 +930,7 @@ items={[
                   <button onClick={handleExportDark} disabled={isProcessing} className="text-gray-900 dark:text-gray-100 hover:text-gray-600 text-sm font-medium disabled:opacity-50">Export Dark</button>
                   <button onClick={handleExtractImages} disabled={isProcessing} className="text-cyan-600 hover:text-cyan-800 text-sm font-medium disabled:opacity-50">Extract Images</button>
                   <button onClick={handleExtractLinks} disabled={isProcessing} className="text-amber-600 hover:text-amber-800 text-sm font-medium disabled:opacity-50">Extract Links</button>
+                  <button onClick={handleExtractAnnotations} disabled={isProcessing} className="text-rose-600 hover:text-rose-800 text-sm font-medium disabled:opacity-50">Extract Annotations</button>
                 </>
               )}
             </div>

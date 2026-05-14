@@ -126,7 +126,7 @@ This timeline is structured to build a working foundation rapidly, layer on the 
 **Objective:** Finalize the enterprise-tier features that ensure high retention.
 * [x] **Context-Aware Diff (Track Changes):** Build the semantic comparison tool for two PDF versions.
 * [x] **Multi-PDF Search:** Allow users to drop an entire folder of PDFs into the browser. Use `transformers.js` to create local embeddings, making the folder instantly searchable.
-* [ ] **Reviewer Portal:** Extract annotations, comments, and highlights into an actionable checklist.
+* [x] **Reviewer Portal:** Extract annotations, comments, and highlights into an actionable checklist.
 * [ ] **PDF/A Conversion:** Enable conversion to PDF/A for archival compliance.
 * [ ] **Browser Extension:** Develop a Chrome/Firefox extension that adds "Open in BunkerPDF" to the right-click context menu on any PDF link, acting purely as a discovery launcher without requiring intrusive permissions.
 * [ ] **Offline Mode:** Wrap the application in a Progressive Web App (PWA) manifest so users can install it locally and use it without an internet connection.

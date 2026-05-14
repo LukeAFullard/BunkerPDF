@@ -19,6 +19,7 @@ export type PyodideWorkerMessage = {
     | "EXTRACT_HTML"
     | "EXTRACT_IMAGES"
     | "EXTRACT_LINKS"
+    | "EXTRACT_ANNOTATIONS"
     | "EXTRACT_BOOKMARKS"
     | "EDIT_BOOKMARKS"
     | "DOCX_TO_PDF"
@@ -585,6 +586,48 @@ json.dumps(links)
         type: "RESULT",
         jobId,
         result: jsonLinks,
+      } satisfies PyodideWorkerResponse);
+
+    } else if (type === "EXTRACT_ANNOTATIONS") {
+      if (!initPromise) initPromise = initializePyodide();
+      await initPromise;
+      if (!pyodide) throw new Error("Pyodide not initialized");
+      if (!pdfBytes) throw new Error("No PDF bytes provided");
+
+      pyodide.globals.set("doc_bytes", pdfBytes);
+      const extractAnnotationsCode = `
+import fitz
+import json
+
+doc = fitz.open(stream=bytes(doc_bytes), filetype="pdf")
+annotations = []
+
+for page_num in range(len(doc)):
+    page = doc[page_num]
+    for annot in page.annots():
+        info = annot.info
+        content = info.get("content", "")
+        if not content:
+            # Fallback to extracting the underlying text
+            content = page.get_text("text", clip=annot.rect).strip()
+
+        if content:
+            annotations.append({
+                "page": page_num + 1,
+                "type": annot.type[1],
+                "content": content
+            })
+
+doc.close()
+del doc, doc_bytes
+json.dumps(annotations)
+`;
+      const jsonAnnotations = await pyodide.runPythonAsync(extractAnnotationsCode);
+
+      self.postMessage({
+        type: "RESULT",
+        jobId,
+        result: jsonAnnotations,
       } satisfies PyodideWorkerResponse);
 
     } else if (type === "EXTRACT_HTML") {
