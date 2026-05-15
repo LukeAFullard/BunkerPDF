@@ -793,6 +793,24 @@ function App() {
     });
   };
 
+  const unlockPdf = (
+    bytes: Uint8Array,
+    password: string,
+  ): Promise<Uint8Array> => {
+    return new Promise((resolve, reject) => {
+      if (!pyodideWorkerRef.current)
+        return reject(new Error("Pyodide worker not ready"));
+      const jobId = crypto.randomUUID();
+      pyodideResolvers.current.set(jobId, { resolve, reject });
+      pyodideWorkerRef.current.postMessage({
+        type: "UNLOCK_DOCUMENT",
+        jobId,
+        pdfBytes: bytes,
+        password,
+      } satisfies PyodideWorkerMessage);
+    });
+  };
+
   const highlightPdf = (
     bytes: Uint8Array,
     highlights: string[],
@@ -1978,6 +1996,7 @@ function App() {
             type: "application/pdf",
           });
           updateDocumentFile(doc.id, newFile);
+          useFileStore.getState().updateDocument(doc.id, { isEncrypted: true });
           addLog("Protect", "Password protected document.", doc.name);
         } catch (e) {
           if (isCancelled) return;
@@ -1986,6 +2005,75 @@ function App() {
             isOpen: true,
             title: "Encryption Error",
             message: "An error occurred while encrypting the PDF.",
+          });
+        } finally {
+          if (!isCancelled) stopProcessing();
+        }
+      },
+    });
+  };
+
+  const handleUnlock = (doc: PDFDocument) => {
+    setInputState({
+      isOpen: true,
+      title: "Unlock PDF",
+      message: "Enter the password to unlock this PDF:",
+      placeholder: "Password",
+      onConfirm: async (password) => {
+        let isCancelled = false;
+        if (!password) return;
+        startProcessing("Unlocking document...", true, () => {
+          isCancelled = true;
+        });
+
+        try {
+          const arrayBuffer = await doc.file.arrayBuffer();
+          const pdfBytes = new Uint8Array(arrayBuffer);
+          let unlockedBytes: Uint8Array;
+
+          try {
+            // Try pdf-lib first (standard RC4)
+            const { PDFDocument: PDFLibDoc } = await import('pdf-lib');
+            const pdfDoc = await PDFLibDoc.load(pdfBytes, { password } as any); // eslint-disable-line @typescript-eslint/no-explicit-any
+            unlockedBytes = await pdfDoc.save();
+          } catch (e: unknown) {
+            // If pdf-lib fails (e.g. AES-256), fallback to pymupdf
+            console.log("pdf-lib failed to unlock, falling back to pymupdf", e);
+            unlockedBytes = await unlockPdf(pdfBytes, password);
+          }
+
+          if (isCancelled) return;
+
+          const standardBuffer = new Uint8Array(unlockedBytes.length);
+          standardBuffer.set(unlockedBytes);
+
+          const newFileName = doc.name.replace(/\.pdf$/i, '-unlocked.pdf');
+          const newFile = new File([standardBuffer], newFileName, {
+            type: "application/pdf",
+          });
+
+          updateDocumentFile(doc.id, newFile);
+          useFileStore.getState().updateDocument(doc.id, {
+            name: newFileName,
+            isEncrypted: false
+          });
+
+          setInputState(prev => ({ ...prev, isOpen: false }));
+          addLog("Unlock", "Removed password protection.", newFileName);
+        } catch (e: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+          if (isCancelled) return;
+          console.error(e);
+
+          // Differentiate between wrong password and other errors
+          const isWrongPassword = e?.message?.includes('Incorrect password') ||
+                                  e?.message?.includes('IncorrectPasswordException');
+
+          setErrorState({
+            isOpen: true,
+            title: "Unlock Error",
+            message: isWrongPassword
+              ? "Incorrect password — please try again."
+              : "An error occurred while unlocking the PDF.",
           });
         } finally {
           if (!isCancelled) stopProcessing();
@@ -2555,6 +2643,7 @@ function App() {
                       onBatesNumbering={handleBatesNumbering}
                       onResizePages={handleResizePages}
                       onEncrypt={handleEncrypt}
+                      onUnlock={handleUnlock}
                       onSanitize={handleSanitize}
                       onFlatten={handleFlatten}
                       onShare={handleShare}

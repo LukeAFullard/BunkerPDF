@@ -26,6 +26,7 @@ interface DocumentCardProps {
   onBatesNumbering?: (doc: PDFDocument) => void;
   onResizePages?: (doc: PDFDocument) => void;
   onEncrypt?: (doc: PDFDocument) => void;
+  onUnlock?: (doc: PDFDocument) => void;
   onSanitize?: (doc: PDFDocument) => void;
   onFlatten?: (doc: PDFDocument) => void;
   onShare?: (doc: PDFDocument) => void;
@@ -69,6 +70,7 @@ export function DocumentCard({
   onBatesNumbering,
   onResizePages,
   onEncrypt,
+  onUnlock,
   onSanitize,
   onFlatten,
   onShare,
@@ -820,6 +822,7 @@ items={[
             (!isMobile ? { label: "Edit Bookmarks/Outline (~2s)", onClick: handleEditBookmarks } : null),
             { variant: "separator" },
             (!isMobile ? { label: "Protect (Password) (~2s)", onClick: () => onEncrypt?.(doc) } : null),
+            (doc.isEncrypted ? { label: "Unlock (Remove Password)", onClick: () => onUnlock?.(doc) } : null),
             (!isMobile ? { label: "Sanitize & Send (~Instant)", onClick: () => onSanitize?.(doc) } : null),
             { label: "Flatten Forms (~1s)", onClick: () => onFlatten?.(doc) },
             { variant: "separator" },
