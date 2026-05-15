@@ -136,10 +136,18 @@ export function DocumentCard({
   } | null>(null);
 
   useEffect(() => {
-    if (isActive && !healthData) {
-      analyzeDocumentHealth(doc.file).then(setHealthData);
+    if (isActive) {
+      let isMounted = true;
+      analyzeDocumentHealth(doc.file).then(data => {
+        if (isMounted) setHealthData(data);
+      });
+      return () => {
+        isMounted = false;
+        // Optionally clear data if we expect to re-fetch on every active state flip
+        // Not calling synchronously
+      };
     }
-  }, [isActive, doc.file, healthData]);
+  }, [isActive, doc.file, doc.lastModified]);
 
   const handleScan = useCallback(async () => {
     setDetectedEntities(null);
