@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { set as idbSet, get as idbGet, del as idbDel } from 'idb-keyval';
 
 export interface DocumentOperation {
   id: string;
@@ -7,6 +8,8 @@ export interface DocumentOperation {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   params: Record<string, any>;
   undoData?: Uint8Array;
+  fileKey: string;
+  pageCount?: number;
 }
 
 export interface PDFDocument {
@@ -78,53 +81,88 @@ export const useFileStore = create<FileStore>((set) => ({
     )
   })),
 
-  updateDocumentFile: (id: string, newFile: File, newPageCount?: number, operation?: Partial<DocumentOperation>) => set((state) => ({
-    documents: state.documents.map(doc => {
-      if (doc.id !== id) return doc;
+  updateDocumentFile: (id: string, newFile: File, newPageCount?: number, operation?: Partial<DocumentOperation>) => {
+    const fileKey = `doc_state_${id}_${Date.now()}_${crypto.randomUUID()}`;
+    // Save to IndexedDB asynchronously
+    idbSet(fileKey, newFile).catch(console.error);
 
-      const ops = doc.operations || [];
-      const currentIndex = doc.operationIndex ?? -1;
+    useFileStore.setState((state) => ({
+      documents: state.documents.map(doc => {
+        if (doc.id !== id) return doc;
 
-      const newOps = ops.slice(0, currentIndex + 1);
+        const ops = doc.operations || [];
+        const currentIndex = doc.operationIndex ?? -1;
 
-      if (operation) {
+        // Truncate future operations
+        const newOps = ops.slice(0, currentIndex + 1);
+
+        // Always store the previous state as operation 0 if operations are empty
+        if (newOps.length === 0) {
+           const initialKey = `doc_state_${id}_initial`;
+           idbSet(initialKey, doc.file).catch(console.error);
+           newOps.push({
+             id: 'initial',
+             timestamp: Date.now() - 1000,
+             type: 'other',
+             params: { name: 'Initial Upload' },
+             fileKey: initialKey,
+             pageCount: doc.pageCount,
+           });
+        }
+
         newOps.push({
           id: crypto.randomUUID(),
           timestamp: Date.now(),
-          type: operation.type || 'other',
-          params: operation.params || {},
-          undoData: operation.undoData,
+          type: operation?.type || 'other',
+          params: operation?.params || {},
+          undoData: operation?.undoData,
+          fileKey: fileKey,
+          pageCount: newPageCount !== undefined ? newPageCount : doc.pageCount,
         });
-      }
 
-      const trimmedOps = newOps.slice(-20);
+        // Keep only last 20 operations to manage IDB size
+        if (newOps.length > 21) {
+          const removed = newOps.shift();
+          if (removed) idbDel(removed.fileKey).catch(console.error);
+        }
 
-      return {
-        ...doc,
-        file: newFile,
-        size: newFile.size,
-        pageCount: newPageCount !== undefined ? newPageCount : doc.pageCount,
-        operations: trimmedOps,
-        operationIndex: trimmedOps.length - 1,
-      };
-    })
-  })),
+        return {
+          ...doc,
+          file: newFile,
+          size: newFile.size,
+          pageCount: newPageCount !== undefined ? newPageCount : doc.pageCount,
+          operations: newOps,
+          operationIndex: newOps.length - 1,
+        };
+      })
+    }));
+  },
 
   undo: async (id: string) => {
     const state = useFileStore.getState();
     const doc = state.documents.find(d => d.id === id);
-    if (!doc || !doc.operations || (doc.operationIndex ?? -1) < 0) return;
+    if (!doc || !doc.operations || (doc.operationIndex ?? -1) <= 0) return;
 
     const targetIndex = (doc.operationIndex ?? 0) - 1;
-    if (targetIndex < -1) return;
+    const targetOp = doc.operations[targetIndex];
+    if (!targetOp) return;
 
-    set((state) => ({
-      documents: state.documents.map(d =>
-        d.id === id
-          ? { ...d, operationIndex: targetIndex }
-          : d
-      )
-    }));
+    try {
+      const storedFile = await idbGet<File>(targetOp.fileKey);
+      if (!storedFile) {
+        console.error("Undo failed: File not found in IndexedDB");
+        return;
+      }
+      useFileStore.setState((state) => ({
+        documents: state.documents.map(d =>
+          d.id === id
+            ? { ...d, file: storedFile, size: storedFile.size, pageCount: targetOp.pageCount, operationIndex: targetIndex }
+            : d
+        )
+      }));
+    } catch (e) {
+      console.error("Undo failed:", e);
+    }
   },
 
   redo: async (id: string) => {
@@ -137,13 +175,26 @@ export const useFileStore = create<FileStore>((set) => ({
 
     if (currentIndex >= maxIndex) return;
 
-    set((state) => ({
-      documents: state.documents.map(d =>
-        d.id === id
-          ? { ...d, operationIndex: currentIndex + 1 }
-          : d
-      )
-    }));
+    const targetIndex = currentIndex + 1;
+    const targetOp = doc.operations[targetIndex];
+    if (!targetOp) return;
+
+    try {
+      const storedFile = await idbGet<File>(targetOp.fileKey);
+      if (!storedFile) {
+        console.error("Redo failed: File not found in IndexedDB");
+        return;
+      }
+      useFileStore.setState((state) => ({
+        documents: state.documents.map(d =>
+          d.id === id
+            ? { ...d, file: storedFile, size: storedFile.size, pageCount: targetOp.pageCount, operationIndex: targetIndex }
+            : d
+        )
+      }));
+    } catch (e) {
+      console.error("Redo failed:", e);
+    }
   },
 
   clearAll: () => set({ documents: [], activeDocumentId: null }),
