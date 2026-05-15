@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { useUIStore } from '../../store/uiStore';
+import { cleanupPdfResources } from '../../lib/pdfCleanup';
 
 // We must specify the worker source for pdfjs-dist.
 // Using the Vite worker pattern or pointing to the local minified worker.
@@ -17,6 +18,7 @@ interface PDFThumbnailProps {
 
 export function PDFThumbnail({ file, width = 200, className }: PDFThumbnailProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const pdfDocRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
   const [error, setError] = useState<string | null>(null);
   const isDarkMode = useUIStore((state) => state.isDarkMode);
 
@@ -29,6 +31,7 @@ export function PDFThumbnail({ file, width = 200, className }: PDFThumbnailProps
         const arrayBuffer = await file.arrayBuffer();
         const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
         const pdf = await loadingTask.promise;
+        pdfDocRef.current = pdf;
 
         // Render the first page
         const page = await pdf.getPage(1);
@@ -76,6 +79,10 @@ export function PDFThumbnail({ file, width = 200, className }: PDFThumbnailProps
       isMounted = false;
       if (renderTask) {
         renderTask.cancel();
+      }
+      if (pdfDocRef.current) {
+        cleanupPdfResources(pdfDocRef.current);
+        pdfDocRef.current = null;
       }
     };
   }, [file, width]);

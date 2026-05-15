@@ -55,6 +55,9 @@ export async function ocrPdf(file: File, updateStage?: (stage: string) => void, 
       // Cleanup canvas memory
       canvas.width = 0;
       canvas.height = 0;
+      // @ts-expect-error Breaking reference for GC
+      context = null;
+      canvas.remove();
 
       const result = await worker.recognize(dataUrl, {pdfTitle: file.name}, {pdf: true});
 
@@ -73,6 +76,11 @@ export async function ocrPdf(file: File, updateStage?: (stage: string) => void, 
     return new File([standardBuffer], file.name, { type: 'application/pdf' });
   } finally {
     await worker.terminate();
-    await pdf.destroy();
+    try {
+      await pdf.cleanup();
+      await pdf.destroy();
+    } catch (e) {
+      console.warn('PDF cleanup failed:', e);
+    }
   }
 }
