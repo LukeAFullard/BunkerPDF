@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { set as idbSet, get as idbGet, del as idbDel } from 'idb-keyval';
+import { set as idbSet, get as idbGet, del as idbDel, clear as idbClear } from 'idb-keyval';
 
 export interface DocumentOperation {
   id: string;
@@ -8,7 +8,7 @@ export interface DocumentOperation {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   params: Record<string, any>;
   undoData?: Uint8Array;
-  fileKey: string;
+  fileKey?: string;
   pageCount?: number;
 }
 
@@ -42,36 +42,64 @@ export const useFileStore = create<FileStore>((set) => ({
   documents: [],
   activeDocumentId: null,
 
-  addDocuments: (docs: PDFDocument[]) => set((state) => {
-    const newDocs = [...state.documents, ...docs].slice(0, 50); // Enforce 50 file cap
-    return {
-      documents: newDocs,
-      // If there wasn't an active document, set the first new one as active
-      activeDocumentId: state.activeDocumentId || (newDocs.length > 0 ? newDocs[0].id : null)
-    };
-  }),
+  addDocuments: (docs: PDFDocument[]) => {
+    // Store initial files to IDB
+    docs.forEach(doc => {
+      const fileKey = `doc_state_${doc.id}_initial`;
+      idbSet(fileKey, doc.file).catch(console.error);
+      doc.operations = [{
+        id: 'initial',
+        type: 'other',
+        timestamp: Date.now(),
+        params: { name: 'Initial Upload' },
+        fileKey: fileKey,
+        pageCount: doc.pageCount
+      }];
+      doc.operationIndex = 0;
+    });
 
-  removeDocument: (id: string) => set((state) => {
-    const remaining = state.documents.filter(doc => doc.id !== id);
-    let nextActiveId = state.activeDocumentId;
+    useFileStore.setState((state) => {
+      const newDocs = [...state.documents, ...docs].slice(0, 50); // Enforce 50 file cap
+      return {
+        documents: newDocs,
+        // If there wasn't an active document, set the first new one as active
+        activeDocumentId: state.activeDocumentId || (newDocs.length > 0 ? newDocs[0].id : null)
+      };
+    });
+  },
 
-    if (state.activeDocumentId === id) {
-      if (remaining.length > 0) {
-        // Find the index of the document being removed
-        const index = state.documents.findIndex(doc => doc.id === id);
-        // Set the active document to the one before it, or the first one if it was the first
-        const nextIndex = Math.max(0, index - 1);
-        nextActiveId = remaining[nextIndex]?.id || remaining[0].id;
-      } else {
-        nextActiveId = null;
-      }
+  removeDocument: (id: string) => {
+    const state = useFileStore.getState();
+    const docToRemove = state.documents.find(doc => doc.id === id);
+    if (docToRemove?.operations) {
+      // Clean up IDB keys
+      docToRemove.operations.forEach(op => {
+        if (op.fileKey) idbDel(op.fileKey).catch(console.error);
+      });
     }
 
-    return {
-      documents: remaining,
-      activeDocumentId: nextActiveId
-    };
-  }),
+    useFileStore.setState((state) => {
+      const remaining = state.documents.filter(doc => doc.id !== id);
+      let nextActiveId = state.activeDocumentId;
+
+      if (state.activeDocumentId === id) {
+        if (remaining.length > 0) {
+          // Find the index of the document being removed
+          const index = state.documents.findIndex(doc => doc.id === id);
+          // Set the active document to the one before it, or the first one if it was the first
+          const nextIndex = Math.max(0, index - 1);
+          nextActiveId = remaining[nextIndex]?.id || remaining[0].id;
+        } else {
+          nextActiveId = null;
+        }
+      }
+
+      return {
+        documents: remaining,
+        activeDocumentId: nextActiveId
+      };
+    });
+  },
 
   setActiveDocument: (id: string) => set({ activeDocumentId: id }),
 
@@ -83,7 +111,6 @@ export const useFileStore = create<FileStore>((set) => ({
 
   updateDocumentFile: (id: string, newFile: File, newPageCount?: number, operation?: Partial<DocumentOperation>) => {
     const fileKey = `doc_state_${id}_${Date.now()}_${crypto.randomUUID()}`;
-    // Save to IndexedDB asynchronously
     idbSet(fileKey, newFile).catch(console.error);
 
     useFileStore.setState((state) => ({
@@ -93,22 +120,13 @@ export const useFileStore = create<FileStore>((set) => ({
         const ops = doc.operations || [];
         const currentIndex = doc.operationIndex ?? -1;
 
-        // Truncate future operations
-        const newOps = ops.slice(0, currentIndex + 1);
+        // Truncate future operations, clean up their IDB keys
+        const truncated = ops.slice(currentIndex + 1);
+        truncated.forEach(op => {
+          if (op.fileKey) idbDel(op.fileKey).catch(console.error);
+        });
 
-        // Always store the previous state as operation 0 if operations are empty
-        if (newOps.length === 0) {
-           const initialKey = `doc_state_${id}_initial`;
-           idbSet(initialKey, doc.file).catch(console.error);
-           newOps.push({
-             id: 'initial',
-             timestamp: Date.now() - 1000,
-             type: 'other',
-             params: { name: 'Initial Upload' },
-             fileKey: initialKey,
-             pageCount: doc.pageCount,
-           });
-        }
+        const newOps = ops.slice(0, currentIndex + 1);
 
         newOps.push({
           id: crypto.randomUUID(),
@@ -120,10 +138,10 @@ export const useFileStore = create<FileStore>((set) => ({
           pageCount: newPageCount !== undefined ? newPageCount : doc.pageCount,
         });
 
-        // Keep only last 20 operations to manage IDB size
-        if (newOps.length > 21) {
+        // Keep only last 20 operations, clean up old keys
+        while (newOps.length > 20) {
           const removed = newOps.shift();
-          if (removed) idbDel(removed.fileKey).catch(console.error);
+          if (removed?.fileKey) idbDel(removed.fileKey).catch(console.error);
         }
 
         return {
@@ -145,7 +163,7 @@ export const useFileStore = create<FileStore>((set) => ({
 
     const targetIndex = (doc.operationIndex ?? 0) - 1;
     const targetOp = doc.operations[targetIndex];
-    if (!targetOp) return;
+    if (!targetOp || !targetOp.fileKey) return;
 
     try {
       const storedFile = await idbGet<File>(targetOp.fileKey);
@@ -177,7 +195,7 @@ export const useFileStore = create<FileStore>((set) => ({
 
     const targetIndex = currentIndex + 1;
     const targetOp = doc.operations[targetIndex];
-    if (!targetOp) return;
+    if (!targetOp || !targetOp.fileKey) return;
 
     try {
       const storedFile = await idbGet<File>(targetOp.fileKey);
@@ -197,5 +215,8 @@ export const useFileStore = create<FileStore>((set) => ({
     }
   },
 
-  clearAll: () => set({ documents: [], activeDocumentId: null }),
+  clearAll: () => {
+    idbClear().catch(console.error);
+    useFileStore.setState({ documents: [], activeDocumentId: null });
+  },
 }));
