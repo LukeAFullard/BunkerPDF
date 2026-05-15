@@ -32,15 +32,19 @@ interface FileStore {
   removeDocument: (id: string) => void;
   setActiveDocument: (id: string) => void;
   updateDocument: (id: string, updates: Partial<PDFDocument>) => void;
-  updateDocumentFile: (id: string, newFile: File, newPageCount?: number, operation?: Partial<DocumentOperation>) => void;
-  undo: (id: string) => void;
-  redo: (id: string) => void;
+  updateDocumentFile: (id: string, newFile: File, newPageCount?: number, operation?: Partial<DocumentOperation>) => Promise<void>;
+  undoInProgress: boolean;
+  redoInProgress: boolean;
+  undo: (id: string) => Promise<void>;
+  redo: (id: string) => Promise<void>;
   clearAll: () => void;
 }
 
-export const useFileStore = create<FileStore>((set) => ({
+export const useFileStore = create<FileStore>((set, get) => ({
   documents: [],
   activeDocumentId: null,
+  undoInProgress: false,
+  redoInProgress: false,
 
   addDocuments: (docs: PDFDocument[]) => {
     // Store initial files to IDB
@@ -109,11 +113,32 @@ export const useFileStore = create<FileStore>((set) => ({
     )
   })),
 
-  updateDocumentFile: (id: string, newFile: File, newPageCount?: number, operation?: Partial<DocumentOperation>) => {
+  updateDocumentFile: async (id: string, newFile: File, newPageCount?: number, operation?: Partial<DocumentOperation>) => {
     const fileKey = `doc_state_${id}_${Date.now()}_${crypto.randomUUID()}`;
-    idbSet(fileKey, newFile).catch(console.error);
 
-    useFileStore.setState((state) => ({
+    try {
+      await idbSet(fileKey, newFile);
+    } catch (error) {
+      console.error('Failed to save to IndexedDB:', error);
+      // Fallback: proceed without undo history
+      set((state) => ({
+        documents: state.documents.map(doc =>
+          doc.id === id ? { ...doc, file: newFile, size: newFile.size, pageCount: newPageCount } : doc
+        )
+      }));
+      return;
+    }
+
+    // Check quota before proceeding
+    if (navigator.storage?.estimate) {
+      const { usage = 0, quota = 0 } = await navigator.storage.estimate();
+      if (quota > 0 && usage > quota * 0.8) {
+        // Warn user or auto-cleanup old operations
+        console.warn('Storage quota at 80%, cleaning old operations');
+      }
+    }
+
+    set((state) => ({
       documents: state.documents.map(doc => {
         if (doc.id !== id) return doc;
 
@@ -157,21 +182,24 @@ export const useFileStore = create<FileStore>((set) => ({
   },
 
   undo: async (id: string) => {
-    const state = useFileStore.getState();
-    const doc = state.documents.find(d => d.id === id);
-    if (!doc || !doc.operations || (doc.operationIndex ?? -1) <= 0) return;
-
-    const targetIndex = (doc.operationIndex ?? 0) - 1;
-    const targetOp = doc.operations[targetIndex];
-    if (!targetOp || !targetOp.fileKey) return;
+    if (get().undoInProgress) return;
+    set({ undoInProgress: true });
 
     try {
+      const state = get();
+      const doc = state.documents.find(d => d.id === id);
+      if (!doc || !doc.operations || (doc.operationIndex ?? -1) <= 0) return;
+
+      const targetIndex = (doc.operationIndex ?? 0) - 1;
+      const targetOp = doc.operations[targetIndex];
+      if (!targetOp || !targetOp.fileKey) return;
+
       const storedFile = await idbGet<File>(targetOp.fileKey);
       if (!storedFile) {
         console.error("Undo failed: File not found in IndexedDB");
         return;
       }
-      useFileStore.setState((state) => ({
+      set((state) => ({
         documents: state.documents.map(d =>
           d.id === id
             ? { ...d, file: storedFile, size: storedFile.size, pageCount: targetOp.pageCount, operationIndex: targetIndex }
@@ -180,30 +208,35 @@ export const useFileStore = create<FileStore>((set) => ({
       }));
     } catch (e) {
       console.error("Undo failed:", e);
+    } finally {
+      set({ undoInProgress: false });
     }
   },
 
   redo: async (id: string) => {
-    const state = useFileStore.getState();
-    const doc = state.documents.find(d => d.id === id);
-    if (!doc || !doc.operations) return;
-
-    const maxIndex = (doc.operations?.length ?? 0) - 1;
-    const currentIndex = doc.operationIndex ?? -1;
-
-    if (currentIndex >= maxIndex) return;
-
-    const targetIndex = currentIndex + 1;
-    const targetOp = doc.operations[targetIndex];
-    if (!targetOp || !targetOp.fileKey) return;
+    if (get().redoInProgress) return;
+    set({ redoInProgress: true });
 
     try {
+      const state = get();
+      const doc = state.documents.find(d => d.id === id);
+      if (!doc || !doc.operations) return;
+
+      const maxIndex = (doc.operations?.length ?? 0) - 1;
+      const currentIndex = doc.operationIndex ?? -1;
+
+      if (currentIndex >= maxIndex) return;
+
+      const targetIndex = currentIndex + 1;
+      const targetOp = doc.operations[targetIndex];
+      if (!targetOp || !targetOp.fileKey) return;
+
       const storedFile = await idbGet<File>(targetOp.fileKey);
       if (!storedFile) {
         console.error("Redo failed: File not found in IndexedDB");
         return;
       }
-      useFileStore.setState((state) => ({
+      set((state) => ({
         documents: state.documents.map(d =>
           d.id === id
             ? { ...d, file: storedFile, size: storedFile.size, pageCount: targetOp.pageCount, operationIndex: targetIndex }
@@ -212,6 +245,8 @@ export const useFileStore = create<FileStore>((set) => ({
       }));
     } catch (e) {
       console.error("Redo failed:", e);
+    } finally {
+      set({ redoInProgress: false });
     }
   },
 

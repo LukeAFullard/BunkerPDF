@@ -24,6 +24,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import { X, Check } from 'lucide-react';
 
 import { useFileStore } from '../../../store/fileStore';
+import { cleanupPdfResources } from '../../../lib/pdfCleanup';
 import { SortableItem } from './SortableItem';
 
 interface PageItem {
@@ -95,7 +96,10 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
 
     return () => {
       isMounted = false;
-      // Cleanup proxies?  Could destroy them if needed, but pdfjs generally handles it
+      // CRITICAL: Destroy all loaded PDFs
+      Object.values(proxies).forEach(proxy => {
+        cleanupPdfResources(proxy);
+      });
     };
   }, [isOpen, documents]);
 
