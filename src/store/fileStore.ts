@@ -1,9 +1,12 @@
 import { create } from 'zustand';
 
-export interface DocumentHistoryState {
-  file: File;
-  size: number;
-  pageCount?: number;
+export interface DocumentOperation {
+  id: string;
+  type: 'rotate' | 'delete_pages' | 'reorder' | 'watermark' | 'optimize' | 'redact' | 'merge' | 'other';
+  timestamp: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  params: Record<string, any>;
+  undoData?: Uint8Array;
 }
 
 export interface PDFDocument {
@@ -15,10 +18,8 @@ export interface PDFDocument {
   lastModified: number;
   isEncrypted?: boolean;
   isCorrupt?: boolean;
-  history?: {
-    past: DocumentHistoryState[];
-    future: DocumentHistoryState[];
-  };
+  operations?: DocumentOperation[];
+  operationIndex?: number;
 }
 
 interface FileStore {
@@ -28,7 +29,7 @@ interface FileStore {
   removeDocument: (id: string) => void;
   setActiveDocument: (id: string) => void;
   updateDocument: (id: string, updates: Partial<PDFDocument>) => void;
-  updateDocumentFile: (id: string, newFile: File, newPageCount?: number) => void;
+  updateDocumentFile: (id: string, newFile: File, newPageCount?: number, operation?: Partial<DocumentOperation>) => void;
   undo: (id: string) => void;
   redo: (id: string) => void;
   clearAll: () => void;
@@ -77,82 +78,73 @@ export const useFileStore = create<FileStore>((set) => ({
     )
   })),
 
-  updateDocumentFile: (id: string, newFile: File, newPageCount?: number) => set((state) => ({
+  updateDocumentFile: (id: string, newFile: File, newPageCount?: number, operation?: Partial<DocumentOperation>) => set((state) => ({
     documents: state.documents.map(doc => {
       if (doc.id !== id) return doc;
 
-      const currentState: DocumentHistoryState = {
-        file: doc.file,
-        size: doc.size,
-        pageCount: doc.pageCount,
-      };
+      const ops = doc.operations || [];
+      const currentIndex = doc.operationIndex ?? -1;
 
-      const newPast = [...(doc.history?.past || []), currentState].slice(-10); // keep last 10 states
+      const newOps = ops.slice(0, currentIndex + 1);
+
+      if (operation) {
+        newOps.push({
+          id: crypto.randomUUID(),
+          timestamp: Date.now(),
+          type: operation.type || 'other',
+          params: operation.params || {},
+          undoData: operation.undoData,
+        });
+      }
+
+      const trimmedOps = newOps.slice(-20);
 
       return {
         ...doc,
         file: newFile,
         size: newFile.size,
         pageCount: newPageCount !== undefined ? newPageCount : doc.pageCount,
-        history: {
-          past: newPast,
-          future: [],
-        }
+        operations: trimmedOps,
+        operationIndex: trimmedOps.length - 1,
       };
     })
   })),
 
-  undo: (id: string) => set((state) => ({
-    documents: state.documents.map(doc => {
-      if (doc.id !== id || !doc.history || doc.history.past.length === 0) return doc;
+  undo: async (id: string) => {
+    const state = useFileStore.getState();
+    const doc = state.documents.find(d => d.id === id);
+    if (!doc || !doc.operations || (doc.operationIndex ?? -1) < 0) return;
 
-      const past = [...doc.history.past];
-      const previousState = past.pop()!;
+    const targetIndex = (doc.operationIndex ?? 0) - 1;
+    if (targetIndex < -1) return;
 
-      const currentState: DocumentHistoryState = {
-        file: doc.file,
-        size: doc.size,
-        pageCount: doc.pageCount,
-      };
+    set((state) => ({
+      documents: state.documents.map(d =>
+        d.id === id
+          ? { ...d, operationIndex: targetIndex }
+          : d
+      )
+    }));
+  },
 
-      return {
-        ...doc,
-        file: previousState.file,
-        size: previousState.size,
-        pageCount: previousState.pageCount,
-        history: {
-          past,
-          future: [currentState, ...(doc.history.future || [])]
-        }
-      };
-    })
-  })),
+  redo: async (id: string) => {
+    const state = useFileStore.getState();
+    const doc = state.documents.find(d => d.id === id);
+    if (!doc || !doc.operations) return;
 
-  redo: (id: string) => set((state) => ({
-    documents: state.documents.map(doc => {
-      if (doc.id !== id || !doc.history || doc.history.future.length === 0) return doc;
+    const maxIndex = (doc.operations?.length ?? 0) - 1;
+    const currentIndex = doc.operationIndex ?? -1;
 
-      const future = [...doc.history.future];
-      const nextState = future.shift()!;
+    if (currentIndex >= maxIndex) return;
 
-      const currentState: DocumentHistoryState = {
-        file: doc.file,
-        size: doc.size,
-        pageCount: doc.pageCount,
-      };
-
-      return {
-        ...doc,
-        file: nextState.file,
-        size: nextState.size,
-        pageCount: nextState.pageCount,
-        history: {
-          past: [...(doc.history.past || []), currentState].slice(-10),
-          future
-        }
-      };
-    })
-  })),
+    set((state) => ({
+      documents: state.documents.map(d =>
+        d.id === id
+          ? { ...d, operationIndex: currentIndex + 1 }
+          : d
+      )
+    }));
+  },
 
   clearAll: () => set({ documents: [], activeDocumentId: null }),
 }));

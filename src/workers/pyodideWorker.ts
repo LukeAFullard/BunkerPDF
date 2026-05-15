@@ -27,12 +27,14 @@ export type PyodideWorkerMessage = {
     | "PDF_TO_DOCX"
     | "VERIFY_SIGNATURE"
     | "EXPORT_DARK"
-    | "EXTRACT_PAGE_TEXT";
+    | "EXTRACT_PAGE_TEXT"
+    | "EXTRACT_ALL_PAGES_TEXT";
   code?: string;
   jobId?: string;
   pdfBytes?: Uint8Array;
   redactions?: string[];
   pageNum?: number;
+  pageCount?: number;
   highlights?: string[];
   password?: string;
   csvData?: string;
@@ -120,6 +122,38 @@ text
         type: "RESULT",
         jobId,
         result: text,
+      } satisfies PyodideWorkerResponse);
+    } else if (type === "EXTRACT_ALL_PAGES_TEXT") {
+      if (!initPromise) initPromise = initializePyodide();
+      await initPromise;
+      if (!pyodide) throw new Error("Pyodide not initialized");
+      if (!pdfBytes) throw new Error("No PDF bytes provided");
+      const { pageCount } = e.data;
+      if (!pageCount) throw new Error("No pageCount provided");
+
+      pyodide.globals.set("doc_bytes", pdfBytes);
+      pyodide.globals.set("page_count", pageCount);
+      const extractCode = `
+import fitz
+import json
+
+doc = fitz.open(stream=bytes(doc_bytes), filetype="pdf")
+texts = []
+for i in range(min(page_count, len(doc))):
+    page_text = doc[i].get_text()
+    texts.append(page_text)
+doc.close()
+del doc_bytes
+del page_count
+json.dumps(texts)
+      `;
+      const jsonResult = await pyodide.runPythonAsync(extractCode);
+      const texts = JSON.parse(jsonResult);
+
+      self.postMessage({
+        type: "RESULT",
+        jobId,
+        result: texts,
       } satisfies PyodideWorkerResponse);
     } else if (type === "EXTRACT_PAGE_TEXT") {
       if (!initPromise) initPromise = initializePyodide();
