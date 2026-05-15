@@ -74,10 +74,18 @@ function App() {
         const bytes = new Uint8Array(fileBuffer);
         const pageCount = doc.pageCount || 1;
 
-        for (let i = 0; i < pageCount; i++) {
-          const text = await extractTextFromPage(bytes, i);
+        // FIXED: Extract all pages in one Pyodide call
+        const allPageTexts = await extractAllPagesText(bytes, pageCount);
 
-          if (text && text.trim().length > 10) { // Only index meaningful text
+        for (let i = 0; i < pageCount; i++) {
+          const text = allPageTexts[i];
+
+          if (text && text.trim().length > 10) {
+            // Show which document we're embedding
+            if (i === 0 || i % 10 === 0) {
+              setIndexingState(true, Math.round((processedPages / totalPages) * 100));
+            }
+
             const embedding = await generateEmbedding(text.trim());
             newSegments.push({
               id: `${doc.id}-${i}`,
@@ -712,17 +720,17 @@ function App() {
     });
   };
 
-  const extractTextFromPage = (bytes: Uint8Array, pageNum: number): Promise<string> => {
+  const extractAllPagesText = (bytes: Uint8Array, pageCount: number): Promise<string[]> => {
     return new Promise((resolve, reject) => {
       if (!pyodideWorkerRef.current)
         return reject(new Error("Pyodide worker not ready"));
       const jobId = crypto.randomUUID();
       pyodideResolvers.current.set(jobId, { resolve, reject });
       pyodideWorkerRef.current.postMessage({
-        type: "EXTRACT_PAGE_TEXT",
+        type: "EXTRACT_ALL_PAGES_TEXT",
         jobId,
         pdfBytes: bytes,
-        pageNum,
+        pageCount,
       } satisfies PyodideWorkerMessage);
     });
   };
@@ -1493,7 +1501,11 @@ function App() {
       const newFile = new File([standardBuffer], doc.name, {
         type: "application/pdf",
       });
-      updateDocumentFile(doc.id, newFile);
+      // Pass operation metadata
+      updateDocumentFile(doc.id, newFile, undefined, {
+        type: 'optimize',
+        params: { originalSize: doc.size, newSize: newFile.size }
+      });
       addLog("Optimize", "Compressed and optimized document.", doc.name);
     } catch (e) {
       if (isCancelled) return;

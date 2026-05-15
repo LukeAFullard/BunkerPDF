@@ -11,6 +11,8 @@ import { ContextMenu } from "../ui/ContextMenu";
 import { decodeBarcodesFromPdf } from "../../lib/barcodeDecoder";
 import { useAuditStore } from "../../store/auditStore";
 import { BookmarkModal, type Bookmark } from "../ui/BookmarkModal";
+import { DocumentHealthPanel } from './DocumentHealthPanel';
+import { analyzeDocumentHealth } from '../../lib/healthChecks';
 
 interface DocumentCardProps {
   doc: PDFDocument;
@@ -119,13 +121,33 @@ export function DocumentCard({
   const undo = useFileStore((state) => state.undo);
   const redo = useFileStore((state) => state.redo);
 
-  const canUndo = (doc.history?.past?.length ?? 0) > 0;
-  const canRedo = (doc.history?.future?.length ?? 0) > 0;
+  const canUndo = (doc.operationIndex ?? -1) >= 0;
+  const canRedo = (doc.operationIndex ?? -1) < ((doc.operations?.length ?? 0) - 1);
 
   const activeDocumentId = useFileStore((state) => state.activeDocumentId);
   const isActive = activeDocumentId === doc.id;
   const addLog = useAuditStore((state) => state.addLog);
   const isDarkMode = useUIStore((state) => state.isDarkMode);
+
+  const [healthData, setHealthData] = useState<{
+    needsOcr: boolean;
+    hasSelectableText: boolean;
+    hasForms: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    if (isActive) {
+      let isMounted = true;
+      analyzeDocumentHealth(doc.file).then(data => {
+        if (isMounted) setHealthData(data);
+      });
+      return () => {
+        isMounted = false;
+        // Optionally clear data if we expect to re-fetch on every active state flip
+        // Not calling synchronously
+      };
+    }
+  }, [isActive, doc.file, doc.lastModified]);
 
   const handleScan = useCallback(async () => {
     setDetectedEntities(null);
@@ -873,6 +895,18 @@ items={[
         >
           <PDFThumbnail file={doc.file} />
         </div>
+
+        <div className="mb-4">
+          <DocumentHealthPanel
+            doc={doc}
+            healthData={healthData}
+            onOcr={() => onOcr?.(doc)}
+            onUnlock={() => onUnlock?.(doc)}
+            onSanitize={() => onSanitize?.(doc)}
+            onOptimize={() => onOptimize?.(doc)}
+          />
+        </div>
+
         <div>
           <h3 className="font-semibold text-lg truncate" title={doc.name}>
             {doc.name}
@@ -919,6 +953,13 @@ items={[
               Remove
             </button>
           </div>
+
+          {doc.operations && doc.operations.length > 0 && (
+            <div className="text-xs text-gray-500 mt-2 mb-2">
+              {doc.operations.length} operation{doc.operations.length !== 1 ? 's' : ''}
+              {doc.operationIndex !== undefined && ` (at #${doc.operationIndex + 1})`}
+            </div>
+          )}
 
           <details className="mb-2">
             <summary className="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300 select-none">Extract & Export</summary>
