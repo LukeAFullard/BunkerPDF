@@ -11,6 +11,7 @@ export type PyodideWorkerMessage = {
     | "REDACT_DOCUMENT"
     | "HIGHLIGHT_DOCUMENT"
     | "ENCRYPT_DOCUMENT"
+    | "UNLOCK_DOCUMENT"
     | "SANITIZE_DOCUMENT"
     | "AUDIT_DOCUMENT"
     | "EXTRACT_TABLES"
@@ -231,6 +232,35 @@ bytes(out_bytes)
       const encryptedBytes = encryptedProxy.toJs();
 
       const resultBytes = new Uint8Array(encryptedBytes);
+      self.postMessage({
+        type: "RESULT",
+        jobId,
+        result: resultBytes,
+      } satisfies PyodideWorkerResponse);
+    } else if (type === "UNLOCK_DOCUMENT") {
+      if (!initPromise) initPromise = initializePyodide();
+      await initPromise;
+      if (!pyodide) throw new Error("Pyodide not initialized");
+      if (!pdfBytes) throw new Error("No PDF bytes provided");
+      const passwordToUse = e.data.password;
+      if (!passwordToUse) throw new Error("No password provided");
+
+      pyodide.globals.set("doc_bytes", pdfBytes);
+      pyodide.globals.set("password", passwordToUse);
+      const unlockCode = `
+import fitz
+doc = fitz.open(stream=bytes(doc_bytes), filetype="pdf")
+authenticated = doc.authenticate(password)
+if not authenticated:
+    raise Exception("Incorrect password")
+out_bytes = doc.write(encryption=fitz.PDF_ENCRYPT_NONE)
+doc.close()
+del doc_bytes
+bytes(out_bytes)
+      `;
+      const unlockedProxy = await pyodide.runPythonAsync(unlockCode);
+      const unlockedBytesOut = unlockedProxy.toJs();
+      const resultBytes = new Uint8Array(unlockedBytesOut);
       self.postMessage({
         type: "RESULT",
         jobId,
