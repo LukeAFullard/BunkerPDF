@@ -121,7 +121,7 @@ export function DocumentCard({
   const undo = useFileStore((state) => state.undo);
   const redo = useFileStore((state) => state.redo);
 
-  const canUndo = (doc.operationIndex ?? -1) >= 0;
+  const canUndo = (doc.operationIndex ?? -1) > 0;
   const canRedo = (doc.operationIndex ?? -1) < ((doc.operations?.length ?? 0) - 1);
 
   const activeDocumentId = useFileStore((state) => state.activeDocumentId);
