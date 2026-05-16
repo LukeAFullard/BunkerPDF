@@ -210,6 +210,44 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
     setActiveId(null);
   };
 
+  const handleMoveToFront = (itemId: string, colId: string) => {
+    setColumns((prevColumns) => {
+      const colIndex = prevColumns.findIndex((c) => c.docId === colId);
+      if (colIndex === -1) return prevColumns;
+
+      const newColumns = [...prevColumns];
+      const items = [...newColumns[colIndex].items];
+
+      const itemIndex = items.findIndex((i) => i.id === itemId);
+      if (itemIndex <= 0) return prevColumns; // Already at front or not found
+
+      const [item] = items.splice(itemIndex, 1);
+      items.unshift(item);
+
+      newColumns[colIndex] = { ...newColumns[colIndex], items };
+      return newColumns;
+    });
+  };
+
+  const handleMoveToEnd = (itemId: string, colId: string) => {
+    setColumns((prevColumns) => {
+      const colIndex = prevColumns.findIndex((c) => c.docId === colId);
+      if (colIndex === -1) return prevColumns;
+
+      const newColumns = [...prevColumns];
+      const items = [...newColumns[colIndex].items];
+
+      const itemIndex = items.findIndex((i) => i.id === itemId);
+      if (itemIndex === -1 || itemIndex === items.length - 1) return prevColumns; // Already at end or not found
+
+      const [item] = items.splice(itemIndex, 1);
+      items.push(item);
+
+      newColumns[colIndex] = { ...newColumns[colIndex], items };
+      return newColumns;
+    });
+  };
+
   const handleApply = () => {
     const result: Record<string, { docId: string; originalPageNumber: number }[]> = {};
     columns.forEach(col => {
@@ -284,6 +322,8 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
                             pageNumber={item.originalPageNumber}
                             thumbnailCache={thumbnailCache}
                             setThumbnailCache={setThumbnailCache}
+                            onMoveToFront={() => handleMoveToFront(item.id, col.docId)}
+                            onMoveToEnd={() => handleMoveToEnd(item.id, col.docId)}
                           />
                         ))}
                       </div>
