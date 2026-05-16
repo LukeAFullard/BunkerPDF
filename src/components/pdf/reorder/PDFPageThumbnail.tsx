@@ -1,42 +1,77 @@
 import { useEffect, useRef, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { useUIStore } from '../../../store/uiStore';
+import { useFileStore } from '../../../store/fileStore';
+import { cleanupPdfResources } from '../../../lib/pdfCleanup';
 
 interface PDFPageThumbnailProps {
-  pdfDoc: pdfjsLib.PDFDocumentProxy;
+  docId: string;
   pageNumber: number;
   width?: number;
   className?: string;
+  thumbnailCache: Record<string, string>;
+  setThumbnailCache: React.Dispatch<React.SetStateAction<Record<string, string>>>;
 }
 
-export function PDFPageThumbnail({ pdfDoc, pageNumber, width = 100, className = '' }: PDFPageThumbnailProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+export function PDFPageThumbnail({ docId, pageNumber, width = 100, className = '', thumbnailCache, setThumbnailCache }: PDFPageThumbnailProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isVisible, setIsVisible] = useState(false);
   const isDarkMode = useUIStore((state) => state.isDarkMode);
+  const documents = useFileStore((state) => state.documents);
+
+  const cacheKey = `${docId}-${pageNumber}-${width}`;
+  const cachedDataUrl = thumbnailCache[cacheKey];
 
   useEffect(() => {
-    let renderTask: pdfjsLib.RenderTask | null = null;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '50px' }
+    );
+
+    if (containerRef.current) {
+      observer.observe(containerRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!isVisible || cachedDataUrl) return;
+
     let isMounted = true;
+    let renderTask: pdfjsLib.RenderTask | null = null;
+    let pdfDoc: pdfjsLib.PDFDocumentProxy | null = null;
 
     const renderThumbnail = async () => {
       try {
+        const doc = documents.find(d => d.id === docId);
+        if (!doc) return;
+
+        const arrayBuffer = await doc.file.arrayBuffer();
+        pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+        if (!isMounted) return;
+
         const page = await pdfDoc.getPage(pageNumber);
 
         const unscaledViewport = page.getViewport({ scale: 1.0 });
         const scale = width / unscaledViewport.width;
         const viewport = page.getViewport({ scale });
 
-        const canvas = canvasRef.current;
-        if (!canvas || !isMounted) return;
-
+        // Create an offscreen canvas to render
+        const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d');
         if (!context) return;
 
         const outputScale = window.devicePixelRatio || 1;
         canvas.width = Math.floor(viewport.width * outputScale);
         canvas.height = Math.floor(viewport.height * outputScale);
-        canvas.style.width = Math.floor(viewport.width) + "px";
-        canvas.style.height = Math.floor(viewport.height) + "px";
 
         const transform = outputScale !== 1
           ? [outputScale, 0, 0, outputScale, 0, 0]
@@ -51,9 +86,19 @@ export function PDFPageThumbnail({ pdfDoc, pageNumber, width = 100, className = 
 
         renderTask = page.render(renderContext);
         await renderTask.promise;
+
+        if (isMounted) {
+          const dataUrl = canvas.toDataURL();
+          setThumbnailCache(prev => ({ ...prev, [cacheKey]: dataUrl }));
+        }
+
       } catch (err) {
         console.error("Error rendering PDF page thumbnail", err);
         if (isMounted) setError("Preview unavailable");
+      } finally {
+        if (pdfDoc) {
+          cleanupPdfResources(pdfDoc);
+        }
       }
     };
 
@@ -64,8 +109,11 @@ export function PDFPageThumbnail({ pdfDoc, pageNumber, width = 100, className = 
       if (renderTask) {
         renderTask.cancel();
       }
+      if (pdfDoc) {
+         cleanupPdfResources(pdfDoc);
+      }
     };
-  }, [pdfDoc, pageNumber, width]);
+  }, [docId, pageNumber, width, isVisible, cachedDataUrl, documents, setThumbnailCache, cacheKey]);
 
   if (error) {
     return (
@@ -76,12 +124,21 @@ export function PDFPageThumbnail({ pdfDoc, pageNumber, width = 100, className = 
   }
 
   return (
-    <div className={`w-full overflow-hidden bg-gray-100 flex items-center justify-center rounded ${className}`}>
-      <canvas
-        ref={canvasRef}
-        className="shadow-sm max-w-full max-h-full object-contain transition-all"
-        style={isDarkMode ? { filter: 'invert(1) hue-rotate(180deg)' } : undefined}
-      />
+    <div
+      ref={containerRef}
+      className={`w-full overflow-hidden bg-gray-100 flex items-center justify-center rounded min-h-[150px] ${className}`}
+    >
+      {cachedDataUrl ? (
+        <img
+          src={cachedDataUrl}
+          alt={`Page ${pageNumber}`}
+          className="shadow-sm max-w-full max-h-full object-contain transition-all"
+          style={isDarkMode ? { filter: 'invert(1) hue-rotate(180deg)' } : undefined}
+          draggable={false}
+        />
+      ) : (
+        <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+      )}
     </div>
   );
 }

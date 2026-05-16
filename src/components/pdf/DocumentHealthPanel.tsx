@@ -63,13 +63,13 @@ export function DocumentHealthPanel({
   }
 
   // Check 3: Needs OCR
-  if (healthData?.needsOcr || (doc.pageCount && doc.size / doc.pageCount < 50000)) {
+  if (healthData?.needsOcr) {
     checks.push({
       id: 'ocr',
       status: 'action',
       icon: <FileSearch className="w-5 h-5" />,
-      title: 'May Need OCR',
-      description: 'This appears to be a scanned document. Extract text with OCR.',
+      title: 'Scanned Document Detected',
+      description: 'No selectable text found. Run OCR to make it searchable.',
       action: {
         label: 'Run OCR',
         onClick: onOcr
