@@ -1,15 +1,16 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import * as pdfjsLib from 'pdfjs-dist';
 import { PDFPageThumbnail } from './PDFPageThumbnail';
 
 interface SortableItemProps {
   id: string;
-  pdfDoc: pdfjsLib.PDFDocumentProxy;
+  docId: string;
   pageNumber: number;
+  thumbnailCache: Record<string, string>;
+  setThumbnailCache: React.Dispatch<React.SetStateAction<Record<string, string>>>;
 }
 
-export function SortableItem({ id, pdfDoc, pageNumber }: SortableItemProps) {
+export function SortableItem({ id, docId, pageNumber, thumbnailCache, setThumbnailCache }: SortableItemProps) {
   const {
     attributes,
     listeners,
@@ -37,7 +38,14 @@ export function SortableItem({ id, pdfDoc, pageNumber }: SortableItemProps) {
       role="button"
       aria-label={`Page ${pageNumber}`}
     >
-      <PDFPageThumbnail pdfDoc={pdfDoc} pageNumber={pageNumber} width={120} className="rounded" />
+      <PDFPageThumbnail
+        docId={docId}
+        pageNumber={pageNumber}
+        width={120}
+        className="rounded"
+        thumbnailCache={thumbnailCache}
+        setThumbnailCache={setThumbnailCache}
+      />
       <div className="absolute top-1 left-1 bg-black/50 text-white text-[10px] px-1.5 py-0.5 rounded font-medium backdrop-blur-sm group-hover:bg-blue-600/80 transition-colors">
         {pageNumber}
       </div>

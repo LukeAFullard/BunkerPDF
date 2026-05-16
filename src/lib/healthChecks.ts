@@ -14,14 +14,19 @@ export async function analyzeDocumentHealth(file: File): Promise<{
 
     // Check first 3 pages for text
     const pagesToCheck = Math.min(3, pdf.numPages);
+    let totalTextLength = 0;
+
     for (let i = 1; i <= pagesToCheck; i++) {
       const page = await pdf.getPage(i);
       const textContent = await page.getTextContent();
-      if (textContent.items.length > 10) {
-        hasSelectableText = true;
-        break;
-      }
+      totalTextLength += textContent.items.reduce((sum, item) =>
+        // @ts-expect-error - Item could be TextItem or TextMarkedContent
+        sum + (item.str?.length || 0), 0
+      );
     }
+
+    // More than 50 chars per page on average = has text
+    hasSelectableText = (totalTextLength / pagesToCheck) > 50;
 
     // Check for forms (simplified)
     try {

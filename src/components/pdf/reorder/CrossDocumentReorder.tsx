@@ -48,7 +48,7 @@ interface CrossDocumentReorderProps {
 export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocumentReorderProps) {
   const documents = useFileStore((state) => state.documents);
   const [columns, setColumns] = useState<DocColumn[]>([]);
-  const [pdfProxies, setPdfProxies] = useState<Record<string, pdfjsLib.PDFDocumentProxy>>({});
+  const [thumbnailCache, setThumbnailCache] = useState<Record<string, string>>({});
   const [activeId, setActiveId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -57,20 +57,23 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
     if (!isOpen) return;
 
     let isMounted = true;
-    const proxies: Record<string, pdfjsLib.PDFDocumentProxy> = {};
     const initialColumns: DocColumn[] = [];
 
     const init = async () => {
       setLoading(true);
       try {
         for (const doc of documents) {
-          const arrayBuffer = await doc.file.arrayBuffer();
-          const proxy = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-          proxies[doc.id] = proxy;
+          let numPages = doc.pageCount;
 
-          const numPages = proxy.numPages;
+          if (!numPages) {
+            const arrayBuffer = await doc.file.arrayBuffer();
+            const proxy = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            numPages = proxy.numPages;
+            cleanupPdfResources(proxy);
+          }
+
           const items: PageItem[] = [];
-          for (let i = 1; i <= numPages; i++) {
+          for (let i = 1; i <= (numPages || 1); i++) {
             items.push({ id: `${doc.id}-${i}`, docId: doc.id, originalPageNumber: i });
           }
 
@@ -82,12 +85,11 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
         }
 
         if (isMounted) {
-          setPdfProxies(proxies);
           setColumns(initialColumns);
           setLoading(false);
         }
       } catch (error) {
-        console.error("Failed to load PDFs for reordering", error);
+        console.error("Failed to initialize structure for reordering", error);
         if (isMounted) setLoading(false);
       }
     };
@@ -96,10 +98,6 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
 
     return () => {
       isMounted = false;
-      // CRITICAL: Destroy all loaded PDFs
-      Object.values(proxies).forEach(proxy => {
-        cleanupPdfResources(proxy);
-      });
     };
   }, [isOpen, documents]);
 
@@ -275,8 +273,10 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
                           <SortableItem
                             key={item.id}
                             id={item.id}
-                            pdfDoc={pdfProxies[item.docId]}
+                            docId={item.docId}
                             pageNumber={item.originalPageNumber}
+                            thumbnailCache={thumbnailCache}
+                            setThumbnailCache={setThumbnailCache}
                           />
                         ))}
                       </div>
@@ -290,8 +290,10 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
                   <div className="opacity-80 rotate-3 scale-105 transition-transform shadow-xl">
                     <SortableItem
                       id={activeItem.id}
-                      pdfDoc={pdfProxies[activeItem.docId]}
+                      docId={activeItem.docId}
                       pageNumber={activeItem.originalPageNumber}
+                      thumbnailCache={thumbnailCache}
+                      setThumbnailCache={setThumbnailCache}
                     />
                   </div>
                 ) : null}
