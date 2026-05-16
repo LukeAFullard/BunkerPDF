@@ -366,6 +366,11 @@ function App() {
     activeDocId: string | null;
   }>({ isOpen: false, activeDocId: null });
 
+  const [splitModalState, setSplitModalState] = useState<{
+    isOpen: boolean;
+    doc: PDFDocument | null;
+  }>({ isOpen: false, doc: null });
+
   const [pendingImages, setPendingImages] = useState<ImageItem[]>([]);
   const [imageFitMode, setImageFitMode] = useState<'fit' | 'original' | 'a4'>('a4');
   const [inputState, setInputState] = useState<{
@@ -1467,7 +1472,15 @@ function App() {
     }
   };
 
-  const handleSplitBurst = async (doc: PDFDocument) => {
+  const handleSplitBurst = (doc: PDFDocument) => {
+    setSplitModalState({ isOpen: true, doc });
+  };
+
+  const executeSplit = async (ranges: string) => {
+    const doc = splitModalState.doc;
+    if (!doc) return;
+    setSplitModalState({ isOpen: false, doc: null });
+
     let isCancelled = false;
     startProcessing("Splitting PDF pages...", true, () => {
       isCancelled = true;
@@ -1475,16 +1488,16 @@ function App() {
     });
 
     try {
-      const splitBytesArray = await splitPdf(doc.file);
+      const splitResults = await splitPdf(doc.file, ranges);
       if (isCancelled) return;
 
       // Add split documents to workspace instead of downloading
-      const newDocs = splitBytesArray.map((bytes, index) => {
-        const standardBuffer = new Uint8Array(bytes.length);
-        standardBuffer.set(bytes);
+      const newDocs = splitResults.map((result, index) => {
+        const standardBuffer = new Uint8Array(result.bytes.length);
+        standardBuffer.set(result.bytes);
         const newFile = new File(
           [standardBuffer],
-          getSmartOutputName(doc.name, `split-page-${index + 1}`),
+          getSmartOutputName(doc.name, `split-chunk-${index + 1}`),
           { type: "application/pdf" },
         );
         return {
@@ -1493,18 +1506,18 @@ function App() {
           name: newFile.name,
           size: newFile.size,
           lastModified: Date.now(),
-          pageCount: 1, // Split creates 1-page documents
+          pageCount: result.pageCount,
         };
       });
       addDocuments(newDocs);
-      addLog("Split", `Split document into ${newDocs.length} pages.`, doc.name);
+      addLog("Split", `Split document into ${newDocs.length} chunks.`, doc.name);
     } catch (e) {
       if (isCancelled) return;
       console.error(e);
       setErrorState({
         isOpen: true,
         title: "Split Error",
-        message: "An error occurred while splitting the PDF.",
+        message: "An error occurred while splitting the PDF. Please check your ranges.",
       });
     } finally {
       if (!isCancelled) stopProcessing();
@@ -2567,6 +2580,15 @@ function App() {
             setInputState((prev) => ({ ...prev, isOpen: false }));
           }
         }}
+      />
+      <InputModal
+        isOpen={splitModalState.isOpen}
+        title="Split PDF"
+        message="Enter page ranges to extract (e.g. '1, 3, 5-7'). Leave empty to split every page into a separate document (Burst mode)."
+        placeholder="1, 3, 5-7"
+        defaultValue=""
+        onConfirm={executeSplit}
+        onCancel={() => setSplitModalState({ isOpen: false, doc: null })}
       />
       <ErrorModal
         isOpen={errorState.isOpen}
