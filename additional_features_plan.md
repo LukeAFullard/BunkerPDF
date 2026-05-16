@@ -44,7 +44,7 @@ These features require no new engines, no new dependencies, and no significant b
 
 ---
 
-### [ ] 0.2 Unlock / remove PDF password
+### [x] 0.2 Unlock / remove PDF password
 
 **Feasibility Note:** Highly feasible. `pdf-lib` can handle standard RC4 decryption. For AES-256, PyMuPDF via Pyodide is fully capable.
 
@@ -78,7 +78,7 @@ These features require no new engines, no new dependencies, and no significant b
 
 ---
 
-### [ ] 0.3 Document integrity / provenance hash
+### [x] 0.3 Document integrity / provenance hash
 
 **Feasibility Note:** Highly feasible. The Web Crypto API (`window.crypto.subtle`) is universally supported and requires no external dependencies.
 

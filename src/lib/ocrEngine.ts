@@ -33,7 +33,7 @@ export async function ocrPdf(file: File, updateStage?: (stage: string) => void, 
       const viewport = page.getViewport({ scale: 2.0 });
 
       const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d');
+      let context: any = canvas.getContext('2d');
       if (!context) continue;
 
       canvas.width = viewport.width;
@@ -55,7 +55,7 @@ export async function ocrPdf(file: File, updateStage?: (stage: string) => void, 
       // Cleanup canvas memory
       canvas.width = 0;
       canvas.height = 0;
-      // @ts-expect-error Breaking reference for GC
+      // Breaking reference for GC
       context = null;
       canvas.remove();
 

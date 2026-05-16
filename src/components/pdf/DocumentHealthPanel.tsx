@@ -1,5 +1,7 @@
-import { AlertCircle, CheckCircle, FileSearch, Lock, Zap } from 'lucide-react';
+import { AlertCircle, CheckCircle, FileSearch, Lock, Zap, ShieldCheck, Copy, Download } from 'lucide-react';
 import type { PDFDocument } from '../../store/fileStore';
+import { useState } from 'react';
+import { hashDocument, generateIntegrityCertificate, downloadCertificateJson, downloadCertificateTxt, type IntegrityCertificate } from '../../lib/cryptoUtils';
 
 interface HealthCheck {
   id: string;
@@ -30,6 +32,30 @@ export function DocumentHealthPanel({
   onSanitize,
   onOptimize
 }: DocumentHealthPanelProps) {
+  const [isGeneratingHash, setIsGeneratingHash] = useState(false);
+  const [certificate, setCertificate] = useState<IntegrityCertificate | null>(null);
+
+  const handleGenerateCertificate = async () => {
+    setIsGeneratingHash(true);
+    try {
+      const arrayBuffer = await doc.file.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      const sha256 = await hashDocument(bytes);
+      const cert = generateIntegrityCertificate(doc.name, doc.size, sha256);
+      setCertificate(cert);
+    } catch (e) {
+      console.error("Failed to generate certificate", e);
+    } finally {
+      setIsGeneratingHash(false);
+    }
+  };
+
+  const handleCopyHash = () => {
+    if (certificate) {
+      navigator.clipboard.writeText(certificate.sha256);
+    }
+  };
+
   const checks: HealthCheck[] = [];
 
   // Check 1: Encryption status
@@ -102,12 +128,12 @@ export function DocumentHealthPanel({
   }
 
   return (
-    <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-800 dark:to-gray-900 rounded-xl p-4 border border-blue-100 dark:border-gray-700">
+    <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-800 dark:to-gray-900 rounded-xl p-4 border border-blue-100 dark:border-gray-700 flex flex-col h-full">
       <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3 flex items-center gap-2">
         <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
         Document Health
       </h3>
-      <div className="space-y-2">
+      <div className="space-y-2 flex-1">
         {checks.map((check) => (
           <div
             key={check.id}
@@ -144,6 +170,51 @@ export function DocumentHealthPanel({
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="mt-4 pt-3 border-t border-blue-200/50 dark:border-gray-700/50">
+        {!certificate ? (
+          <button
+            onClick={handleGenerateCertificate}
+            disabled={isGeneratingHash}
+            className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+          >
+            <ShieldCheck className="w-4 h-4" />
+            {isGeneratingHash ? "Generating..." : "Generate integrity certificate"}
+          </button>
+        ) : (
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">SHA-256 Hash</span>
+              <button
+                onClick={handleCopyHash}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                title="Copy full hash"
+              >
+                <Copy className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="text-xs font-mono text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-900 p-1.5 rounded border border-gray-100 dark:border-gray-800 mb-3 truncate" title={certificate.sha256}>
+              {certificate.sha256.substring(0, 16)}...
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => downloadCertificateJson(certificate)}
+                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-md text-xs font-medium hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
+              >
+                <Download className="w-3.5 h-3.5" />
+                JSON
+              </button>
+              <button
+                onClick={() => downloadCertificateTxt(certificate)}
+                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-md text-xs font-medium hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
+              >
+                <Download className="w-3.5 h-3.5" />
+                TXT
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

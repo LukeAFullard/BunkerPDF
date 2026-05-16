@@ -1,10 +1,12 @@
 import React, { useCallback, useState, useRef } from 'react';
-import { Upload, Shield, FileText, Lock, FileOutput } from 'lucide-react';
+import { Upload, Shield, Lock, FileOutput, FileText } from 'lucide-react';
 import { OnboardingTour } from './OnboardingTour';
 import { useFileStore, type PDFDocument } from '../../store/fileStore';
 import { getPdfInfo } from '../../lib/pdfProcessing';
 import { cn } from '../../lib/utils';
 import { ErrorModal } from './ErrorModal';
+import { VerifyModal } from './VerifyModal';
+import { ShieldCheck } from 'lucide-react';
 
 interface DropzoneProps {
   onError?: (title: string, message: React.ReactNode) => void;
@@ -63,6 +65,7 @@ export function Dropzone({ onError, onDocxDropped, onImagesDropped }: DropzonePr
   const fileInputRef = useRef<HTMLInputElement>(null);
   const addDocuments = useFileStore(state => state.addDocuments);
   const [errorState, setErrorState] = useState<{ isOpen: boolean, title: string, message: React.ReactNode }>({ isOpen: false, title: '', message: '' });
+  const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
 
   const handleError = (title: string, message: React.ReactNode) => {
     if (onError) {
@@ -217,6 +220,7 @@ export function Dropzone({ onError, onDocxDropped, onImagesDropped }: DropzonePr
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 flex flex-col items-center justify-center p-4 relative">
       <OnboardingTour />
+      <VerifyModal isOpen={isVerifyModalOpen} onClose={() => setIsVerifyModalOpen(false)} />
       <ErrorModal
         isOpen={errorState.isOpen}
         title={errorState.title}
@@ -269,7 +273,7 @@ export function Dropzone({ onError, onDocxDropped, onImagesDropped }: DropzonePr
       </div>
 
       {/* Quick Actions Grid (Phase 1 placeholders) */}
-      <div className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-3 gap-6 mt-12">
+      <div className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-4 gap-6 mt-12">
         <div className="tour-step-2">
           <ActionCard
             icon={<Lock className="text-red-500" />}
@@ -291,14 +295,23 @@ export function Dropzone({ onError, onDocxDropped, onImagesDropped }: DropzonePr
             description="Local OCR and text extraction."
           />
         </div>
+        <div>
+          <ActionCard
+            icon={<ShieldCheck className="text-green-500" />}
+            title="Verify Certificate"
+            description="Verify document integrity."
+            onClick={() => setIsVerifyModalOpen(true)}
+          />
+        </div>
       </div>
     </div>
   );
 }
 
-function ActionCard({ icon, title, description }: { icon: React.ReactNode, title: string, description: string }) {
+function ActionCard({ icon, title, description, onClick }: { icon: React.ReactNode, title: string, description: string, onClick?: () => void }) {
   return (
-    <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow flex flex-col items-start gap-3">
+    <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow flex flex-col items-start gap-3 cursor-pointer"
+      onClick={onClick}>
       <div className="bg-gray-50 p-3 rounded-lg">
         {icon}
       </div>

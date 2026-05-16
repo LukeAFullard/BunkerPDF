@@ -2089,7 +2089,7 @@ function App() {
     setInputState({
       isOpen: true,
       title: "Unlock PDF",
-      message: "Enter the password to unlock this PDF:",
+      message: "Enter the password to unlock this PDF. Your password is used only in your browser — it is never transmitted anywhere.",
       placeholder: "Password",
       onConfirm: async (password) => {
         let isCancelled = false;
