@@ -828,12 +828,12 @@ items={[
             { label: "Sign Document (~2s)", onClick: () => onSign?.(doc) },
             { variant: "separator" },
             (!isMobile ? { label: "Extract Tables (Excel) (~10s)", onClick: handleExtractTables } : null),
-            (!isMobile ? { label: "Extract Notes (MD) (~5s)", onClick: handleExtractMarkdown } : null),
-            (!isMobile ? { label: "Extract Web (HTML) (~5s)", onClick: handleExtractHtml } : null),
+            { label: "Extract Notes (MD) (~5s)", onClick: handleExtractMarkdown },
+            { label: "Extract Web (HTML) (~5s)", onClick: handleExtractHtml },
             (!isMobile ? { label: "Export DOCX (~10s)", onClick: handleExportDocx } : null),
-            (!isMobile ? { label: "Export True Dark (~10s)", onClick: handleExportDark } : null),
-            (!isMobile ? { label: "Extract Links (CSV) (~2s)", onClick: handleExtractLinks } : null),
-            (!isMobile ? { label: "Extract Annotations (CSV) (~2s)", onClick: handleExtractAnnotations } : null),
+            { label: "Export True Dark (~10s)", onClick: handleExportDark },
+            { label: "Extract Links (CSV) (~2s)", onClick: handleExtractLinks },
+            { label: "Extract Annotations (CSV) (~2s)", onClick: handleExtractAnnotations },
             { variant: "separator" },
             { label: "Optimize (Compress) (~5s)", onClick: () => onOptimize?.(doc) },
             { label: "Delete Pages (~1s)", onClick: () => onDeletePages?.(doc) },
@@ -841,16 +841,16 @@ items={[
             { label: "Add Page Numbers (~2s)", onClick: () => onAddPageNumbers?.(doc) },
             { label: "Bates Numbering (~2s)", onClick: () => onBatesNumbering?.(doc) },
             { label: "Resize to A4/Letter (~2s)", onClick: () => onResizePages?.(doc) },
-            (!isMobile ? { label: "Edit Bookmarks/Outline (~2s)", onClick: handleEditBookmarks } : null),
+            { label: "Edit Bookmarks/Outline (~2s)", onClick: handleEditBookmarks },
             { variant: "separator" },
-            (!isMobile ? { label: "Protect (Password) (~2s)", onClick: () => onEncrypt?.(doc) } : null),
+            { label: "Protect (Password) (~2s)", onClick: () => onEncrypt?.(doc) },
             (doc.isEncrypted ? { label: "Unlock (Remove Password)", onClick: () => onUnlock?.(doc) } : null),
-            (!isMobile ? { label: "Sanitize & Send (~Instant)", onClick: () => onSanitize?.(doc) } : null),
+            { label: "Sanitize & Send (~Instant)", onClick: () => onSanitize?.(doc) },
             { label: "Flatten Forms (~1s)", onClick: () => onFlatten?.(doc) },
             { variant: "separator" },
             (!isMobile ? { label: "Audit Redactions (~5s)", onClick: () => onAudit?.(doc) } : null),
-            (!isMobile ? { label: "Verify Signatures (~2s)", onClick: () => onVerifySignature?.(doc) } : null),
-            (!isMobile ? { label: "Read Aloud (TTS) (~15s/pg)", onClick: () => onReadAloud?.(doc) } : null),
+            { label: "Verify Signatures (~2s)", onClick: () => onVerifySignature?.(doc) },
+            { label: "Read Aloud (TTS) (~15s/pg)", onClick: () => onReadAloud?.(doc) },
             { variant: "separator" },
             { label: "Share (URL, <64KB only)", onClick: () => onShare?.(doc) },
             {
@@ -965,35 +965,27 @@ items={[
             <summary className="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300 select-none">Extract & Export</summary>
             <div className="flex flex-wrap gap-2 mt-2">
               <button onClick={() => onSplit(doc)} disabled={isProcessing} className="text-blue-600 hover:text-blue-800 text-sm font-medium disabled:opacity-50">Split</button>
-              {!isMobile && (
-                <>
-                  <button onClick={handleExtractTables} disabled={isProcessing} className="text-green-600 hover:text-green-800 text-sm font-medium disabled:opacity-50">Extract Tables</button>
-                  <button onClick={handleExtractMarkdown} disabled={isProcessing} className="text-fuchsia-600 hover:text-fuchsia-800 text-sm font-medium disabled:opacity-50">Extract Notes</button>
-                  <button onClick={handleExtractHtml} disabled={isProcessing} className="text-orange-600 hover:text-orange-800 text-sm font-medium disabled:opacity-50">Extract Web</button>
-                  <button onClick={handleExportDocx} disabled={isProcessing} className="text-blue-600 hover:text-blue-800 text-sm font-medium disabled:opacity-50">Export DOCX</button>
-                  <button onClick={handleExportDark} disabled={isProcessing} className="text-gray-900 dark:text-gray-100 hover:text-gray-600 text-sm font-medium disabled:opacity-50">Export Dark</button>
-                  <button onClick={handleExtractImages} disabled={isProcessing} className="text-cyan-600 hover:text-cyan-800 text-sm font-medium disabled:opacity-50">Extract Images</button>
-                  <button onClick={handleExtractLinks} disabled={isProcessing} className="text-amber-600 hover:text-amber-800 text-sm font-medium disabled:opacity-50">Extract Links</button>
-                  <button onClick={handleExtractAnnotations} disabled={isProcessing} className="text-rose-600 hover:text-rose-800 text-sm font-medium disabled:opacity-50">Extract Annotations</button>
-                </>
-              )}
+              {!isMobile && <button onClick={handleExtractTables} disabled={isProcessing} className="text-green-600 hover:text-green-800 text-sm font-medium disabled:opacity-50">Extract Tables</button>}
+              <button onClick={handleExtractMarkdown} disabled={isProcessing} className="text-fuchsia-600 hover:text-fuchsia-800 text-sm font-medium disabled:opacity-50">Extract Notes</button>
+              <button onClick={handleExtractHtml} disabled={isProcessing} className="text-orange-600 hover:text-orange-800 text-sm font-medium disabled:opacity-50">Extract Web</button>
+              {!isMobile && <button onClick={handleExportDocx} disabled={isProcessing} className="text-blue-600 hover:text-blue-800 text-sm font-medium disabled:opacity-50">Export DOCX</button>}
+              <button onClick={handleExportDark} disabled={isProcessing} className="text-gray-900 dark:text-gray-100 hover:text-gray-600 text-sm font-medium disabled:opacity-50">Export Dark</button>
+              {!isMobile && <button onClick={handleExtractImages} disabled={isProcessing} className="text-cyan-600 hover:text-cyan-800 text-sm font-medium disabled:opacity-50">Extract Images</button>}
+              <button onClick={handleExtractLinks} disabled={isProcessing} className="text-amber-600 hover:text-amber-800 text-sm font-medium disabled:opacity-50">Extract Links</button>
+              <button onClick={handleExtractAnnotations} disabled={isProcessing} className="text-rose-600 hover:text-rose-800 text-sm font-medium disabled:opacity-50">Extract Annotations</button>
             </div>
           </details>
 
           <details className="mb-2">
             <summary className="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300 select-none">Modify & Secure</summary>
             <div className="flex flex-wrap gap-2 mt-2">
-              {!isMobile && (
-                <>
-                  <button onClick={() => onFlatten?.(doc)} disabled={isProcessing} className="text-stone-600 hover:text-stone-800 text-sm font-medium disabled:opacity-50">Flatten</button>
-                  <button onClick={() => onSanitize?.(doc)} disabled={isProcessing} className="text-indigo-600 hover:text-indigo-800 text-sm font-medium disabled:opacity-50">Sanitize</button>
-                  <button onClick={() => onHighlight?.(doc)} disabled={isProcessing} className="text-teal-600 hover:text-teal-800 text-sm font-medium disabled:opacity-50">Highlight</button>
-                  <button onClick={() => onSign?.(doc)} disabled={isProcessing} className="text-pink-600 hover:text-pink-800 text-sm font-medium disabled:opacity-50">Sign</button>
-                  <button onClick={() => onResizePages?.(doc)} disabled={isProcessing} className="text-emerald-600 hover:text-emerald-800 text-sm font-medium disabled:opacity-50">Resize</button>
-                  <button onClick={() => onAudit?.(doc)} disabled={isProcessing} className="text-yellow-600 hover:text-yellow-800 text-sm font-medium disabled:opacity-50">Audit</button>
-                  <button onClick={() => onVerifySignature?.(doc)} disabled={isProcessing} className="text-blue-500 hover:text-blue-700 text-sm font-medium disabled:opacity-50">Verify Sigs</button>
-                </>
-              )}
+              <button onClick={() => onFlatten?.(doc)} disabled={isProcessing} className="text-stone-600 hover:text-stone-800 text-sm font-medium disabled:opacity-50">Flatten</button>
+              <button onClick={() => onSanitize?.(doc)} disabled={isProcessing} className="text-indigo-600 hover:text-indigo-800 text-sm font-medium disabled:opacity-50">Sanitize</button>
+              <button onClick={() => onHighlight?.(doc)} disabled={isProcessing} className="text-teal-600 hover:text-teal-800 text-sm font-medium disabled:opacity-50">Highlight</button>
+              <button onClick={() => onSign?.(doc)} disabled={isProcessing} className="text-pink-600 hover:text-pink-800 text-sm font-medium disabled:opacity-50">Sign</button>
+              <button onClick={() => onResizePages?.(doc)} disabled={isProcessing} className="text-emerald-600 hover:text-emerald-800 text-sm font-medium disabled:opacity-50">Resize</button>
+              {!isMobile && <button onClick={() => onAudit?.(doc)} disabled={isProcessing} className="text-yellow-600 hover:text-yellow-800 text-sm font-medium disabled:opacity-50">Audit</button>}
+              <button onClick={() => onVerifySignature?.(doc)} disabled={isProcessing} className="text-blue-500 hover:text-blue-700 text-sm font-medium disabled:opacity-50">Verify Sigs</button>
             </div>
           </details>
 
@@ -1005,9 +997,9 @@ items={[
                   <button onClick={handleScan} disabled={isProcessing} className="text-purple-600 hover:text-purple-800 text-sm font-medium disabled:opacity-50">Scan PII</button>
                   <button onClick={handleScanCodes} disabled={isProcessing} className="text-orange-600 hover:text-orange-800 text-sm font-medium disabled:opacity-50">Scan Codes</button>
                   <button onClick={() => { if (complexityMode === 'simple') setComplexityMode('professional'); onOcr?.(doc); }} disabled={isProcessing} className="text-orange-600 hover:text-orange-800 text-sm font-medium disabled:opacity-50">OCR</button>
-                  <button onClick={() => onReadAloud?.(doc)} disabled={isProcessing} className="text-blue-600 hover:text-blue-800 text-sm font-medium disabled:opacity-50">Read Aloud</button>
                 </>
               )}
+              <button onClick={() => onReadAloud?.(doc)} disabled={isProcessing} className="text-blue-600 hover:text-blue-800 text-sm font-medium disabled:opacity-50">Read Aloud</button>
             </div>
           </details>
 
