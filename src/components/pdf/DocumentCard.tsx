@@ -98,7 +98,7 @@ export function DocumentCard({
   exportPdfToDark,
 }: DocumentCardProps) {
   const isMobile = useMobile();
-  const { complexityMode, setComplexityMode, activeTool, setActiveTool } = useUIStore();
+  const { activeTool, setActiveTool } = useUIStore();
   const [detectedEntities, setDetectedEntities] = useState<string[] | null>(
     null,
   );
@@ -841,6 +841,7 @@ items={[
             { label: "Extract Web (HTML) (~5s)", onClick: handleExtractHtml },
             (!isMobile ? { label: "Export DOCX (~10s)", onClick: handleExportDocx } : null),
             { label: "Export True Dark (~10s)", onClick: handleExportDark },
+            (!isMobile ? { label: "Extract Images (~10s)", onClick: handleExtractImages } : null),
             { label: "Extract Links (CSV) (~2s)", onClick: handleExtractLinks },
             { label: "Extract Annotations (CSV) (~2s)", onClick: handleExtractAnnotations },
             { variant: "separator" },
@@ -860,6 +861,15 @@ items={[
             (!isMobile ? { label: "Audit Redactions (~5s)", onClick: () => onAudit?.(doc) } : null),
             { label: "Verify Signatures (~2s)", onClick: () => onVerifySignature?.(doc) },
             { label: "Read Aloud (TTS) (~15s/pg)", onClick: () => onReadAloud?.(doc) },
+            (!isMobile ? { label: "Scan PII (~5s)", onClick: handleScan } : null),
+            (!isMobile ? { label: "Scan Codes (~5s)", onClick: handleScanCodes } : null),
+            (!isMobile ? { label: "OCR (~10s)", onClick: () => {
+                if (useUIStore.getState().complexityMode === 'simple') {
+                  useUIStore.getState().setComplexityMode('professional');
+                }
+                onOcr?.(doc);
+              }
+            } : null),
             { variant: "separator" },
             { label: "Share (URL, <64KB only)", onClick: () => onShare?.(doc) },
             {
@@ -970,47 +980,9 @@ items={[
             </div>
           )}
 
-          <details className="mb-2">
-            <summary className="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300 select-none">Extract & Export</summary>
-            <div className="flex flex-wrap gap-2 mt-2">
-              <button onClick={() => onSplit(doc)} disabled={isProcessing} className="text-blue-600 hover:text-blue-800 text-sm font-medium disabled:opacity-50">Split</button>
-              {!isMobile && <button onClick={handleExtractTables} disabled={isProcessing} className="text-green-600 hover:text-green-800 text-sm font-medium disabled:opacity-50">Extract Tables</button>}
-              <button onClick={handleExtractMarkdown} disabled={isProcessing} className="text-fuchsia-600 hover:text-fuchsia-800 text-sm font-medium disabled:opacity-50">Extract Notes</button>
-              <button onClick={handleExtractHtml} disabled={isProcessing} className="text-orange-600 hover:text-orange-800 text-sm font-medium disabled:opacity-50">Extract Web</button>
-              {!isMobile && <button onClick={handleExportDocx} disabled={isProcessing} className="text-blue-600 hover:text-blue-800 text-sm font-medium disabled:opacity-50">Export DOCX</button>}
-              <button onClick={handleExportDark} disabled={isProcessing} className="text-gray-900 dark:text-gray-100 hover:text-gray-600 text-sm font-medium disabled:opacity-50">Export Dark</button>
-              {!isMobile && <button onClick={handleExtractImages} disabled={isProcessing} className="text-cyan-600 hover:text-cyan-800 text-sm font-medium disabled:opacity-50">Extract Images</button>}
-              <button onClick={handleExtractLinks} disabled={isProcessing} className="text-amber-600 hover:text-amber-800 text-sm font-medium disabled:opacity-50">Extract Links</button>
-              <button onClick={handleExtractAnnotations} disabled={isProcessing} className="text-rose-600 hover:text-rose-800 text-sm font-medium disabled:opacity-50">Extract Annotations</button>
-            </div>
-          </details>
-
-          <details className="mb-2">
-            <summary className="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300 select-none">Modify & Secure</summary>
-            <div className="flex flex-wrap gap-2 mt-2">
-              <button onClick={() => onFlatten?.(doc)} disabled={isProcessing} className="text-stone-600 hover:text-stone-800 text-sm font-medium disabled:opacity-50">Flatten</button>
-              <button onClick={() => onSanitize?.(doc)} disabled={isProcessing} className="text-indigo-600 hover:text-indigo-800 text-sm font-medium disabled:opacity-50">Sanitize</button>
-              <button onClick={() => onHighlight?.(doc)} disabled={isProcessing} className="text-teal-600 hover:text-teal-800 text-sm font-medium disabled:opacity-50">Highlight</button>
-              <button onClick={() => onSign?.(doc)} disabled={isProcessing} className="text-pink-600 hover:text-pink-800 text-sm font-medium disabled:opacity-50">Sign</button>
-              <button onClick={() => onResizePages?.(doc)} disabled={isProcessing} className="text-emerald-600 hover:text-emerald-800 text-sm font-medium disabled:opacity-50">Resize</button>
-              {!isMobile && <button onClick={() => onAudit?.(doc)} disabled={isProcessing} className="text-yellow-600 hover:text-yellow-800 text-sm font-medium disabled:opacity-50">Audit</button>}
-              <button onClick={() => onVerifySignature?.(doc)} disabled={isProcessing} className="text-blue-500 hover:text-blue-700 text-sm font-medium disabled:opacity-50">Verify Sigs</button>
-            </div>
-          </details>
-
-          <details>
-            <summary className="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300 select-none">Analyze (AI)</summary>
-            <div className="flex flex-wrap gap-2 mt-2">
-              {!isMobile && (
-                <>
-                  <button onClick={handleScan} disabled={isProcessing} className="text-purple-600 hover:text-purple-800 text-sm font-medium disabled:opacity-50">Scan PII</button>
-                  <button onClick={handleScanCodes} disabled={isProcessing} className="text-orange-600 hover:text-orange-800 text-sm font-medium disabled:opacity-50">Scan Codes</button>
-                  <button onClick={() => { if (complexityMode === 'simple') setComplexityMode('professional'); onOcr?.(doc); }} disabled={isProcessing} className="text-orange-600 hover:text-orange-800 text-sm font-medium disabled:opacity-50">OCR</button>
-                </>
-              )}
-              <button onClick={() => onReadAloud?.(doc)} disabled={isProcessing} className="text-blue-600 hover:text-blue-800 text-sm font-medium disabled:opacity-50">Read Aloud</button>
-            </div>
-          </details>
+          <div className="mt-2 text-sm text-gray-500 italic">
+            Right-click the thumbnail above to access all tools (Extract, Modify, Secure, AI).
+          </div>
 
           {isMobile && (
             <span className="text-xs bg-gray-100 text-gray-500 px-2 py-1 rounded block mt-2">Mobile Utility Mode</span>
