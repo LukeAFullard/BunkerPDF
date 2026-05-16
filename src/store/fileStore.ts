@@ -167,11 +167,19 @@ export const useFileStore = create<FileStore>((set, get) => ({
           pageCount: newPageCount !== undefined ? newPageCount : doc.pageCount,
         });
 
-        // Keep only last 20 operations, clean up old keys
+        // Keep only last 20 operations, clean up old keys, but preserve the initial state
         while (newOps.length > 20) {
-          const removed = newOps.shift();
-          if (removed?.fileKey) idbDel(removed.fileKey).catch(console.error);
+          if (newOps.length === 1) break; // NEVER delete the initial state
+
+          // Remove from position 1 (keeping initial at index 0)
+          const removed = newOps.splice(1, 1)[0];
+          if (removed?.fileKey) {
+            idbDel(removed.fileKey).catch(console.error);
+          }
         }
+
+        // Adjust operationIndex based on newOps length
+        const newOperationIndex = newOps.length - 1;
 
         return {
           ...doc,
@@ -179,7 +187,7 @@ export const useFileStore = create<FileStore>((set, get) => ({
           size: newFile.size,
           pageCount: newPageCount !== undefined ? newPageCount : doc.pageCount,
           operations: newOps,
-          operationIndex: newOps.length - 1,
+          operationIndex: newOperationIndex,
         };
       })
     }));
