@@ -38,13 +38,21 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
 
   // Prevent context menu from going off-screen (basic handling)
   const safeX = Math.min(x, window.innerWidth - 200); // Assume max width 200px
-  const safeY = Math.min(y, window.innerHeight - (items.length * 40)); // Assume max height
+
+  // Calculate max height based on items, cap at a reasonable size
+  const validItems = items.filter(Boolean);
+  const estimatedHeight = validItems.length * 40;
+  const maxHeight = Math.min(estimatedHeight, window.innerHeight * 0.8);
+
+  // If the menu is going to go off the bottom of the screen, render it upwards
+  const goingOffBottom = y + estimatedHeight > window.innerHeight;
+  const safeY = goingOffBottom ? Math.max(10, y - maxHeight) : y;
 
   const menu = (
     <div
       ref={menuRef}
-      className="fixed bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50 min-w-[160px]"
-      style={{ left: safeX, top: safeY }}
+      className="fixed bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50 min-w-[200px] overflow-y-auto"
+      style={{ left: safeX, top: safeY, maxHeight }}
       onContextMenu={(e) => e.preventDefault()} // Prevent default context menu on the menu itself
     >
       {items.map((item, index) => {
