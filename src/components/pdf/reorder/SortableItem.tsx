@@ -25,6 +25,7 @@ export function SortableItem({ id, docId, pageNumber, thumbnailCache, setThumbna
     transition,
     zIndex: isDragging ? 10 : 1,
     opacity: isDragging ? 0.5 : 1,
+    touchAction: 'none' as const,
   };
 
   return (
