@@ -134,20 +134,29 @@ export function DocumentCard({
     hasSelectableText: boolean;
     hasForms: boolean;
   } | null>(null);
+  const [analyzedFileKey, setAnalyzedFileKey] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isActive) {
-      let isMounted = true;
-      analyzeDocumentHealth(doc.file).then(data => {
-        if (isMounted) setHealthData(data);
-      });
-      return () => {
-        isMounted = false;
-        // Optionally clear data if we expect to re-fetch on every active state flip
-        // Not calling synchronously
-      };
-    }
-  }, [isActive, doc.file, doc.lastModified]);
+    if (!isActive) return;
+
+    // Create stable key from file metadata
+    const fileKey = `${doc.name}-${doc.size}-${doc.lastModified}`;
+
+    // Only analyze if this is a genuinely new file
+    if (fileKey === analyzedFileKey) return;
+
+    let isMounted = true;
+    analyzeDocumentHealth(doc.file).then(data => {
+      if (isMounted) {
+        setHealthData(data);
+        setAnalyzedFileKey(fileKey);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isActive, doc.name, doc.size, doc.lastModified, analyzedFileKey, doc.file]);
 
   const handleScan = useCallback(async () => {
     setDetectedEntities(null);
