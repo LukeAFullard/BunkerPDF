@@ -176,7 +176,8 @@ function App() {
     // Use current state to fetch the active doc safely for sequential steps
     let currentDoc = activeDoc;
     let isCancelled = false;
-    const rollbackStates: File[] = [activeDoc.file]; // Save states for rollback
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const startingOpIndex = activeDoc.operationIndex ?? 0;
 
     startProcessing(`Running recipe: ${recipe.name}`, true, () => {
       isCancelled = true;
@@ -191,9 +192,6 @@ function App() {
         const docFromState = useFileStore.getState().documents.find(d => d.id === currentDoc.id);
         if (!docFromState) throw new Error("Document lost during processing");
         currentDoc = docFromState;
-
-        // Save state before each step for potential rollback
-        rollbackStates.push(currentDoc.file);
 
         try {
           // Perform the step
@@ -317,15 +315,9 @@ function App() {
             console.warn(`Step ${step} requires manual UI interaction or is not supported in recipes yet.`);
           }
         } catch (stepError) {
-          // Rollback on failure
-          const lastGoodFile = rollbackStates[rollbackStates.length - 2] || rollbackStates[0];
-          await useFileStore.getState().updateDocumentFile(currentDoc.id, lastGoodFile);
           throw new Error(`Step '${step}' failed: ${stepError instanceof Error ? stepError.message : 'Unknown error'}`, { cause: stepError });
         }
       }
-
-      // Success - clear rollback states
-      rollbackStates.length = 0;
 
       if (!isCancelled) {
         setErrorState({
@@ -336,6 +328,15 @@ function App() {
       }
     } catch (err: unknown) {
       if (!isCancelled) {
+        // Rollback using the index-based undo system
+        const docFromState = useFileStore.getState().documents.find(d => d.id === activeDoc.id);
+        if (docFromState) {
+          const stepsToUndo = (docFromState.operationIndex ?? 0) - startingOpIndex;
+          for (let i = 0; i < stepsToUndo; i++) {
+            useFileStore.getState().undo(activeDoc.id);
+          }
+        }
+
         console.error("Recipe error:", err);
         setErrorState({
           isOpen: true,
