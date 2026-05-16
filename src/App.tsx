@@ -64,6 +64,7 @@ function App() {
     if (isIndexing || documents.length === 0) return;
     setIndexingState(true, 0);
 
+    const BATCH_SIZE = 5; // Process 5 pages then yield to UI
     const newSegments: DocumentSegment[] = [];
     let processedPages = 0;
     const totalPages = documents.reduce((sum, doc) => sum + (doc.pageCount || 1), 0);
@@ -77,28 +78,36 @@ function App() {
         // FIXED: Extract all pages in one Pyodide call
         const allPageTexts = await extractAllPagesText(bytes, pageCount);
 
-        for (let i = 0; i < pageCount; i++) {
-          const text = allPageTexts[i];
+        // Process in batches with UI yields
+        for (let i = 0; i < pageCount; i += BATCH_SIZE) {
+          const batchEnd = Math.min(i + BATCH_SIZE, pageCount);
 
-          if (text && text.trim().length > 10) {
-            // Show which document we're embedding
-            if (i === 0 || i % 10 === 0) {
-              setIndexingState(true, Math.round((processedPages / totalPages) * 100));
+          // Process batch
+          const batchPromises = [];
+          for (let j = i; j < batchEnd; j++) {
+            const text = allPageTexts[j];
+            if (text && text.trim().length > 10) {
+              batchPromises.push(
+                generateEmbedding(text.trim()).then(embedding => ({
+                  id: `${doc.id}-${j}`,
+                  docId: doc.id,
+                  docName: doc.name,
+                  pageNumber: j + 1,
+                  text: text.trim(),
+                  embedding,
+                }))
+              );
             }
-
-            const embedding = await generateEmbedding(text.trim());
-            newSegments.push({
-              id: `${doc.id}-${i}`,
-              docId: doc.id,
-              docName: doc.name,
-              pageNumber: i + 1,
-              text: text.trim(),
-              embedding,
-            });
           }
 
-          processedPages++;
+          const batchResults = await Promise.all(batchPromises);
+          newSegments.push(...batchResults);
+
+          processedPages += (batchEnd - i);
           setIndexingState(true, Math.round((processedPages / totalPages) * 100));
+
+          // CRITICAL: Yield to UI thread
+          await new Promise(resolve => setTimeout(resolve, 0));
         }
       }
 
@@ -127,9 +136,47 @@ function App() {
     const activeDoc = documents.find((doc) => doc.id === activeDocumentId);
     if (!activeDoc) return;
 
+    // CRITICAL: Validate prerequisites
+    const { pyodideStatus } = useEngineStore.getState();
+    const needsPyodide = recipe.steps.some(s =>
+      ['redact', 'sanitize', 'extract-tables', 'extract-text', 'extract-images'].includes(s)
+    );
+
+    if (needsPyodide && pyodideStatus !== 'ready') {
+      setErrorState({
+        isOpen: true,
+        title: 'Tools Not Ready',
+        message: 'Advanced features are still loading. Please wait and try again.'
+      });
+      return;
+    }
+
+    // Validate recipe makes sense for this document
+    const validationErrors: string[] = [];
+    if (recipe.steps.includes('merge') && documents.length < 2) {
+      validationErrors.push("'merge' requires at least 2 documents");
+    }
+    if (activeDoc.isEncrypted && recipe.steps.some(s => ['redact', 'sanitize', 'ocr', 'flatten'].includes(s))) {
+      validationErrors.push("Document must be unlocked before running this recipe");
+    }
+
+    if (validationErrors.length > 0) {
+      setErrorState({
+        isOpen: true,
+        title: 'Recipe Cannot Run',
+        message: (
+          <ul className="list-disc pl-5">
+            {validationErrors.map((err, i) => <li key={i}>{err}</li>)}
+          </ul>
+        )
+      });
+      return;
+    }
+
     // Use current state to fetch the active doc safely for sequential steps
     let currentDoc = activeDoc;
     let isCancelled = false;
+    const rollbackStates: File[] = [activeDoc.file]; // Save states for rollback
 
     startProcessing(`Running recipe: ${recipe.name}`, true, () => {
       isCancelled = true;
@@ -145,127 +192,140 @@ function App() {
         if (!docFromState) throw new Error("Document lost during processing");
         currentDoc = docFromState;
 
-        // Perform the step
-        if (step === 'optimize') {
-          const optimizedBytes = await optimizePdf(currentDoc.file);
-          if (isCancelled) break;
-          const standardBuffer = new Uint8Array(optimizedBytes.length);
-          standardBuffer.set(optimizedBytes);
-          const newFile = new File([standardBuffer], currentDoc.name, { type: "application/pdf" });
-          useFileStore.getState().updateDocumentFile(currentDoc.id, newFile);
-          addLog("Recipe", `Applied Optimize`, currentDoc.name);
-        } else if (step === 'flatten') {
-          const flattenedBytes = await flattenForms(currentDoc.file);
-          if (isCancelled) break;
-          const standardBuffer = new Uint8Array(flattenedBytes.length);
-          standardBuffer.set(flattenedBytes);
-          const newFile = new File([standardBuffer], currentDoc.name, { type: "application/pdf" });
-          useFileStore.getState().updateDocumentFile(currentDoc.id, newFile);
-          addLog("Recipe", `Applied Flatten`, currentDoc.name);
-        } else if (step === 'sanitize') {
-          const arrayBuffer = await currentDoc.file.arrayBuffer();
-          const { bytes } = await sanitizePdf(new Uint8Array(arrayBuffer));
-          if (isCancelled) break;
-          const standardBuffer = new Uint8Array(bytes.length);
-          standardBuffer.set(bytes);
-          const newFile = new File([standardBuffer], currentDoc.name, { type: "application/pdf" });
-          useFileStore.getState().updateDocumentFile(currentDoc.id, newFile);
-          addLog("Recipe", `Applied Sanitize`, currentDoc.name);
-        } else if (step === 'ocr') {
-          const abortController = new AbortController();
-          const newFile = await ocrPdf(currentDoc.file, (stage) => {
-             if (!isCancelled) useProcessingStore.getState().updateStage(`OCR: ${stage}`);
-          }, abortController.signal);
-          if (isCancelled) {
-             abortController.abort();
-             break;
-          }
-          useFileStore.getState().updateDocumentFile(currentDoc.id, newFile);
-          addLog("Recipe", `Applied OCR`, currentDoc.name);
-        } else if (step === 'redact') {
-          useProcessingStore.getState().updateStage(`Redacting (Auto PII)...`);
-          const arrayBuffer = await currentDoc.file.arrayBuffer();
-          const pdfBytes = new Uint8Array(arrayBuffer);
+        // Save state before each step for potential rollback
+        rollbackStates.push(currentDoc.file);
 
-          if (!extractText || !extractEntities || !redactPdf) {
-             throw new Error("Missing functions for auto redaction");
-          }
+        try {
+          // Perform the step
+          if (step === 'optimize') {
+            const optimizedBytes = await optimizePdf(currentDoc.file);
+            if (isCancelled) break;
+            const standardBuffer = new Uint8Array(optimizedBytes.length);
+            standardBuffer.set(optimizedBytes);
+            const newFile = new File([standardBuffer], currentDoc.name, { type: "application/pdf" });
+            await useFileStore.getState().updateDocumentFile(currentDoc.id, newFile);
+            addLog("Recipe", `Applied Optimize`, currentDoc.name);
+          } else if (step === 'flatten') {
+            const flattenedBytes = await flattenForms(currentDoc.file);
+            if (isCancelled) break;
+            const standardBuffer = new Uint8Array(flattenedBytes.length);
+            standardBuffer.set(flattenedBytes);
+            const newFile = new File([standardBuffer], currentDoc.name, { type: "application/pdf" });
+            await useFileStore.getState().updateDocumentFile(currentDoc.id, newFile);
+            addLog("Recipe", `Applied Flatten`, currentDoc.name);
+          } else if (step === 'sanitize') {
+            const arrayBuffer = await currentDoc.file.arrayBuffer();
+            const { bytes } = await sanitizePdf(new Uint8Array(arrayBuffer));
+            if (isCancelled) break;
+            const standardBuffer = new Uint8Array(bytes.length);
+            standardBuffer.set(bytes);
+            const newFile = new File([standardBuffer], currentDoc.name, { type: "application/pdf" });
+            await useFileStore.getState().updateDocumentFile(currentDoc.id, newFile);
+            addLog("Recipe", `Applied Sanitize`, currentDoc.name);
+          } else if (step === 'ocr') {
+            const abortController = new AbortController();
+            const newFile = await ocrPdf(currentDoc.file, (stage) => {
+               if (!isCancelled) useProcessingStore.getState().updateStage(`OCR: ${stage}`);
+            }, abortController.signal);
+            if (isCancelled) {
+               abortController.abort();
+               break;
+            }
+            await useFileStore.getState().updateDocumentFile(currentDoc.id, newFile);
+            addLog("Recipe", `Applied OCR`, currentDoc.name);
+          } else if (step === 'redact') {
+            useProcessingStore.getState().updateStage(`Redacting (Auto PII)...`);
+            const arrayBuffer = await currentDoc.file.arrayBuffer();
+            const pdfBytes = new Uint8Array(arrayBuffer);
 
-          const text = await extractText(pdfBytes);
-          if (isCancelled) break;
-          const entities = await extractEntities(text);
-          if (isCancelled) break;
+            if (!extractText || !extractEntities || !redactPdf) {
+               throw new Error("Missing functions for auto redaction");
+            }
 
-          if (entities && entities.length > 0) {
-             const redactedBytes = await redactPdf(pdfBytes, entities);
-             if (isCancelled) break;
-             const standardBuffer = new Uint8Array(redactedBytes.length);
-             standardBuffer.set(redactedBytes);
-             const newFile = new File([standardBuffer], currentDoc.name, { type: "application/pdf" });
-             useFileStore.getState().updateDocumentFile(currentDoc.id, newFile);
-             addLog("Recipe", `Auto Redacted ${entities.length} PII items`, currentDoc.name);
-          } else {
-             addLog("Recipe", `No PII found for redaction`, currentDoc.name);
-          }
-        } else if (step === 'extract-tables') {
-           if (extractTables) {
-             const excelBytes = await extractTables(currentDoc.file);
-             if (isCancelled) break;
-             const standardBuffer = new Uint8Array(excelBytes.length);
-             standardBuffer.set(excelBytes);
-             const blob = new Blob([standardBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-             const url = URL.createObjectURL(blob);
-             const a = document.createElement("a");
-             a.href = url;
-             a.download = currentDoc.name.replace(/\.pdf$/i, "-tables.xlsx");
-             document.body.appendChild(a);
-             a.click();
-             document.body.removeChild(a);
-             URL.revokeObjectURL(url);
-             addLog("Recipe", `Extracted Tables`, currentDoc.name);
-           }
-        } else if (step === 'extract-images') {
-           if (extractImages) {
-             const pdfBytes = await currentDoc.file.arrayBuffer();
-             const result = await extractImages(new Uint8Array(pdfBytes));
-             if (isCancelled) break;
-             const standardBuffer = new Uint8Array(result.length);
-             standardBuffer.set(result);
-             const blob = new Blob([standardBuffer], { type: "application/zip" });
-             if (blob.size > 22) {
+            const text = await extractText(pdfBytes);
+            if (isCancelled) break;
+            const entities = await extractEntities(text);
+            if (isCancelled) break;
+
+            if (entities && entities.length > 0) {
+               const redactedBytes = await redactPdf(pdfBytes, entities);
+               if (isCancelled) break;
+               const standardBuffer = new Uint8Array(redactedBytes.length);
+               standardBuffer.set(redactedBytes);
+               const newFile = new File([standardBuffer], currentDoc.name, { type: "application/pdf" });
+               await useFileStore.getState().updateDocumentFile(currentDoc.id, newFile);
+               addLog("Recipe", `Auto Redacted ${entities.length} PII items`, currentDoc.name);
+            } else {
+               addLog("Recipe", `No PII found for redaction`, currentDoc.name);
+            }
+          } else if (step === 'extract-tables') {
+             if (extractTables) {
+               const excelBytes = await extractTables(currentDoc.file);
+               if (isCancelled) break;
+               const standardBuffer = new Uint8Array(excelBytes.length);
+               standardBuffer.set(excelBytes);
+               const blob = new Blob([standardBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
                const url = URL.createObjectURL(blob);
                const a = document.createElement("a");
                a.href = url;
-               a.download = currentDoc.name.replace(/\.pdf$/i, "-images.zip");
+               a.download = currentDoc.name.replace(/\.pdf$/i, "-tables.xlsx");
                document.body.appendChild(a);
                a.click();
                document.body.removeChild(a);
                URL.revokeObjectURL(url);
+               addLog("Recipe", `Extracted Tables`, currentDoc.name);
              }
-             addLog("Recipe", `Extracted Images`, currentDoc.name);
-           }
-        } else if (step === 'extract-text') {
-           if (extractText) {
-             const buffer = await currentDoc.file.arrayBuffer();
-             const text = await extractText(new Uint8Array(buffer));
-             if (isCancelled) break;
-             const blob = new Blob([text], { type: "text/plain" });
-             const url = URL.createObjectURL(blob);
-             const a = document.createElement("a");
-             a.href = url;
-             a.download = currentDoc.name.replace(/\.pdf$/i, "-text.txt");
-             document.body.appendChild(a);
-             a.click();
-             document.body.removeChild(a);
-             URL.revokeObjectURL(url);
-             addLog("Recipe", `Extracted Text`, currentDoc.name);
-           }
-        } else {
-          // Other steps need UI interaction usually (like manual Redact bounding boxes or Merge files)
-          // We can skip or show a notice
-          console.warn(`Step ${step} requires manual UI interaction or is not supported in recipes yet.`);
+          } else if (step === 'extract-images') {
+             if (extractImages) {
+               const pdfBytes = await currentDoc.file.arrayBuffer();
+               const result = await extractImages(new Uint8Array(pdfBytes));
+               if (isCancelled) break;
+               const standardBuffer = new Uint8Array(result.length);
+               standardBuffer.set(result);
+               const blob = new Blob([standardBuffer], { type: "application/zip" });
+               if (blob.size > 22) {
+                 const url = URL.createObjectURL(blob);
+                 const a = document.createElement("a");
+                 a.href = url;
+                 a.download = currentDoc.name.replace(/\.pdf$/i, "-images.zip");
+                 document.body.appendChild(a);
+                 a.click();
+                 document.body.removeChild(a);
+                 URL.revokeObjectURL(url);
+               }
+               addLog("Recipe", `Extracted Images`, currentDoc.name);
+             }
+          } else if (step === 'extract-text') {
+             if (extractText) {
+               const buffer = await currentDoc.file.arrayBuffer();
+               const text = await extractText(new Uint8Array(buffer));
+               if (isCancelled) break;
+               const blob = new Blob([text], { type: "text/plain" });
+               const url = URL.createObjectURL(blob);
+               const a = document.createElement("a");
+               a.href = url;
+               a.download = currentDoc.name.replace(/\.pdf$/i, "-text.txt");
+               document.body.appendChild(a);
+               a.click();
+               document.body.removeChild(a);
+               URL.revokeObjectURL(url);
+               addLog("Recipe", `Extracted Text`, currentDoc.name);
+             }
+          } else {
+            // Other steps need UI interaction usually (like manual Redact bounding boxes or Merge files)
+            // We can skip or show a notice
+            console.warn(`Step ${step} requires manual UI interaction or is not supported in recipes yet.`);
+          }
+        } catch (stepError) {
+          // Rollback on failure
+          const lastGoodFile = rollbackStates[rollbackStates.length - 2] || rollbackStates[0];
+          await useFileStore.getState().updateDocumentFile(currentDoc.id, lastGoodFile);
+          throw new Error(`Step '${step}' failed: ${stepError instanceof Error ? stepError.message : 'Unknown error'}`, { cause: stepError });
         }
       }
+
+      // Success - clear rollback states
+      rollbackStates.length = 0;
 
       if (!isCancelled) {
         setErrorState({
@@ -1010,7 +1070,7 @@ function App() {
         const newFile = new File([standardBuffer], doc.name, {
           type: "application/pdf",
         });
-        updateDocumentFile(doc.id, newFile);
+        await updateDocumentFile(doc.id, newFile);
         addLog("Batch Sanitize", "Removed metadata and flattened form fields", doc.name);
       }
       if (!isCancelled) {
@@ -1081,7 +1141,7 @@ function App() {
       title: "Batch Rename",
       message: "Enter the base name for all documents. They will be sequentially numbered (e.g. BaseName_1.pdf).",
       placeholder: "Project_Report",
-      onConfirm: (text) => {
+      onConfirm: async (text) => {
         setInputState((prev) => ({ ...prev, isOpen: false }));
         if (!text) return;
 
@@ -1092,7 +1152,7 @@ function App() {
 
           // Re-create the file with the new name
           const newFile = new File([doc.file], newName, { type: doc.file.type });
-          updateDocumentFile(doc.id, newFile);
+          await updateDocumentFile(doc.id, newFile);
           useFileStore.getState().updateDocument(doc.id, { name: newName });
           addLog("Batch Rename", `Renamed to ${newName}`, newName);
           counter++;
@@ -1120,7 +1180,7 @@ function App() {
         const newFile = new File([standardBuffer], doc.name, {
           type: "application/pdf",
         });
-        updateDocumentFile(doc.id, newFile);
+        await updateDocumentFile(doc.id, newFile);
         addLog("Batch Optimize", "Optimized PDF to reduce file size", doc.name);
       }
       if (!isCancelled) {
@@ -1168,7 +1228,7 @@ function App() {
             const newFile = new File([standardBuffer], doc.name, {
               type: "application/pdf",
             });
-            updateDocumentFile(doc.id, newFile);
+            await updateDocumentFile(doc.id, newFile);
             addLog("Batch Watermark", `Added watermark: ${text}`, doc.name);
           }
           if (!isCancelled) {
@@ -1227,7 +1287,7 @@ function App() {
             const newFile = new File([standardBuffer], doc.name, {
               type: "application/pdf",
             });
-            updateDocumentFile(doc.id, newFile);
+            await updateDocumentFile(doc.id, newFile);
             addLog("Batch Resize Pages", `Resized pages to ${sizeStr}`, doc.name);
           }
           if (!isCancelled) {
@@ -1428,7 +1488,7 @@ function App() {
       const newFile = new File([standardBuffer], doc.name, {
         type: "application/pdf",
       });
-      updateDocumentFile(doc.id, newFile);
+      await updateDocumentFile(doc.id, newFile);
       addLog("Rotate", "Rotated document by 90 degrees.", doc.name);
     } catch (e) {
       if (isCancelled) return;
@@ -1468,7 +1528,7 @@ function App() {
           const newFile = new File([standardBuffer], doc.name, {
             type: "application/pdf",
           });
-          updateDocumentFile(doc.id, newFile);
+          await updateDocumentFile(doc.id, newFile);
           addLog("Watermark", `Added watermark: "${text}"`, doc.name);
         } catch (e) {
           if (isCancelled) return;
@@ -1628,7 +1688,7 @@ function App() {
       const newFile = new File([standardBuffer], doc.name, {
         type: "application/pdf",
       });
-      updateDocumentFile(doc.id, newFile);
+      await updateDocumentFile(doc.id, newFile);
       addLog("Flatten Forms", "Flattened interactive form fields.", doc.name);
 
       setErrorState({
@@ -1732,7 +1792,7 @@ function App() {
       const newFile = new File([standardBuffer], doc.name, {
         type: "application/pdf",
       });
-      updateDocumentFile(doc.id, newFile);
+      await updateDocumentFile(doc.id, newFile);
       addLog("Sanitize", "Sanitized document by removing metadata and scripts.", doc.name);
 
       setErrorState({
@@ -1900,7 +1960,7 @@ function App() {
 
     if (isCancelled) return;
 
-    updateDocumentFile(doc.id, newFile);
+    await updateDocumentFile(doc.id, newFile);
     addLog("OCR", "Extracted text and overlaid it on the document.", doc.name);
 
     setErrorState({
@@ -2007,7 +2067,7 @@ function App() {
           const newFile = new File([standardBuffer], doc.name, {
             type: "application/pdf",
           });
-          updateDocumentFile(doc.id, newFile);
+          await updateDocumentFile(doc.id, newFile);
           useFileStore.getState().updateDocument(doc.id, { isEncrypted: true });
           addLog("Protect", "Password protected document.", doc.name);
         } catch (e) {
@@ -2064,7 +2124,7 @@ function App() {
             type: "application/pdf",
           });
 
-          updateDocumentFile(doc.id, newFile);
+          await updateDocumentFile(doc.id, newFile);
           useFileStore.getState().updateDocument(doc.id, {
             name: newFileName,
             isEncrypted: false
@@ -2122,7 +2182,7 @@ function App() {
       const newFile = new File([standardBuffer], doc.name, {
         type: "application/pdf",
       });
-      updateDocumentFile(doc.id, newFile);
+      await updateDocumentFile(doc.id, newFile);
       addLog("Sign", "Added signature to document.", doc.name);
     } catch (e) {
       if (isCancelled) return;
@@ -2164,7 +2224,7 @@ function App() {
           const newFile = new File([standardBuffer], doc.name, {
             type: "application/pdf",
           });
-          updateDocumentFile(doc.id, newFile);
+          await updateDocumentFile(doc.id, newFile);
           addLog("Highlight", `Highlighted text: "${text}"`, doc.name);
         } catch (e) {
           if (isCancelled) return;
@@ -2278,7 +2338,7 @@ function App() {
           const newFile = new File([standardBuffer], doc.name, {
             type: "application/pdf",
           });
-          updateDocumentFile(doc.id, newFile);
+          await updateDocumentFile(doc.id, newFile);
           addLog("Add Page Numbers", `Added page numbers with format ${format} at ${position}`, doc.name);
         } catch (e) {
           if (isCancelled) return;
@@ -2331,7 +2391,7 @@ function App() {
           const newFile = new File([standardBuffer], doc.name, {
             type: "application/pdf",
           });
-          updateDocumentFile(doc.id, newFile);
+          await updateDocumentFile(doc.id, newFile);
           addLog("Resize Pages", `Resized pages to ${sizeStr.toUpperCase()}`, doc.name);
         } catch (e) {
           if (isCancelled) return;
@@ -2379,7 +2439,7 @@ function App() {
           const newFile = new File([standardBuffer], doc.name, {
             type: "application/pdf",
           });
-          updateDocumentFile(doc.id, newFile);
+          await updateDocumentFile(doc.id, newFile);
           addLog("Reorder Pages", `Reordered pages to: ${text}`, doc.name);
         } catch (e) {
           if (isCancelled) return;
