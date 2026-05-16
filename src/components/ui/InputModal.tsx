@@ -28,8 +28,10 @@ export function InputModal({
 
   useEffect(() => {
     if (isOpen) {
-      setTimeout(() => setValue(defaultValue), 0);
-      setShowPassword(false);
+      setTimeout(() => {
+        setValue(defaultValue);
+        setShowPassword(false);
+      }, 0);
     }
   }, [isOpen, defaultValue]);
   const inputRef = useRef<HTMLInputElement>(null);

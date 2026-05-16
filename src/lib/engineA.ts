@@ -83,22 +83,52 @@ export async function mergePdfs(files: File[]): Promise<Uint8Array> {
   return await mergedPdf.save();
 }
 
-export async function splitPdf(file: File): Promise<Uint8Array[]> {
-  // Simple split logic: ranges like "1,3,5-7" -> creates an array of PDFs
-  // For Phase 1 simple utility, let's just split into individual pages for now,
-  // or split based on a midpoint if requested.
-  // Let's implement a 'burst' split (every page becomes a new document) for MVP simplicity.
+export async function splitPdf(file: File, rangesStr?: string): Promise<{bytes: Uint8Array, pageCount: number}[]> {
   const arrayBuffer = await file.arrayBuffer();
   const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
   const numPages = pdfDoc.getPageCount();
 
-  const splitPdfs: Uint8Array[] = [];
+  const splitPdfs: {bytes: Uint8Array, pageCount: number}[] = [];
 
-  for (let i = 0; i < numPages; i++) {
+  const resultChunks: number[][] = [];
+  if (!rangesStr || rangesStr.trim() === '') {
+    // Burst mode: return an array of single-page arrays
+    for (let i = 0; i < numPages; i++) {
+      resultChunks.push([i]);
+    }
+  } else {
+    const chunks = rangesStr.split(',').map(s => s.trim()).filter(Boolean);
+    for (const chunk of chunks) {
+      const indices: number[] = [];
+      if (chunk.includes('-')) {
+        const [startStr, endStr] = chunk.split('-');
+        const start = parseInt(startStr, 10);
+        const end = parseInt(endStr, 10);
+        if (!isNaN(start) && !isNaN(end) && start <= end) {
+          for (let i = start; i <= end; i++) {
+            if (i >= 1 && i <= numPages) {
+              indices.push(i - 1); // 0-indexed
+            }
+          }
+        }
+      } else {
+        const num = parseInt(chunk, 10);
+        if (!isNaN(num) && num >= 1 && num <= numPages) {
+           indices.push(num - 1);
+        }
+      }
+      if (indices.length > 0) {
+        resultChunks.push(indices);
+      }
+    }
+  }
+
+  for (const chunk of resultChunks) {
     const newPdf = await PDFDocument.create();
-    const [copiedPage] = await newPdf.copyPages(pdfDoc, [i]);
-    newPdf.addPage(copiedPage);
-    splitPdfs.push(await newPdf.save());
+    const copiedPages = await newPdf.copyPages(pdfDoc, chunk);
+    copiedPages.forEach(page => newPdf.addPage(page));
+    const savedBytes = await newPdf.save();
+    splitPdfs.push({bytes: savedBytes, pageCount: chunk.length});
   }
 
   return splitPdfs;
