@@ -46,6 +46,7 @@ function SortableImage({ id, item, onRemove }: SortableImageProps) {
     transition,
     zIndex: isDragging ? 10 : 1,
     opacity: isDragging ? 0.5 : 1,
+    touchAction: 'none' as const,
   };
 
   return (
