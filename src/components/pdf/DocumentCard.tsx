@@ -949,9 +949,16 @@ items={[
               Redo
             </button>
             <button
+              onClick={() => onSplit(doc)}
+              disabled={isProcessing}
+              className="text-blue-600 hover:text-blue-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded px-1 ml-auto"
+            >
+              Split
+            </button>
+            <button
               onClick={handleDownload}
               disabled={isProcessing}
-              className="text-green-600 hover:text-green-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 rounded px-1 ml-auto"
+              className="text-green-600 hover:text-green-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 rounded px-1"
             >
               Download
             </button>
@@ -971,8 +978,16 @@ items={[
             </div>
           )}
 
-          <div className="mt-2 text-sm text-gray-500 italic">
-            Right-click the thumbnail above to access all tools (Extract, Modify, Secure, AI).
+          <div className="mt-2 text-sm">
+            <button
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setContextMenuState({ x: rect.left, y: rect.bottom + 5 });
+              }}
+              className="text-indigo-600 hover:text-indigo-800 font-medium focus-visible:outline-none focus-visible:underline"
+            >
+              More Tools ▼
+            </button>
           </div>
 
           {isMobile && (
