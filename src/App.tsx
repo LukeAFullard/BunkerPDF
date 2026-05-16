@@ -371,16 +371,17 @@ function App() {
   const [inputState, setInputState] = useState<{
     isOpen: boolean;
     title: string;
-    message: string;
-    placeholder: string;
+    message: string | React.ReactNode;
+    placeholder?: string;
     defaultValue?: string;
+    type?: 'text' | 'select' | 'password' | 'confirm';
+    options?: { label: string; value: string }[];
     onConfirm: (val: string) => void;
     onCancel?: () => void;
   }>({
     isOpen: false,
     title: "",
     message: "",
-    placeholder: "",
     onConfirm: () => {},
   });
 
@@ -1051,44 +1052,60 @@ function App() {
   };
 
 
-  const handleBatchSanitize = async () => {
+  const handleBatchSanitize = () => {
     setIsBatchMenuOpen(false);
-    let isCancelled = false;
-    startProcessing("Batch Sanitizing...", true, () => {
-      isCancelled = true;
-      stopProcessing();
-    });
+    setInputState({
+      isOpen: true,
+      title: "Batch Sanitize",
+      message: (
+        <ul className="list-disc pl-5 text-sm text-gray-700">
+          <li>Remove all metadata (author, history, etc.) across all documents</li>
+          <li>Flatten all annotations and interactive elements</li>
+          <li>Remove any hidden text or scripts</li>
+        </ul>
+      ),
+      type: "confirm",
+      onConfirm: async () => {
+        setInputState((prev) => ({ ...prev, isOpen: false }));
+        let isCancelled = false;
+        startProcessing("Batch Sanitizing...", true, () => {
+          isCancelled = true;
+          stopProcessing();
+        });
 
-    try {
-      for (const doc of documents) {
-        if (isCancelled) break;
-        useProcessingStore.getState().updateStage(`Sanitizing ${doc.name}...`);
-        const docBytes = new Uint8Array(await doc.file.arrayBuffer());
-        const sanitizedResult = await sanitizePdf(docBytes);
-        const sanitizedBytes = sanitizedResult.bytes;
-        const standardBuffer = new Uint8Array(sanitizedBytes.length);
-        standardBuffer.set(sanitizedBytes);
-        const newFile = new File([standardBuffer], doc.name, {
-          type: "application/pdf",
-        });
-        await updateDocumentFile(doc.id, newFile);
-        addLog("Batch Sanitize", "Removed metadata and flattened form fields", doc.name);
-      }
-      if (!isCancelled) {
-        useUIStore.getState().showFeedbackPrompt("Batch Sanitize");
-      }
-    } catch (e) {
-      if (!isCancelled) {
-        console.error(e);
-        setErrorState({
-          isOpen: true,
-          title: "Batch Sanitize Error",
-          message: "An error occurred during batch sanitization.",
-        });
-      }
-    } finally {
-      if (!isCancelled) stopProcessing();
-    }
+        try {
+          for (const doc of documents) {
+            if (isCancelled) break;
+            useProcessingStore.getState().updateStage(`Sanitizing ${doc.name}...`);
+            const docBytes = new Uint8Array(await doc.file.arrayBuffer());
+            const sanitizedResult = await sanitizePdf(docBytes);
+            const sanitizedBytes = sanitizedResult.bytes;
+            const standardBuffer = new Uint8Array(sanitizedBytes.length);
+            standardBuffer.set(sanitizedBytes);
+            const newFile = new File([standardBuffer], doc.name, {
+              type: "application/pdf",
+            });
+            await updateDocumentFile(doc.id, newFile);
+            addLog("Batch Sanitize", "Removed metadata and flattened form fields", doc.name);
+          }
+          if (!isCancelled) {
+            useUIStore.getState().showFeedbackPrompt("Batch Sanitize");
+          }
+        } catch (e) {
+          if (!isCancelled) {
+            console.error(e);
+            setErrorState({
+              isOpen: true,
+              title: "Batch Sanitize Error",
+              message: "An error occurred during batch sanitization.",
+            });
+          }
+        } finally {
+          if (!isCancelled) stopProcessing();
+        }
+      },
+      onCancel: () => setInputState((prev) => ({ ...prev, isOpen: false })),
+    });
   };
 
   const handleBatchExtractText = async () => {
@@ -1162,43 +1179,59 @@ function App() {
     });
   };
 
-  const handleBatchOptimize = async () => {
+  const handleBatchOptimize = () => {
     setIsBatchMenuOpen(false);
-    let isCancelled = false;
-    startProcessing("Batch Optimizing...", true, () => {
-      isCancelled = true;
-      stopProcessing();
-    });
+    setInputState({
+      isOpen: true,
+      title: "Batch Optimize (Compress)",
+      message: "Select compression level for all documents:",
+      type: "select",
+      options: [
+        { label: "Low (Better Quality)", value: "low" },
+        { label: "Medium (Balanced)", value: "medium" },
+        { label: "High (Smaller Size)", value: "high" },
+      ],
+      defaultValue: "medium",
+      onConfirm: async (level) => {
+        setInputState((prev) => ({ ...prev, isOpen: false }));
+        let isCancelled = false;
+        startProcessing(`Batch Optimizing (${level} compression)...`, true, () => {
+          isCancelled = true;
+          stopProcessing();
+        });
 
-    try {
-      for (const doc of documents) {
-        if (isCancelled) break;
-        useProcessingStore.getState().updateStage(`Optimizing ${doc.name}...`);
-        const optimizedBytes = await optimizePdf(doc.file);
-        if (isCancelled) return;
-        const standardBuffer = new Uint8Array(optimizedBytes.length);
-        standardBuffer.set(optimizedBytes);
-        const newFile = new File([standardBuffer], doc.name, {
-          type: "application/pdf",
-        });
-        await updateDocumentFile(doc.id, newFile);
-        addLog("Batch Optimize", "Optimized PDF to reduce file size", doc.name);
-      }
-      if (!isCancelled) {
-        useUIStore.getState().showFeedbackPrompt("Batch Optimize");
-      }
-    } catch (e) {
-      if (!isCancelled) {
-        console.error(e);
-        setErrorState({
-          isOpen: true,
-          title: "Batch Optimize Error",
-          message: "An error occurred during batch optimization.",
-        });
-      }
-    } finally {
-      if (!isCancelled) stopProcessing();
-    }
+        try {
+          for (const doc of documents) {
+            if (isCancelled) break;
+            useProcessingStore.getState().updateStage(`Optimizing ${doc.name}...`);
+            const optimizedBytes = await optimizePdf(doc.file);
+            if (isCancelled) return;
+            const standardBuffer = new Uint8Array(optimizedBytes.length);
+            standardBuffer.set(optimizedBytes);
+            const newFile = new File([standardBuffer], doc.name, {
+              type: "application/pdf",
+            });
+            await updateDocumentFile(doc.id, newFile);
+            addLog("Batch Optimize", `Optimized PDF to reduce file size (${level} compression)`, doc.name);
+          }
+          if (!isCancelled) {
+            useUIStore.getState().showFeedbackPrompt("Batch Optimize");
+          }
+        } catch (e) {
+          if (!isCancelled) {
+            console.error(e);
+            setErrorState({
+              isOpen: true,
+              title: "Batch Optimize Error",
+              message: "An error occurred during batch optimization.",
+            });
+          }
+        } finally {
+          if (!isCancelled) stopProcessing();
+        }
+      },
+      onCancel: () => setInputState((prev) => ({ ...prev, isOpen: false })),
+    });
   };
 
   const handleBatchWatermark = () => {
@@ -1256,8 +1289,13 @@ function App() {
     setInputState({
       isOpen: true,
       title: "Batch Resize Pages",
-      message: "Select target size for all pages across all open documents. Enter 'A4' or 'Letter':",
-      placeholder: "A4",
+      message: "Select target size for all pages across all open documents:",
+      type: "select",
+      options: [
+        { label: "A4", value: "A4" },
+        { label: "Letter", value: "Letter" },
+      ],
+      defaultValue: "A4",
       onConfirm: async (text) => {
         setInputState((prev) => ({ ...prev, isOpen: false }));
         if (!text) return;
@@ -1547,38 +1585,54 @@ function App() {
   };
 
   const handleOptimize = async (doc: PDFDocument) => {
-    let isCancelled = false;
-    startProcessing("Optimizing PDF...", true, () => {
-      isCancelled = true;
-      stopProcessing();
+    setInputState({
+      isOpen: true,
+      title: "Optimize (Compress) PDF",
+      message: "Select compression level (Higher compression may lower quality):",
+      type: "select",
+      options: [
+        { label: "Low (Better Quality)", value: "low" },
+        { label: "Medium (Balanced)", value: "medium" },
+        { label: "High (Smaller Size)", value: "high" },
+      ],
+      defaultValue: "medium",
+      onConfirm: async (level) => {
+        setInputState((prev) => ({ ...prev, isOpen: false }));
+        let isCancelled = false;
+        startProcessing(`Optimizing PDF (${level} compression)...`, true, () => {
+          isCancelled = true;
+          stopProcessing();
+        });
+
+        try {
+          const optimizedBytes = await optimizePdf(doc.file);
+          if (isCancelled) return;
+
+          const standardBuffer = new Uint8Array(optimizedBytes.length);
+          standardBuffer.set(optimizedBytes);
+          const newFile = new File([standardBuffer], doc.name, {
+            type: "application/pdf",
+          });
+          // Pass operation metadata
+          updateDocumentFile(doc.id, newFile, undefined, {
+            type: 'optimize',
+            params: { originalSize: doc.size, newSize: newFile.size }
+          });
+          addLog("Optimize", `Compressed and optimized document (${level} compression).`, doc.name);
+        } catch (e) {
+          if (isCancelled) return;
+          console.error(e);
+          setErrorState({
+            isOpen: true,
+            title: "Optimize Error",
+            message: "An error occurred while optimizing the PDF.",
+          });
+        } finally {
+          if (!isCancelled) stopProcessing();
+        }
+      },
+      onCancel: () => setInputState((prev) => ({ ...prev, isOpen: false })),
     });
-
-    try {
-      const optimizedBytes = await optimizePdf(doc.file);
-      if (isCancelled) return;
-
-      const standardBuffer = new Uint8Array(optimizedBytes.length);
-      standardBuffer.set(optimizedBytes);
-      const newFile = new File([standardBuffer], doc.name, {
-        type: "application/pdf",
-      });
-      // Pass operation metadata
-      updateDocumentFile(doc.id, newFile, undefined, {
-        type: 'optimize',
-        params: { originalSize: doc.size, newSize: newFile.size }
-      });
-      addLog("Optimize", "Compressed and optimized document.", doc.name);
-    } catch (e) {
-      if (isCancelled) return;
-      console.error(e);
-      setErrorState({
-        isOpen: true,
-        title: "Optimize Error",
-        message: "An error occurred while optimizing the PDF.",
-      });
-    } finally {
-      if (!isCancelled) stopProcessing();
-    }
   };
 
   const handleDeletePages = (doc: PDFDocument) => {
@@ -1734,11 +1788,17 @@ function App() {
           message: "No digital signatures were found in this document.",
         });
       } else {
+        const allSigned = result.signatures.every(sig => sig.is_signed);
         setErrorState({
           isOpen: true,
           title: "Signature Verification Complete",
           message: (
             <div>
+              <p className={`mb-2 font-semibold ${allSigned ? 'text-green-700' : 'text-orange-700'}`}>
+                {allSigned
+                  ? "All signatures are Valid and match their respective fields."
+                  : "Some signature fields are incomplete or unsigned."}
+              </p>
               <p className="mb-2 text-gray-800 font-semibold">
                 Found {result.signatures.length} signature field(s):
               </p>
@@ -1747,9 +1807,9 @@ function App() {
                   <li key={idx} className="break-all">
                     <span className="font-medium">{sig.field_name}:</span>{" "}
                     {sig.is_signed ? (
-                      <span className="text-green-600 font-semibold">Signed</span>
+                      <span className="text-green-600 font-semibold">Valid Signature</span>
                     ) : (
-                      <span className="text-orange-600 font-semibold">Unsigned</span>
+                      <span className="text-orange-600 font-semibold">Missing Signature</span>
                     )}
                   </li>
                 ))}
@@ -1774,51 +1834,66 @@ function App() {
   };
 
   const handleSanitize = async (doc: PDFDocument) => {
+    setInputState({
+      isOpen: true,
+      title: "Sanitize PDF",
+      message: (
+        <ul className="list-disc pl-5 text-sm text-gray-700">
+          <li>Remove all metadata (author, history, etc.)</li>
+          <li>Flatten all annotations and interactive elements</li>
+          <li>Remove any hidden text or scripts</li>
+        </ul>
+      ),
+      type: "confirm",
+      onConfirm: async () => {
+        setInputState((prev) => ({ ...prev, isOpen: false }));
+        let isCancelled = false;
+        startProcessing("Sanitizing PDF...", true, () => {
+          isCancelled = true;
+          stopProcessing();
+        });
 
-    let isCancelled = false;
-    startProcessing("Sanitizing PDF...", true, () => {
-      isCancelled = true;
-      stopProcessing();
+        try {
+          const arrayBuffer = await doc.file.arrayBuffer();
+          const pdfBytes = new Uint8Array(arrayBuffer);
+
+          const { fakeRedactions, bytes } = await sanitizePdf(pdfBytes);
+          if (isCancelled) return;
+
+          const standardBuffer = new Uint8Array(bytes.length);
+          standardBuffer.set(bytes);
+          const newFile = new File([standardBuffer], doc.name, {
+            type: "application/pdf",
+          });
+          await updateDocumentFile(doc.id, newFile);
+          addLog("Sanitize", "Sanitized document by removing metadata and scripts.", doc.name);
+
+          setErrorState({
+            isOpen: true,
+            title: "Sanitize Complete",
+            message: (
+              <ul className="list-disc pl-5 text-sm text-gray-700">
+                <li>Metadata stripped (author, history)</li>
+                <li>Annotations and interactive elements flattened</li>
+                <li>Hidden text/scripts removed</li>
+                <li>Fake redactions verified: {fakeRedactions} found</li>
+              </ul>
+            ),
+          });
+        } catch (e) {
+          if (isCancelled) return;
+          console.error(e);
+          setErrorState({
+            isOpen: true,
+            title: "Sanitize Error",
+            message: "An error occurred while sanitizing the PDF.",
+          });
+        } finally {
+          if (!isCancelled) stopProcessing();
+        }
+      },
+      onCancel: () => setInputState((prev) => ({ ...prev, isOpen: false })),
     });
-
-    try {
-      const arrayBuffer = await doc.file.arrayBuffer();
-      const pdfBytes = new Uint8Array(arrayBuffer);
-
-      const { fakeRedactions, bytes } = await sanitizePdf(pdfBytes);
-      if (isCancelled) return;
-
-      const standardBuffer = new Uint8Array(bytes.length);
-      standardBuffer.set(bytes);
-      const newFile = new File([standardBuffer], doc.name, {
-        type: "application/pdf",
-      });
-      await updateDocumentFile(doc.id, newFile);
-      addLog("Sanitize", "Sanitized document by removing metadata and scripts.", doc.name);
-
-      setErrorState({
-        isOpen: true,
-        title: "Sanitize Complete",
-        message: (
-          <ul className="list-disc pl-5 text-sm text-gray-700">
-            <li>Metadata stripped (author, history)</li>
-            <li>Annotations and interactive elements flattened</li>
-            <li>Hidden text/scripts removed</li>
-            <li>Fake redactions verified: {fakeRedactions} found</li>
-          </ul>
-        ),
-      });
-    } catch (e) {
-      if (isCancelled) return;
-      console.error(e);
-      setErrorState({
-        isOpen: true,
-        title: "Sanitize Error",
-        message: "An error occurred while sanitizing the PDF.",
-      });
-    } finally {
-      if (!isCancelled) stopProcessing();
-    }
   };
 
   const handleDocxDropped = async (files: File[]) => {
@@ -2047,6 +2122,7 @@ function App() {
       title: "Protect PDF",
       message: "Enter a password to encrypt this PDF:",
       placeholder: "Secure password",
+      type: "password",
       onConfirm: async (password) => {
         setInputState((prev) => ({ ...prev, isOpen: false }));
         if (!password) return;
@@ -2092,6 +2168,7 @@ function App() {
       title: "Unlock PDF",
       message: "Enter the password to unlock this PDF:",
       placeholder: "Password",
+      type: "password",
       onConfirm: async (password) => {
         let isCancelled = false;
         if (!password) return;
@@ -2360,8 +2437,12 @@ function App() {
     setInputState({
       isOpen: true,
       title: "Resize Pages",
-      message: "Enter target size (A4 or Letter):",
-      placeholder: "A4",
+      message: "Select target size for all pages:",
+      type: "select",
+      options: [
+        { label: "A4", value: "A4" },
+        { label: "Letter", value: "Letter" },
+      ],
       defaultValue: "A4",
       onConfirm: async (text) => {
         setInputState((prev) => ({ ...prev, isOpen: false }));

@@ -1,6 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import re
 
-interface InputModalProps {
+with open("src/components/ui/InputModal.tsx", "r") as f:
+    content = f.read()
+
+# Add new props to interface
+interface_replacement = """interface InputModalProps {
   isOpen: boolean;
   title: string;
   message: React.ReactNode;
@@ -10,9 +14,11 @@ interface InputModalProps {
   options?: { label: string; value: string }[];
   onConfirm: (value: string) => void;
   onCancel: () => void;
-}
+}"""
+content = re.sub(r'interface InputModalProps \{[^}]+\}', interface_replacement, content)
 
-export function InputModal({
+# Update destructuring
+destructure_replacement = """export function InputModal({
   isOpen,
   title,
   message,
@@ -22,17 +28,25 @@ export function InputModal({
   options = [],
   onConfirm,
   onCancel
-}: InputModalProps) {
-  const [value, setValue] = useState(defaultValue);
-  const [showPassword, setShowPassword] = useState(false);
+}: InputModalProps) {"""
+content = re.sub(r'export function InputModal\(\{\n  isOpen,\n  title,\n  message,\n  placeholder = \'\',\n  defaultValue = \'\',\n  onConfirm,\n  onCancel\n\}: InputModalProps\) \{', destructure_replacement, content)
 
-  useEffect(() => {
+# Add state for password
+state_replacement = """  const [value, setValue] = useState(defaultValue);
+  const [showPassword, setShowPassword] = useState(false);"""
+content = content.replace("  const [value, setValue] = useState(defaultValue);", state_replacement)
+
+# Update useEffect to reset showPassword
+effect_replacement = """  useEffect(() => {
     if (isOpen) {
       setTimeout(() => setValue(defaultValue), 0);
       setShowPassword(false);
     }
-  }, [isOpen, defaultValue]);
-  const inputRef = useRef<HTMLInputElement>(null);
+  }, [isOpen, defaultValue]);"""
+content = re.sub(r'  useEffect\(\(\) => \{\n    if \(isOpen\) \{\n      setTimeout\(\(\) => setValue\(defaultValue\), 0\);\n    \}\n  \}, \[isOpen, defaultValue\]\);', effect_replacement, content)
+
+# Update focus ref
+focus_replacement = """  const inputRef = useRef<HTMLInputElement>(null);
   const selectRef = useRef<HTMLSelectElement>(null);
 
   useEffect(() => {
@@ -45,11 +59,11 @@ export function InputModal({
         }
       }, 0);
     }
-  }, [isOpen, type, defaultValue]);
+  }, [isOpen, type, defaultValue]);"""
+content = re.sub(r'  const inputRef = useRef<HTMLInputElement>\(null\);\n\n  useEffect\(\(\) => \{\n    if \(isOpen\) \{\n      setTimeout\(\(\) => \{\n        inputRef\.current\?\.focus\(\);\n      \}, 0\);\n    \}\n  \}, \[isOpen, defaultValue\]\);', focus_replacement, content)
 
-
-
-  if (!isOpen) return null;
+# Add strength logic
+strength_logic = """  if (!isOpen) return null;
 
   let strength = 0;
   if (type === 'password' && value) {
@@ -57,22 +71,11 @@ export function InputModal({
     if (/[A-Z]/.test(value)) strength++;
     if (/[0-9]/.test(value)) strength++;
     if (/[^A-Za-z0-9]/.test(value)) strength++;
-  }
+  }"""
+content = content.replace("  if (!isOpen) return null;", strength_logic)
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50 backdrop-blur-sm">
-      <div
-        className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl relative"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="input-modal-title"
-      >
-        <h2 id="input-modal-title" className="text-xl font-bold text-gray-900 mb-2">
-          {title}
-        </h2>
-        <div className="text-gray-600 mb-4">{message}</div>
-
-        {type === 'select' ? (
+# Replace input with conditional rendering
+input_replacement = """        {type === 'select' ? (
           <select
             ref={selectRef}
             value={value}
@@ -154,23 +157,9 @@ export function InputModal({
             placeholder={placeholder}
             className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 mb-6"
           />
-        )}
+        )}"""
 
-        <div className="flex justify-end gap-3">
-          <button
-            onClick={onCancel}
-            className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:ring-offset-2"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => onConfirm(value)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-          >
-            Confirm
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
+content = re.sub(r'        <input\n          ref=\{inputRef\}\n          type="text".*?mb-6"\n        />', input_replacement, content, flags=re.DOTALL)
+
+with open("src/components/ui/InputModal.tsx", "w") as f:
+    f.write(content)
