@@ -114,28 +114,32 @@ export const useFileStore = create<FileStore>((set, get) => ({
   })),
 
   updateDocumentFile: async (id: string, newFile: File, newPageCount?: number, operation?: Partial<DocumentOperation>) => {
+    // Check quota before proceeding
+    if (navigator.storage?.estimate) {
+      const { usage = 0, quota = 0 } = await navigator.storage.estimate();
+      if (quota > 0 && usage > quota * 0.7) {
+        const state = get();
+        for (const doc of state.documents) {
+          const ops = doc.operations || [];
+          if (ops.length > 5) {
+            const toDelete = ops.slice(0, -5);
+            for (const op of toDelete) {
+              if (op.fileKey) {
+                await idbDel(op.fileKey).catch(console.error);
+              }
+            }
+          }
+        }
+      }
+    }
+
     const fileKey = `doc_state_${id}_${Date.now()}_${crypto.randomUUID()}`;
 
     try {
       await idbSet(fileKey, newFile);
     } catch (error) {
       console.error('Failed to save to IndexedDB:', error);
-      // Fallback: proceed without undo history
-      set((state) => ({
-        documents: state.documents.map(doc =>
-          doc.id === id ? { ...doc, file: newFile, size: newFile.size, pageCount: newPageCount } : doc
-        )
-      }));
-      return;
-    }
-
-    // Check quota before proceeding
-    if (navigator.storage?.estimate) {
-      const { usage = 0, quota = 0 } = await navigator.storage.estimate();
-      if (quota > 0 && usage > quota * 0.8) {
-        // Warn user or auto-cleanup old operations
-        console.warn('Storage quota at 80%, cleaning old operations');
-      }
+      throw new Error('Storage full. Please clear browser data or use fewer files.', { cause: error });
     }
 
     set((state) => ({
