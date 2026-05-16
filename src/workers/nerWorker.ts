@@ -8,6 +8,7 @@ let nerPipeline: any = null;
 
 // Messages
 export type NERWorkerMessage = {
+  customRegexes?: string[];
   type: 'INIT' | 'EXTRACT';
   text?: string;
   jobId?: string;
@@ -25,7 +26,7 @@ const EMAIL_REGEX = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 const SSN_REGEX = /\b\d{3}-\d{2}-\d{4}\b/g;
 
 self.onmessage = async (e: MessageEvent<NERWorkerMessage>) => {
-  const { type, text, jobId } = e.data;
+  const { type, text, jobId, customRegexes } = e.data;
 
   try {
     if (type === 'INIT') {
@@ -47,6 +48,18 @@ self.onmessage = async (e: MessageEvent<NERWorkerMessage>) => {
 
       const ssns = text.match(SSN_REGEX) || [];
       ssns.forEach(s => extractedItems.add(s));
+
+      if (customRegexes) {
+        customRegexes.forEach(pattern => {
+          try {
+            const regex = new RegExp(pattern, 'g');
+            const matches = text.match(regex) || [];
+            matches.forEach(m => extractedItems.add(m));
+          } catch (err) {
+            console.warn("Invalid custom regex pattern:", pattern);
+          }
+        });
+      }
 
       // 2. Run NER Model
       // Using simple aggregation to group words like "Jane" and "Doe" into "Jane Doe"

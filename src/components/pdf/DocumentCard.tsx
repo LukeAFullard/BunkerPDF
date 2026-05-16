@@ -5,14 +5,14 @@ import { useMobile } from "../../lib/useMobile";
 import { type PDFDocument, useFileStore } from "../../store/fileStore";
 import { useEffect } from "react";
 import { getSmartOutputName } from "../../lib/utils";
-import { ErrorModal } from "../ui/ErrorModal";
+import { decodeBarcodesFromPdf, type BarcodeResult } from "../../lib/barcodeDecoder";
 import { useProcessingStore } from "../../store/processingStore";
 import { ContextMenu } from "../ui/ContextMenu";
-import { decodeBarcodesFromPdf } from "../../lib/barcodeDecoder";
 import { useAuditStore } from "../../store/auditStore";
 import { BookmarkModal, type Bookmark } from "../ui/BookmarkModal";
 import { DocumentHealthPanel } from './DocumentHealthPanel';
 import { analyzeDocumentHealth } from '../../lib/healthChecks';
+import { ErrorModal } from "../ui/ErrorModal";
 
 interface DocumentCardProps {
   doc: PDFDocument;
@@ -38,7 +38,7 @@ interface DocumentCardProps {
   onVerifySignature?: (doc: PDFDocument) => void;
   onReadAloud?: (doc: PDFDocument) => void;
   extractText: (bytes: Uint8Array) => Promise<string>;
-  extractEntities: (text: string) => Promise<string[]>;
+  extractEntities: (text: string, customRegexes?: string[]) => Promise<string[]>;
   extractTables?: (docFile: File) => Promise<Uint8Array>;
   extractMarkdown?: (bytes: Uint8Array) => Promise<string>;
   extractHtml?: (bytes: Uint8Array) => Promise<string>;
@@ -105,7 +105,8 @@ export function DocumentCard({
   const [selectedEntities, setSelectedEntities] = useState<Set<string>>(
     new Set(),
   );
-  const [detectedCodes, setDetectedCodes] = useState<string[] | null>(null);
+  const [detectedCodes, setDetectedCodes] = useState<BarcodeResult[] | null>(null);
+  const [customRegexInput, setCustomRegexInput] = useState<string>("");
   const [errorState, setErrorState] = useState<{
     isOpen: boolean;
     title: string;
@@ -181,7 +182,13 @@ export function DocumentCard({
       }
 
       updateStage("Scanning for PII...");
-      const entities = await extractEntities(text);
+      // Split custom input by comma or newline and filter out empty strings
+      const customRegexes = customRegexInput
+        .split(/[\n,]+/)
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+
+      const entities = await extractEntities(text, customRegexes.length > 0 ? customRegexes : undefined);
       if (isCancelled) return;
 
       setDetectedEntities(entities);
@@ -197,7 +204,7 @@ export function DocumentCard({
     } finally {
       if (!isCancelled) stopProcessing();
     }
-  }, [doc.file, extractEntities, extractText, startProcessing, stopProcessing, updateStage]);
+  }, [doc.file, extractEntities, extractText, startProcessing, stopProcessing, updateStage, customRegexInput]);
 
   useEffect(() => {
     if (isActive && activeTool) {
@@ -860,7 +867,7 @@ items={[
             { variant: "separator" },
             (!isMobile ? { label: "Audit Redactions (~5s)", onClick: () => onAudit?.(doc) } : null),
             { label: "Verify Signatures (~2s)", onClick: () => onVerifySignature?.(doc) },
-            { label: "Read Aloud (TTS) (~15s/pg)", onClick: () => onReadAloud?.(doc) },
+            { label: "Read Aloud (TTS)", onClick: () => onReadAloud?.(doc) },
             (!isMobile ? { label: "Scan PII (~5s)", onClick: handleScan } : null),
             (!isMobile ? { label: "Scan Codes (~5s)", onClick: handleScanCodes } : null),
             (!isMobile ? { label: "OCR (~10s)", onClick: () => {
@@ -1051,6 +1058,24 @@ items={[
               Redact {selectedEntities.size} items
             </button>
           )}
+
+          <div className="mt-4 pt-4 border-t border-gray-200">
+            <h5 className="text-xs font-semibold text-gray-700 mb-2">Custom Patterns (Regex/Keywords)</h5>
+            <textarea
+              className="w-full border border-gray-300 rounded p-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              rows={2}
+              placeholder="e.g. \b\d{4}\b, Confidential"
+              value={customRegexInput}
+              onChange={(e) => setCustomRegexInput(e.target.value)}
+            />
+            <button
+              onClick={handleScan}
+              disabled={isProcessing}
+              className="w-full mt-2 bg-gray-100 text-gray-700 py-1.5 rounded text-xs font-medium hover:bg-gray-200 disabled:opacity-50 transition-colors"
+            >
+              Rescan with Custom Patterns
+            </button>
+          </div>
         </div>
       )}
 
@@ -1070,11 +1095,12 @@ items={[
 
           <div className="flex flex-col gap-3 max-h-64 overflow-y-auto">
             {detectedCodes.map((code, i) => (
-              <div key={i} className="flex flex-col gap-1 p-2 bg-gray-50 rounded text-sm border border-gray-100">
-                <span className="break-all font-mono text-xs">{code}</span>
-                {(code.startsWith("http://") || code.startsWith("https://")) && (
+              <div key={i} className="flex flex-col gap-1 p-2 bg-gray-50 rounded text-sm border border-gray-100 relative group">
+                <span className="break-all font-mono text-xs">{code.text}</span>
+                <span className="text-[10px] text-gray-500 bg-gray-200 px-1.5 rounded w-max inline-block">Page {code.page}</span>
+                {(code.text.startsWith("http://") || code.text.startsWith("https://")) && (
                   <a
-                    href={code}
+                    href={code.text}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-blue-600 hover:underline text-xs"

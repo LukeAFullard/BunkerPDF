@@ -29,8 +29,6 @@ import { CrossDocumentReorder } from "./components/pdf/reorder/CrossDocumentReor
 import { getSmartOutputName } from "./lib/utils";
 import { ocrPdf } from "./lib/ocrEngine";
 import { AudioPlayerModal } from "./components/ui/AudioPlayerModal";
-import { generateSpeech } from "./lib/ttsEngine";
-import { createWavFile } from "./lib/audioUtils";
 import { DocumentCard } from "./components/pdf/DocumentCard";
 import { FileTabs } from "./components/ui/FileTabs";
 import { DiffModal } from "./components/pdf/diff/DiffModal";
@@ -991,7 +989,7 @@ function App() {
     });
   };
 
-  const extractEntities = (text: string): Promise<string[]> => {
+  const extractEntities = (text: string, customRegexes?: string[]): Promise<string[]> => {
     return new Promise((resolve, reject) => {
       if (!nerWorkerRef.current)
         return reject(new Error("NER worker not ready"));
@@ -1001,6 +999,7 @@ function App() {
         type: "EXTRACT",
         jobId,
         text,
+        customRegexes,
       } satisfies NERWorkerMessage);
     });
   };
@@ -1969,7 +1968,7 @@ function App() {
 
   const handleReadAloud = async (doc: PDFDocument) => {
     let isCancelled = false;
-    startProcessing("Generating audio...", true, () => {
+    startProcessing("Extracting text...", true, () => {
       isCancelled = true;
       stopProcessing();
     });
@@ -1989,73 +1988,99 @@ function App() {
         return;
       }
 
-      useProcessingStore.getState().updateStage("Synthesizing speech (this may take a while)...");
-
-      const { audio, samplingRate } = await generateSpeech(text, (progress) => {
-        if (!isCancelled) useProcessingStore.getState().updateStage(`Synthesizing speech (${progress}%)...`);
-      });
-      if (isCancelled) return;
-
-      const wavFile = createWavFile(audio, samplingRate);
-      const audioUrl = URL.createObjectURL(wavFile);
+      // Convert the text into a blob to reuse the AudioPlayerModal state pattern,
+      // even though we're not actually making an audio file. We will modify the
+      // modal to accept text as well.
+      const textBlob = new Blob([text], { type: "text/plain" });
+      const textUrl = URL.createObjectURL(textBlob);
 
       setAudioPlayerState({
         isOpen: true,
-        audioUrl,
+        audioUrl: textUrl,
         title: `Read Aloud: ${doc.name}`,
       });
-      addLog("Read Aloud", "Generated audio playback for document text.", doc.name);
+      addLog("Read Aloud", "Started native text-to-speech.", doc.name);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (e: any) {
       if (isCancelled) return;
       console.error(e);
       setErrorState({
         isOpen: true,
         title: "Read Aloud Error",
-        message: "Failed to generate speech. " + (e.message || ""),
+        message: "Failed to read document. " + (e.message || ""),
       });
     } finally {
       if (!isCancelled) stopProcessing();
     }
   };
 
+  const [ocrModalState, setOcrModalState] = useState<{
+    isOpen: boolean;
+    doc: PDFDocument | null;
+  }>({ isOpen: false, doc: null });
+
   const handleOcr = async (doc: PDFDocument) => {
-  let isCancelled = false;
-  const abortController = new AbortController();
-  startProcessing("Starting OCR...", true, () => {
-    isCancelled = true;
-    abortController.abort();
-    stopProcessing();
-  });
+    setOcrModalState({ isOpen: true, doc });
+  };
 
-  try {
-    const newFile = await ocrPdf(doc.file, (stage) => {
-      if (!isCancelled) useProcessingStore.getState().updateStage(stage);
-    }, abortController.signal);
+  const handleOcrConfirm = async (targetPagesStr: string) => {
+    const doc = ocrModalState.doc;
+    if (!doc) return;
+    setOcrModalState({ isOpen: false, doc: null });
 
-    if (isCancelled) return;
-
-    await updateDocumentFile(doc.id, newFile);
-    addLog("OCR", "Extracted text and overlaid it on the document.", doc.name);
-
-    setErrorState({
-      isOpen: true,
-      title: "OCR Complete",
-      message: "Text has been successfully extracted and overlaid on the document.",
+    let isCancelled = false;
+    const abortController = new AbortController();
+    startProcessing("Starting OCR...", true, () => {
+      isCancelled = true;
+      abortController.abort();
+      stopProcessing();
     });
-  } catch (e) {
-    if (isCancelled) return;
-    console.error(e);
-    setErrorState({
-      isOpen: true,
-      title: "OCR Error",
-      message: "An error occurred during text extraction.",
-    });
-  } finally {
-    if (!isCancelled) stopProcessing();
-  }
-};
+
+    try {
+      let targetPages: number[] | undefined = undefined;
+      const t = targetPagesStr.trim().toLowerCase();
+      if (t && t !== "all") {
+        targetPages = [];
+        const parts = t.split(",");
+        for (const p of parts) {
+          if (p.includes("-")) {
+            const [start, end] = p.split("-").map((s) => parseInt(s.trim()));
+            if (!isNaN(start) && !isNaN(end)) {
+              for (let i = start; i <= end; i++) targetPages.push(i);
+            }
+          } else {
+            const num = parseInt(p.trim());
+            if (!isNaN(num)) targetPages.push(num);
+          }
+        }
+      }
+
+      const newFile = await ocrPdf(doc.file, (stage) => {
+        if (!isCancelled) useProcessingStore.getState().updateStage(stage);
+      }, abortController.signal, targetPages);
+
+      if (isCancelled) return;
+
+      await updateDocumentFile(doc.id, newFile);
+      addLog("OCR", "Extracted text and overlaid it on the document.", doc.name);
+
+      setErrorState({
+        isOpen: true,
+        title: "OCR Complete",
+        message: "Text has been successfully extracted and overlaid on the document.",
+      });
+    } catch (e) {
+      if (isCancelled) return;
+      console.error(e);
+      setErrorState({
+        isOpen: true,
+        title: "OCR Error",
+        message: "An error occurred during text extraction.",
+      });
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
+  };
 
   const handleAudit = async (doc: PDFDocument) => {
     let isCancelled = false;
@@ -2567,6 +2592,15 @@ function App() {
             setInputState((prev) => ({ ...prev, isOpen: false }));
           }
         }}
+      />
+      <InputModal
+        isOpen={ocrModalState.isOpen}
+        title="Run OCR"
+        message="Enter the pages to process (e.g., 1, 1-3, or 'all'). Processing all pages may take a long time."
+        placeholder="1, 1-3, or all"
+        defaultValue="1"
+        onConfirm={handleOcrConfirm}
+        onCancel={() => setOcrModalState({ isOpen: false, doc: null })}
       />
       <ErrorModal
         isOpen={errorState.isOpen}
