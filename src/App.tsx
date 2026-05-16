@@ -139,7 +139,8 @@ function App() {
     // CRITICAL: Validate prerequisites
     const { pyodideStatus } = useEngineStore.getState();
     const needsPyodide = recipe.steps.some(s =>
-      ['redact', 'sanitize', 'extract-tables', 'extract-text', 'extract-images'].includes(s)
+      ['redact', 'sanitize', 'extract-tables', 'extract-text', 'extract-images',
+       'ocr', 'highlight', 'encrypt', 'unlock', 'extract-links', 'extract-annotations'].includes(s)
     );
 
     if (needsPyodide && pyodideStatus !== 'ready') {
@@ -176,7 +177,6 @@ function App() {
     // Use current state to fetch the active doc safely for sequential steps
     let currentDoc = activeDoc;
     let isCancelled = false;
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const startingOpIndex = activeDoc.operationIndex ?? 0;
 
     startProcessing(`Running recipe: ${recipe.name}`, true, () => {
@@ -333,7 +333,7 @@ function App() {
         if (docFromState) {
           const stepsToUndo = (docFromState.operationIndex ?? 0) - startingOpIndex;
           for (let i = 0; i < stepsToUndo; i++) {
-            useFileStore.getState().undo(activeDoc.id);
+            await useFileStore.getState().undo(activeDoc.id);
           }
         }
 
