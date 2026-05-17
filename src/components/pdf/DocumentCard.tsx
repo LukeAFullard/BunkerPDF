@@ -38,7 +38,7 @@ interface DocumentCardProps {
   onVerifySignature?: (doc: PDFDocument) => void;
   onReadAloud?: (doc: PDFDocument) => void;
   extractText: (bytes: Uint8Array) => Promise<string>;
-  extractEntities: (text: string) => Promise<string[]>;
+  extractEntities: (text: string, customPatterns?: string[]) => Promise<string[]>;
   extractTables?: (docFile: File) => Promise<Uint8Array>;
   extractMarkdown?: (bytes: Uint8Array) => Promise<string>;
   extractHtml?: (bytes: Uint8Array) => Promise<string>;
@@ -105,7 +105,9 @@ export function DocumentCard({
   const [selectedEntities, setSelectedEntities] = useState<Set<string>>(
     new Set(),
   );
-  const [detectedCodes, setDetectedCodes] = useState<string[] | null>(null);
+  const [customPatternInput, setCustomPatternInput] = useState("");
+  const [customPatterns, setCustomPatterns] = useState<string[]>([]);
+  const [detectedCodes, setDetectedCodes] = useState<{text: string; page: number}[] | null>(null);
   const [errorState, setErrorState] = useState<{
     isOpen: boolean;
     title: string;
@@ -158,7 +160,7 @@ export function DocumentCard({
     };
   }, [isActive, doc.name, doc.size, doc.lastModified, analyzedFileKey, doc.file]);
 
-  const handleScan = useCallback(async () => {
+  const handleScan = useCallback(async (currentCustomPatterns: string[] = []) => {
     setDetectedEntities(null);
     setSelectedEntities(new Set());
 
@@ -181,7 +183,7 @@ export function DocumentCard({
       }
 
       updateStage("Scanning for PII...");
-      const entities = await extractEntities(text);
+      const entities = await extractEntities(text, currentCustomPatterns);
       if (isCancelled) return;
 
       setDetectedEntities(entities);
@@ -1019,12 +1021,64 @@ items={[
             </button>
           </div>
 
+          <div className="mb-4">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Custom regex or keyword"
+                className="flex-1 text-sm border border-gray-300 rounded px-2 py-1"
+                value={customPatternInput}
+                onChange={(e) => setCustomPatternInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && customPatternInput.trim() !== "") {
+                    const newPatterns = [...customPatterns, customPatternInput.trim()];
+                    setCustomPatterns(newPatterns);
+                    setCustomPatternInput("");
+                    handleScan(newPatterns);
+                  }
+                }}
+              />
+              <button
+                onClick={() => {
+                  if (customPatternInput.trim() !== "") {
+                    const newPatterns = [...customPatterns, customPatternInput.trim()];
+                    setCustomPatterns(newPatterns);
+                    setCustomPatternInput("");
+                    handleScan(newPatterns);
+                  }
+                }}
+                className="bg-blue-600 text-white px-2 py-1 rounded text-sm hover:bg-blue-700"
+              >
+                Add
+              </button>
+            </div>
+            {customPatterns.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {customPatterns.map((pattern, i) => (
+                  <span key={i} className="bg-gray-100 text-gray-700 text-xs px-2 py-1 rounded flex items-center gap-1">
+                    {pattern}
+                    <button
+                      onClick={() => {
+                        const newPatterns = customPatterns.filter((_, idx) => idx !== i);
+                        setCustomPatterns(newPatterns);
+                        handleScan(newPatterns);
+                      }}
+                      className="text-gray-400 hover:text-red-500"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
           {detectedEntities.length === 0 ? (
             <p className="text-sm text-gray-500">
               No sensitive information found.
             </p>
           ) : (
-            <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+            <div className="flex flex-col gap-2 max-h-48 overflow-y-auto mb-4">
               {detectedEntities.map((entity, i) => (
                 <label
                   key={i}
@@ -1070,11 +1124,12 @@ items={[
 
           <div className="flex flex-col gap-3 max-h-64 overflow-y-auto">
             {detectedCodes.map((code, i) => (
-              <div key={i} className="flex flex-col gap-1 p-2 bg-gray-50 rounded text-sm border border-gray-100">
-                <span className="break-all font-mono text-xs">{code}</span>
-                {(code.startsWith("http://") || code.startsWith("https://")) && (
+              <div key={i} className="flex flex-col gap-1 p-2 bg-gray-50 rounded text-sm border border-gray-100 relative">
+                <span className="absolute top-1 right-2 text-[10px] text-gray-400 font-medium">Page {code.page}</span>
+                <span className="break-all font-mono text-xs pr-10">{code.text}</span>
+                {(code.text.startsWith("http://") || code.text.startsWith("https://")) && (
                   <a
-                    href={code}
+                    href={code.text}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-blue-600 hover:underline text-xs"

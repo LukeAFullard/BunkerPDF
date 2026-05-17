@@ -7,11 +7,12 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url,
 ).toString();
 
-export async function ocrPdf(file: File, updateStage?: (stage: string) => void, abortSignal?: AbortSignal): Promise<File> {
+export async function ocrPdf(file: File, pagesToProcess?: number[], updateStage?: (stage: string) => void, abortSignal?: AbortSignal): Promise<File> {
   const arrayBuffer = await file.arrayBuffer();
   const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
   const pdf = await loadingTask.promise;
   const numPages = pdf.numPages;
+  const pages = pagesToProcess && pagesToProcess.length > 0 ? pagesToProcess.filter(p => p > 0 && p <= numPages) : Array.from({length: numPages}, (_, i) => i + 1);
 
   if (updateStage) updateStage(`Initializing OCR engine...`);
   const worker = await createWorker('eng');
@@ -24,7 +25,7 @@ export async function ocrPdf(file: File, updateStage?: (stage: string) => void, 
     const { PDFDocument } = await import('pdf-lib');
     const mergedPdf = await PDFDocument.create();
 
-    for (let i = 1; i <= numPages; i++) {
+    for (const i of pages) {
       if (abortSignal?.aborted) {
         throw new Error('OCR Cancelled');
       }
