@@ -11,6 +11,7 @@ export type NERWorkerMessage = {
   type: 'INIT' | 'EXTRACT';
   text?: string;
   jobId?: string;
+  customPatterns?: string[];
 };
 
 export type NERWorkerResponse = {
@@ -41,12 +42,25 @@ self.onmessage = async (e: MessageEvent<NERWorkerMessage>) => {
 
       const extractedItems = new Set<string>();
 
+      const { customPatterns = [] } = e.data;
+
       // 1. Run Regex Extractors
       const emails = text.match(EMAIL_REGEX) || [];
       emails.forEach(e => extractedItems.add(e));
 
       const ssns = text.match(SSN_REGEX) || [];
       ssns.forEach(s => extractedItems.add(s));
+
+      // 1.5 Run Custom Patterns
+      for (const pattern of customPatterns) {
+        try {
+          const regex = new RegExp(pattern, 'gi');
+          const matches = text.match(regex) || [];
+          matches.forEach(m => extractedItems.add(m));
+        } catch (err) {
+          console.warn(`Invalid custom regex pattern: ${pattern}`, err);
+        }
+      }
 
       // 2. Run NER Model
       // Using simple aggregation to group words like "Jane" and "Doe" into "Jane Doe"

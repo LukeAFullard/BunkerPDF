@@ -28,9 +28,7 @@ import { EngineStatusPill } from "./components/ui/EngineStatusPill";
 import { CrossDocumentReorder } from "./components/pdf/reorder/CrossDocumentReorder";
 import { getSmartOutputName } from "./lib/utils";
 import { ocrPdf } from "./lib/ocrEngine";
-import { AudioPlayerModal } from "./components/ui/AudioPlayerModal";
-import { generateSpeech } from "./lib/ttsEngine";
-import { createWavFile } from "./lib/audioUtils";
+import { ReadAloudModal } from "./components/ui/ReadAloudModal";
 import { DocumentCard } from "./components/pdf/DocumentCard";
 import { FileTabs } from "./components/ui/FileTabs";
 import { DiffModal } from "./components/pdf/diff/DiffModal";
@@ -222,7 +220,7 @@ function App() {
             addLog("Recipe", `Applied Sanitize`, currentDoc.name);
           } else if (step === 'ocr') {
             const abortController = new AbortController();
-            const newFile = await ocrPdf(currentDoc.file, (stage) => {
+            const newFile = await ocrPdf(currentDoc.file, undefined, (stage) => {
                if (!isCancelled) useProcessingStore.getState().updateStage(`OCR: ${stage}`);
             }, abortController.signal);
             if (isCancelled) {
@@ -356,11 +354,11 @@ function App() {
     message: React.ReactNode;
   }>({ isOpen: false, title: "", message: "" });
 
-  const [audioPlayerState, setAudioPlayerState] = useState<{
+  const [readAloudState, setReadAloudState] = useState<{
     isOpen: boolean;
-    audioUrl: string | null;
+    text: string;
     title: string;
-  }>({ isOpen: false, audioUrl: null, title: "Read Aloud" });
+  }>({ isOpen: false, text: "", title: "Read Aloud" });
   const [signatureModalState, setSignatureModalState] = useState<{
     isOpen: boolean;
     activeDocId: string | null;
@@ -996,7 +994,7 @@ function App() {
     });
   };
 
-  const extractEntities = (text: string): Promise<string[]> => {
+  const extractEntities = (text: string, customPatterns?: string[]): Promise<string[]> => {
     return new Promise((resolve, reject) => {
       if (!nerWorkerRef.current)
         return reject(new Error("NER worker not ready"));
@@ -1006,6 +1004,7 @@ function App() {
         type: "EXTRACT",
         jobId,
         text,
+        customPatterns,
       } satisfies NERWorkerMessage);
     });
   };
@@ -1982,7 +1981,7 @@ function App() {
 
   const handleReadAloud = async (doc: PDFDocument) => {
     let isCancelled = false;
-    startProcessing("Generating audio...", true, () => {
+    startProcessing("Extracting text for reading...", true, () => {
       isCancelled = true;
       stopProcessing();
     });
@@ -2002,22 +2001,12 @@ function App() {
         return;
       }
 
-      useProcessingStore.getState().updateStage("Synthesizing speech (this may take a while)...");
-
-      const { audio, samplingRate } = await generateSpeech(text, (progress) => {
-        if (!isCancelled) useProcessingStore.getState().updateStage(`Synthesizing speech (${progress}%)...`);
-      });
-      if (isCancelled) return;
-
-      const wavFile = createWavFile(audio, samplingRate);
-      const audioUrl = URL.createObjectURL(wavFile);
-
-      setAudioPlayerState({
+      setReadAloudState({
         isOpen: true,
-        audioUrl,
+        text: text,
         title: `Read Aloud: ${doc.name}`,
       });
-      addLog("Read Aloud", "Generated audio playback for document text.", doc.name);
+      addLog("Read Aloud", "Started Web Speech API playback for document.", doc.name);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (e: any) {
@@ -2026,49 +2015,66 @@ function App() {
       setErrorState({
         isOpen: true,
         title: "Read Aloud Error",
-        message: "Failed to generate speech. " + (e.message || ""),
+        message: "Failed to extract text. " + (e.message || ""),
       });
     } finally {
       if (!isCancelled) stopProcessing();
     }
   };
 
-  const handleOcr = async (doc: PDFDocument) => {
-  let isCancelled = false;
-  const abortController = new AbortController();
-  startProcessing("Starting OCR...", true, () => {
-    isCancelled = true;
-    abortController.abort();
-    stopProcessing();
-  });
-
-  try {
-    const newFile = await ocrPdf(doc.file, (stage) => {
-      if (!isCancelled) useProcessingStore.getState().updateStage(stage);
-    }, abortController.signal);
-
-    if (isCancelled) return;
-
-    await updateDocumentFile(doc.id, newFile);
-    addLog("OCR", "Extracted text and overlaid it on the document.", doc.name);
-
-    setErrorState({
+  const handleOcr = (doc: PDFDocument) => {
+    setInputState({
       isOpen: true,
-      title: "OCR Complete",
-      message: "Text has been successfully extracted and overlaid on the document.",
+      title: "OCR (Text Recognition)",
+      message: `Enter the page numbers to process (comma separated, e.g., 1, 3, 5). Max pages: ${doc.pageCount}. Default is 1.`,
+      placeholder: "1",
+      defaultValue: "1",
+      onConfirm: async (text) => {
+        setInputState((prev) => ({ ...prev, isOpen: false }));
+
+        let pagesToProcess: number[] = [];
+        if (text) {
+          pagesToProcess = text.split(",").map(n => parseInt(n.trim(), 10)).filter(n => !isNaN(n));
+        }
+        if (pagesToProcess.length === 0) pagesToProcess = [1];
+
+        let isCancelled = false;
+        const abortController = new AbortController();
+        startProcessing(`Starting OCR on ${pagesToProcess.length} page(s)...`, true, () => {
+          isCancelled = true;
+          abortController.abort();
+          stopProcessing();
+        });
+
+        try {
+          const newFile = await ocrPdf(doc.file, pagesToProcess, (stage) => {
+            if (!isCancelled) useProcessingStore.getState().updateStage(stage);
+          }, abortController.signal);
+
+          if (isCancelled) return;
+
+          await updateDocumentFile(doc.id, newFile);
+          addLog("OCR", "Extracted text and overlaid it on the document.", doc.name);
+
+          setErrorState({
+            isOpen: true,
+            title: "OCR Complete",
+            message: "Text has been successfully extracted and overlaid on the document.",
+          });
+        } catch (e) {
+          if (isCancelled) return;
+          console.error(e);
+          setErrorState({
+            isOpen: true,
+            title: "OCR Error",
+            message: "An error occurred during text extraction.",
+          });
+        } finally {
+          if (!isCancelled) stopProcessing();
+        }
+      },
     });
-  } catch (e) {
-    if (isCancelled) return;
-    console.error(e);
-    setErrorState({
-      isOpen: true,
-      title: "OCR Error",
-      message: "An error occurred during text extraction.",
-    });
-  } finally {
-    if (!isCancelled) stopProcessing();
-  }
-};
+  };
 
   const handleAudit = async (doc: PDFDocument) => {
     let isCancelled = false;
@@ -2596,16 +2602,11 @@ function App() {
         message={errorState.message}
         onClose={() => setErrorState((prev) => ({ ...prev, isOpen: false }))}
       />
-      <AudioPlayerModal
-        isOpen={audioPlayerState.isOpen}
-        audioUrl={audioPlayerState.audioUrl}
-        title={audioPlayerState.title}
-        onClose={() => {
-          setAudioPlayerState((prev) => ({ ...prev, isOpen: false }));
-          if (audioPlayerState.audioUrl) {
-            URL.revokeObjectURL(audioPlayerState.audioUrl);
-          }
-        }}
+      <ReadAloudModal
+        isOpen={readAloudState.isOpen}
+        text={readAloudState.text}
+        title={readAloudState.title}
+        onClose={() => setReadAloudState((prev) => ({ ...prev, isOpen: false }))}
       />
       <CrossDocumentReorder
         isOpen={isCrossReorderOpen}
