@@ -8,7 +8,7 @@ import { getSmartOutputName } from "../../lib/utils";
 import { ErrorModal } from "../ui/ErrorModal";
 import { useProcessingStore } from "../../store/processingStore";
 import { ContextMenu } from "../ui/ContextMenu";
-import { decodeBarcodesFromPdf } from "../../lib/barcodeDecoder";
+import { decodeBarcodesFromPdf, type BarcodeResult } from "../../lib/barcodeDecoder";
 import { useAuditStore } from "../../store/auditStore";
 import { BookmarkModal, type Bookmark } from "../ui/BookmarkModal";
 import { DocumentHealthPanel } from './DocumentHealthPanel';
@@ -38,7 +38,7 @@ interface DocumentCardProps {
   onVerifySignature?: (doc: PDFDocument) => void;
   onReadAloud?: (doc: PDFDocument) => void;
   extractText: (bytes: Uint8Array) => Promise<string>;
-  extractEntities: (text: string) => Promise<string[]>;
+  extractEntities: (text: string, customPatterns?: string[]) => Promise<string[]>;
   extractTables?: (docFile: File) => Promise<Uint8Array>;
   extractMarkdown?: (bytes: Uint8Array) => Promise<string>;
   extractHtml?: (bytes: Uint8Array) => Promise<string>;
@@ -105,7 +105,9 @@ export function DocumentCard({
   const [selectedEntities, setSelectedEntities] = useState<Set<string>>(
     new Set(),
   );
-  const [detectedCodes, setDetectedCodes] = useState<string[] | null>(null);
+  const [customPatternInput, setCustomPatternInput] = useState<string>("");
+  const [customPatterns, setCustomPatterns] = useState<string[]>([]);
+  const [detectedCodes, setDetectedCodes] = useState<BarcodeResult[] | null>(null);
   const [errorState, setErrorState] = useState<{
     isOpen: boolean;
     title: string;
@@ -181,7 +183,7 @@ export function DocumentCard({
       }
 
       updateStage("Scanning for PII...");
-      const entities = await extractEntities(text);
+      const entities = await extractEntities(text, customPatterns);
       if (isCancelled) return;
 
       setDetectedEntities(entities);
@@ -197,7 +199,7 @@ export function DocumentCard({
     } finally {
       if (!isCancelled) stopProcessing();
     }
-  }, [doc.file, extractEntities, extractText, startProcessing, stopProcessing, updateStage]);
+  }, [doc.file, extractEntities, extractText, startProcessing, stopProcessing, updateStage, customPatterns]);
 
   useEffect(() => {
     if (isActive && activeTool) {
@@ -1042,6 +1044,60 @@ items={[
             </div>
           )}
 
+          <div className="mt-4 pt-4 border-t border-gray-100">
+            <h5 className="text-xs font-semibold text-gray-700 mb-2">Add Custom Keyword/Regex</h5>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={customPatternInput}
+                onChange={(e) => setCustomPatternInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && customPatternInput.trim()) {
+                    setCustomPatterns(prev => [...prev, customPatternInput.trim()]);
+                    setCustomPatternInput("");
+                  }
+                }}
+                placeholder="e.g. Acme Corp or \b\d{4}\b"
+                className="flex-1 border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              />
+              <button
+                onClick={() => {
+                  if (customPatternInput.trim()) {
+                    setCustomPatterns(prev => [...prev, customPatternInput.trim()]);
+                    setCustomPatternInput("");
+                  }
+                }}
+                className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1 rounded text-sm font-medium transition-colors"
+              >
+                Add
+              </button>
+            </div>
+            {customPatterns.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {customPatterns.map((pattern, i) => (
+                  <span key={i} className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-xs">
+                    <span className="truncate max-w-[100px]" title={pattern}>{pattern}</span>
+                    <button
+                      onClick={() => setCustomPatterns(prev => prev.filter((_, index) => index !== i))}
+                      className="text-blue-400 hover:text-blue-600 focus:outline-none"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            {customPatterns.length > 0 && (
+              <button
+                onClick={handleScan}
+                disabled={isProcessing}
+                className="w-full mt-3 bg-blue-50 text-blue-600 py-1.5 rounded text-sm font-medium hover:bg-blue-100 disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1"
+              >
+                Re-scan Document
+              </button>
+            )}
+          </div>
+
           {detectedEntities.length > 0 && (
             <button
               onClick={handleRedact}
@@ -1069,12 +1125,15 @@ items={[
           </div>
 
           <div className="flex flex-col gap-3 max-h-64 overflow-y-auto">
-            {detectedCodes.map((code, i) => (
-              <div key={i} className="flex flex-col gap-1 p-2 bg-gray-50 rounded text-sm border border-gray-100">
-                <span className="break-all font-mono text-xs">{code}</span>
-                {(code.startsWith("http://") || code.startsWith("https://")) && (
+            {detectedCodes.map((codeResult, i) => (
+              <div key={i} className="flex flex-col gap-1 p-2 bg-gray-50 rounded text-sm border border-gray-100 relative">
+                <span className="absolute top-1 right-1 text-[10px] bg-gray-200 text-gray-600 px-1.5 rounded-sm">
+                  pg {codeResult.page}
+                </span>
+                <span className="break-all font-mono text-xs pr-8">{codeResult.text}</span>
+                {(codeResult.text.startsWith("http://") || codeResult.text.startsWith("https://")) && (
                   <a
-                    href={code}
+                    href={codeResult.text}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-blue-600 hover:underline text-xs"

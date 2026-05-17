@@ -2,13 +2,19 @@ import { BrowserMultiFormatReader, BinaryBitmap, HybridBinarizer, HTMLCanvasElem
 import * as pdfjsLib from 'pdfjs-dist';
 import { cleanupPdfResources } from './pdfCleanup';
 
-export async function decodeBarcodesFromPdf(file: File): Promise<string[]> {
+export interface BarcodeResult {
+  text: string;
+  page: number;
+}
+
+export async function decodeBarcodesFromPdf(file: File): Promise<BarcodeResult[]> {
   const arrayBuffer = await file.arrayBuffer();
   const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
   const pdf = await loadingTask.promise;
   const numPages = pdf.numPages;
   const reader = new BrowserMultiFormatReader();
-  const results: Set<string> = new Set();
+  const results: BarcodeResult[] = [];
+  const seenTexts = new Set<string>();
 
   try {
     for (let i = 1; i <= numPages; i++) {
@@ -36,7 +42,11 @@ export async function decodeBarcodesFromPdf(file: File): Promise<string[]> {
         const binaryBitmap = new BinaryBitmap(new HybridBinarizer(luminanceSource));
         const result = reader.decodeBitmap(binaryBitmap);
         if (result) {
-          results.add(result.getText());
+          const text = result.getText();
+          if (!seenTexts.has(text)) {
+            seenTexts.add(text);
+            results.push({ text, page: i });
+          }
         }
       } catch {
         // NotFoundException is thrown if no code is found, which is normal
@@ -47,5 +57,5 @@ export async function decodeBarcodesFromPdf(file: File): Promise<string[]> {
     await cleanupPdfResources(pdf);
   }
 
-  return Array.from(results);
+  return results;
 }

@@ -7,11 +7,31 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url,
 ).toString();
 
-export async function ocrPdf(file: File, updateStage?: (stage: string) => void, abortSignal?: AbortSignal): Promise<File> {
+export async function ocrPdf(file: File, updateStage?: (stage: string) => void, abortSignal?: AbortSignal, pageRange?: string): Promise<File> {
   const arrayBuffer = await file.arrayBuffer();
   const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
   const pdf = await loadingTask.promise;
   const numPages = pdf.numPages;
+
+  const targetPages = new Set<number>();
+  if (pageRange) {
+    const parts = pageRange.split(',');
+    for (const part of parts) {
+      if (part.includes('-')) {
+        const [start, end] = part.split('-').map(s => parseInt(s.trim()));
+        if (!isNaN(start) && !isNaN(end)) {
+          for (let p = start; p <= end; p++) {
+            if (p >= 1 && p <= numPages) targetPages.add(p);
+          }
+        }
+      } else {
+        const p = parseInt(part.trim());
+        if (!isNaN(p) && p >= 1 && p <= numPages) targetPages.add(p);
+      }
+    }
+  } else {
+    for (let p = 1; p <= numPages; p++) targetPages.add(p);
+  }
 
   if (updateStage) updateStage(`Initializing OCR engine...`);
   const worker = await createWorker('eng');
@@ -24,10 +44,20 @@ export async function ocrPdf(file: File, updateStage?: (stage: string) => void, 
     const { PDFDocument } = await import('pdf-lib');
     const mergedPdf = await PDFDocument.create();
 
+    const originalPdfDoc = await PDFDocument.load(new Uint8Array(arrayBuffer), { ignoreEncryption: true });
+
     for (let i = 1; i <= numPages; i++) {
       if (abortSignal?.aborted) {
         throw new Error('OCR Cancelled');
       }
+
+      if (!targetPages.has(i)) {
+        if (updateStage) updateStage(`Skipping page ${i}...`);
+        const copiedPages = await mergedPdf.copyPages(originalPdfDoc, [i - 1]);
+        mergedPdf.addPage(copiedPages[0]);
+        continue;
+      }
+
       if (updateStage) updateStage(`Processing page ${i} of ${numPages}...`);
       const page = await pdf.getPage(i);
       const viewport = page.getViewport({ scale: 2.0 });

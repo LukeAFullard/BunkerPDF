@@ -29,8 +29,6 @@ import { CrossDocumentReorder } from "./components/pdf/reorder/CrossDocumentReor
 import { getSmartOutputName } from "./lib/utils";
 import { ocrPdf } from "./lib/ocrEngine";
 import { AudioPlayerModal } from "./components/ui/AudioPlayerModal";
-import { generateSpeech } from "./lib/ttsEngine";
-import { createWavFile } from "./lib/audioUtils";
 import { DocumentCard } from "./components/pdf/DocumentCard";
 import { FileTabs } from "./components/ui/FileTabs";
 import { DiffModal } from "./components/pdf/diff/DiffModal";
@@ -358,9 +356,9 @@ function App() {
 
   const [audioPlayerState, setAudioPlayerState] = useState<{
     isOpen: boolean;
-    audioUrl: string | null;
+    text: string | null;
     title: string;
-  }>({ isOpen: false, audioUrl: null, title: "Read Aloud" });
+  }>({ isOpen: false, text: null, title: "Read Aloud" });
   const [signatureModalState, setSignatureModalState] = useState<{
     isOpen: boolean;
     activeDocId: string | null;
@@ -996,7 +994,7 @@ function App() {
     });
   };
 
-  const extractEntities = (text: string): Promise<string[]> => {
+  const extractEntities = (text: string, customPatterns?: string[]): Promise<string[]> => {
     return new Promise((resolve, reject) => {
       if (!nerWorkerRef.current)
         return reject(new Error("NER worker not ready"));
@@ -1006,6 +1004,7 @@ function App() {
         type: "EXTRACT",
         jobId,
         text,
+        customPatterns,
       } satisfies NERWorkerMessage);
     });
   };
@@ -1982,7 +1981,7 @@ function App() {
 
   const handleReadAloud = async (doc: PDFDocument) => {
     let isCancelled = false;
-    startProcessing("Generating audio...", true, () => {
+    startProcessing("Extracting text for Read Aloud...", true, () => {
       isCancelled = true;
       stopProcessing();
     });
@@ -2002,22 +2001,12 @@ function App() {
         return;
       }
 
-      useProcessingStore.getState().updateStage("Synthesizing speech (this may take a while)...");
-
-      const { audio, samplingRate } = await generateSpeech(text, (progress) => {
-        if (!isCancelled) useProcessingStore.getState().updateStage(`Synthesizing speech (${progress}%)...`);
-      });
-      if (isCancelled) return;
-
-      const wavFile = createWavFile(audio, samplingRate);
-      const audioUrl = URL.createObjectURL(wavFile);
-
       setAudioPlayerState({
         isOpen: true,
-        audioUrl,
-        title: `Read Aloud: ${doc.name}`,
+        text,
+        title: `Reading: ${doc.name}`,
       });
-      addLog("Read Aloud", "Generated audio playback for document text.", doc.name);
+      addLog("Read Aloud", "Started audio playback for document text.", doc.name);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (e: any) {
@@ -2034,41 +2023,55 @@ function App() {
   };
 
   const handleOcr = async (doc: PDFDocument) => {
-  let isCancelled = false;
-  const abortController = new AbortController();
-  startProcessing("Starting OCR...", true, () => {
-    isCancelled = true;
-    abortController.abort();
-    stopProcessing();
-  });
-
-  try {
-    const newFile = await ocrPdf(doc.file, (stage) => {
-      if (!isCancelled) useProcessingStore.getState().updateStage(stage);
-    }, abortController.signal);
-
-    if (isCancelled) return;
-
-    await updateDocumentFile(doc.id, newFile);
-    addLog("OCR", "Extracted text and overlaid it on the document.", doc.name);
-
-    setErrorState({
+    setInputState({
       isOpen: true,
-      title: "OCR Complete",
-      message: "Text has been successfully extracted and overlaid on the document.",
+      title: "OCR Document",
+      message: "Enter page range (e.g., 1, 3, 5-7) or leave blank for all pages.",
+      placeholder: "All pages",
+      defaultValue: "1",
+      onConfirm: async (val) => {
+        setInputState((prev) => ({ ...prev, isOpen: false }));
+        let isCancelled = false;
+        const abortController = new AbortController();
+        startProcessing("Starting OCR...", true, () => {
+          isCancelled = true;
+          abortController.abort();
+          stopProcessing();
+        });
+
+        try {
+          const newFile = await ocrPdf(doc.file, (stage) => {
+            if (!isCancelled) useProcessingStore.getState().updateStage(stage);
+          }, abortController.signal, val);
+
+          if (isCancelled) return;
+
+          await updateDocumentFile(doc.id, newFile);
+          addLog("OCR", `Extracted text for pages: ${val || "all"}`, doc.name);
+
+          setErrorState({
+            isOpen: true,
+            title: "OCR Complete",
+            message: "Text has been successfully extracted and overlaid on the document.",
+          });
+        } catch (e: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+          if (isCancelled) return;
+          console.error(e);
+          setErrorState({
+            isOpen: true,
+            title: "OCR Error",
+            message: e.message || "An error occurred during text extraction.",
+          });
+        } finally {
+          if (!isCancelled) stopProcessing();
+        }
+      },
+      onCancel: () => {
+        setInputState((prev) => ({ ...prev, isOpen: false }));
+      },
     });
-  } catch (e) {
-    if (isCancelled) return;
-    console.error(e);
-    setErrorState({
-      isOpen: true,
-      title: "OCR Error",
-      message: "An error occurred during text extraction.",
-    });
-  } finally {
-    if (!isCancelled) stopProcessing();
-  }
-};
+  };
+
 
   const handleAudit = async (doc: PDFDocument) => {
     let isCancelled = false;
@@ -2598,13 +2601,10 @@ function App() {
       />
       <AudioPlayerModal
         isOpen={audioPlayerState.isOpen}
-        audioUrl={audioPlayerState.audioUrl}
+        text={audioPlayerState.text}
         title={audioPlayerState.title}
         onClose={() => {
           setAudioPlayerState((prev) => ({ ...prev, isOpen: false }));
-          if (audioPlayerState.audioUrl) {
-            URL.revokeObjectURL(audioPlayerState.audioUrl);
-          }
         }}
       />
       <CrossDocumentReorder
