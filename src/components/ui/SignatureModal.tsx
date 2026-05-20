@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState, useEffect } from "react";
 import SignatureCanvas from "react-signature-canvas";
 
 interface SignatureModalProps {
@@ -9,15 +9,24 @@ interface SignatureModalProps {
 
 export function SignatureModal({ isOpen, onClose, onConfirm }: SignatureModalProps) {
   const sigCanvas = useRef<SignatureCanvas>(null);
+  const [hasSignature, setHasSignature] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setHasSignature(false);
+      setTimeout(() => sigCanvas.current?.clear(), 50);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
   const handleClear = () => {
     sigCanvas.current?.clear();
+    setHasSignature(false);
   };
 
   const handleConfirm = () => {
-    if (sigCanvas.current?.isEmpty()) {
+    if (!hasSignature && sigCanvas.current?.isEmpty()) {
       alert("Please provide a signature first.");
       return;
     }
@@ -47,6 +56,7 @@ export function SignatureModal({ isOpen, onClose, onConfirm }: SignatureModalPro
           <div className="border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 flex justify-center">
             <SignatureCanvas
               ref={sigCanvas}
+              onEnd={() => setHasSignature(true)}
               canvasProps={{
                 width: 400,
                 height: 200,
