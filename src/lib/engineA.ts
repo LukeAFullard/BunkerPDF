@@ -134,34 +134,67 @@ export async function splitPdf(file: File, rangesStr?: string): Promise<{bytes: 
   return splitPdfs;
 }
 
-export async function rotatePdf(file: File, degreesToRotate: number = 90): Promise<Uint8Array> {
+export async function rotatePdf(file: File, degreesToRotate: number = 90, selectedPages?: number[]): Promise<Uint8Array> {
   const arrayBuffer = await file.arrayBuffer();
   const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
 
   const pages = pdfDoc.getPages();
-  for (const page of pages) {
-    const currentRotation = page.getRotation().angle;
-    page.setRotation(degrees(currentRotation + degreesToRotate));
+  for (let i = 0; i < pages.length; i++) {
+    // selectedPages is 1-indexed. If not provided, rotate all pages.
+    if (!selectedPages || selectedPages.includes(i + 1)) {
+      const page = pages[i];
+      const currentRotation = page.getRotation().angle;
+      page.setRotation(degrees(currentRotation + degreesToRotate));
+    }
   }
 
   return await pdfDoc.save();
 }
 
-export async function watermarkPdf(file: File, text: string): Promise<Uint8Array> {
+export async function watermarkPdf(file: File, text: string, pagesStr?: string): Promise<Uint8Array> {
   const arrayBuffer = await file.arrayBuffer();
   const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
 
   const pages = pdfDoc.getPages();
-  for (const page of pages) {
-    const { width, height } = page.getSize();
-    page.drawText(text, {
-      x: width / 4,
-      y: height / 2,
-      size: 50,
-      color: rgb(0.5, 0.5, 0.5),
-      opacity: 0.5,
-      rotate: degrees(45),
-    });
+  const numPages = pages.length;
+
+  const targetPages = new Set<number>();
+  if (!pagesStr || pagesStr.trim() === '') {
+    for (let i = 0; i < numPages; i++) targetPages.add(i);
+  } else {
+    const chunks = pagesStr.split(',').map(s => s.trim()).filter(Boolean);
+    for (const chunk of chunks) {
+      if (chunk.includes('-')) {
+        const [startStr, endStr] = chunk.split('-');
+        const start = parseInt(startStr, 10);
+        const end = parseInt(endStr, 10);
+        if (!isNaN(start) && !isNaN(end)) {
+          for (let i = Math.max(1, start); i <= Math.min(numPages, end); i++) {
+            targetPages.add(i - 1);
+          }
+        }
+      } else {
+        const pageNum = parseInt(chunk, 10);
+        if (!isNaN(pageNum) && pageNum >= 1 && pageNum <= numPages) {
+          targetPages.add(pageNum - 1);
+        }
+      }
+    }
+  }
+
+  for (let i = 0; i < pages.length; i++) {
+    if (targetPages.has(i)) {
+      const page = pages[i];
+      const { width, height } = page.getSize();
+      page.drawText(text, {
+        x: width / 4,
+        y: height / 2,
+        size: 50,
+        color: rgb(0.5, 0.5, 0.5),
+        opacity: 0.5,
+        rotate: degrees(45),
+      });
+    }
   }
 
   return await pdfDoc.save();

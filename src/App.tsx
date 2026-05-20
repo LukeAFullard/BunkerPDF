@@ -1624,42 +1624,53 @@ function App() {
     }
   };
 
-  const handleRotate = async (doc: PDFDocument) => {
-    let isCancelled = false;
-    startProcessing("Rotating PDF...", true, () => {
-      isCancelled = true;
-      stopProcessing();
+  const handleRotate = (doc: PDFDocument) => {
+    setPageSelectorState({
+      isOpen: true,
+      title: "Rotate Pages",
+      docId: doc.id,
+      pageCount: doc.pageCount || 0,
+      onConfirm: async (selectedPages) => {
+        setPageSelectorState((prev) => ({ ...prev, isOpen: false }));
+        if (selectedPages.length === 0) return;
+
+        let isCancelled = false;
+        startProcessing("Rotating pages...", true, () => {
+          isCancelled = true;
+          stopProcessing();
+        });
+
+        try {
+          const rotatedBytes = await rotatePdf(doc.file, 90, selectedPages);
+          if (isCancelled) return;
+
+          const standardBuffer = new Uint8Array(rotatedBytes.length);
+          standardBuffer.set(rotatedBytes);
+          const newFile = new File([standardBuffer], doc.name, {
+            type: "application/pdf",
+          });
+          await updateDocumentFile(doc.id, newFile);
+          addLog("Rotate", `Rotated ${selectedPages.length} pages by 90 degrees.`, doc.name);
+        } catch (e) {
+          if (isCancelled) return;
+          console.error(e);
+          setErrorState({
+            isOpen: true,
+            title: "Rotate Error",
+            message: "An error occurred while rotating the PDF.",
+          });
+        } finally {
+          if (!isCancelled) stopProcessing();
+        }
+      }
     });
-
-    try {
-      const rotatedBytes = await rotatePdf(doc.file, 90);
-      if (isCancelled) return;
-
-      const standardBuffer = new Uint8Array(rotatedBytes.length);
-      standardBuffer.set(rotatedBytes);
-      const newFile = new File([standardBuffer], doc.name, {
-        type: "application/pdf",
-      });
-      await updateDocumentFile(doc.id, newFile);
-      addLog("Rotate", "Rotated document by 90 degrees.", doc.name);
-    } catch (e) {
-      if (isCancelled) return;
-      console.error(e);
-      setErrorState({
-        isOpen: true,
-        title: "Rotate Error",
-        message: "An error occurred while rotating the PDF.",
-      });
-    } finally {
-      if (!isCancelled) stopProcessing();
-    }
   };
 
   const handleWatermark = (doc: PDFDocument) => {
     setVisualWatermarkState({ isOpen: true, docId: doc.id });
   };
 
-  const executeWatermark = async (text: string) => {
+  const executeWatermark = async (text: string, pagesStr: string) => {
     const docId = visualWatermarkState.docId;
     setVisualWatermarkState({ isOpen: false, docId: null });
     if (!docId || !text) return;
@@ -1674,7 +1685,7 @@ function App() {
     });
 
     try {
-      const watermarkedBytes = await watermarkPdf(doc.file, text);
+      const watermarkedBytes = await watermarkPdf(doc.file, text, pagesStr);
       if (isCancelled) return;
 
       const standardBuffer = new Uint8Array(watermarkedBytes.length);
