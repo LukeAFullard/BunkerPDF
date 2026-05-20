@@ -26,6 +26,9 @@ import {
 } from "./lib/engineA";
 import { EngineStatusPill } from "./components/ui/EngineStatusPill";
 import { CrossDocumentReorder } from "./components/pdf/reorder/CrossDocumentReorder";
+import { SingleDocumentReorder } from "./components/pdf/reorder/SingleDocumentReorder";
+import { InteractiveHighlightModal } from "./components/pdf/InteractiveHighlightModal";
+import { VisualWatermarkModal } from "./components/pdf/VisualWatermarkModal";
 import { getSmartOutputName } from "./lib/utils";
 import { ocrPdf } from "./lib/ocrEngine";
 import { ReadAloudModal } from "./components/ui/ReadAloudModal";
@@ -36,6 +39,7 @@ import { RecipeMenu } from "./components/ui/RecipeMenu";
 import type { WorkflowRecipe } from "./store/recipeStore";
 import { ErrorModal } from "./components/ui/ErrorModal";
 import { InputModal } from "./components/ui/InputModal";
+import { PageSelectorModal } from "./components/ui/PageSelectorModal";
 import { ProcessingModal } from "./components/ui/ProcessingModal";
 import { FeedbackPrompt } from "./components/ui/FeedbackPrompt";
 import { PWAInstallPrompt } from "./components/ui/PWAInstallPrompt";
@@ -368,6 +372,38 @@ function App() {
     isOpen: boolean;
     doc: PDFDocument | null;
   }>({ isOpen: false, doc: null });
+
+  const [interactiveHighlightState, setInteractiveHighlightState] = useState<{
+    isOpen: boolean;
+    docId: string | null;
+  }>({ isOpen: false, docId: null });
+
+  const [visualWatermarkState, setVisualWatermarkState] = useState<{
+    isOpen: boolean;
+    docId: string | null;
+  }>({ isOpen: false, docId: null });
+
+  const [singleReorderState, setSingleReorderState] = useState<{
+    isOpen: boolean;
+    docId: string | null;
+  }>({ isOpen: false, docId: null });
+
+  const [pageSelectorState, setPageSelectorState] = useState<{
+    isOpen: boolean;
+    title: string;
+    docId: string | null;
+    pageCount: number;
+    singleSelection?: boolean;
+    onConfirm: (selectedPages: number[]) => void;
+  }>({
+    isOpen: false,
+    title: "",
+    docId: null,
+    pageCount: 0,
+    onConfirm: () => {},
+  });
+
+  const [thumbnailCache, setThumbnailCache] = useState<Record<string, string>>({});
 
   const [pendingImages, setPendingImages] = useState<ImageItem[]>([]);
   const [imageFitMode, setImageFitMode] = useState<'fit' | 'original' | 'a4'>('a4');
@@ -1472,7 +1508,72 @@ function App() {
   };
 
   const handleSplitBurst = (doc: PDFDocument) => {
-    setSplitModalState({ isOpen: true, doc });
+    setPageSelectorState({
+      isOpen: true,
+      title: "Extract Pages",
+      docId: doc.id,
+      pageCount: doc.pageCount || 0,
+      onConfirm: async (selectedPages) => {
+        setPageSelectorState((prev) => ({ ...prev, isOpen: false }));
+        if (selectedPages.length === 0) return;
+
+        let isCancelled = false;
+        startProcessing("Extracting pages...", true, () => {
+          isCancelled = true;
+          stopProcessing();
+        });
+
+        try {
+          const { splitPdf } = await import("./lib/engineA");
+          // Format selected pages as a range string (e.g., "1-3,5")
+          let ranges = "";
+          let start = selectedPages[0];
+          let end = selectedPages[0];
+          for (let i = 1; i < selectedPages.length; i++) {
+            if (selectedPages[i] === end + 1) {
+              end = selectedPages[i];
+            } else {
+              ranges += (start === end ? `${start},` : `${start}-${end},`);
+              start = selectedPages[i];
+              end = selectedPages[i];
+            }
+          }
+          ranges += (start === end ? `${start}` : `${start}-${end}`);
+
+          const splitDocsBytes = await splitPdf(doc.file, ranges);
+          if (isCancelled) return;
+
+          const newDocs: PDFDocument[] = [];
+          for (let i = 0; i < splitDocsBytes.length; i++) {
+            const standardBuffer = new Uint8Array(splitDocsBytes[i].bytes.length);
+            standardBuffer.set(splitDocsBytes[i].bytes);
+            const newFile = new File([standardBuffer], `${doc.name.replace(/\.pdf$/i, '')}_part${i + 1}.pdf`, { type: "application/pdf" });
+
+            newDocs.push({
+              id: crypto.randomUUID(),
+              file: newFile,
+              name: newFile.name,
+              size: newFile.size,
+              lastModified: newFile.lastModified,
+              pageCount: splitDocsBytes[i].pageCount,
+              operations: [],
+            });
+          }
+          addDocuments(newDocs);
+        } catch (e) {
+          if (!isCancelled) {
+            console.error(e);
+            setErrorState({
+              isOpen: true,
+              title: "Split Error",
+              message: "Failed to split document.",
+            });
+          }
+        } finally {
+          if (!isCancelled) stopProcessing();
+        }
+      }
+    });
   };
 
   const executeSplit = async (ranges: string) => {
@@ -1555,45 +1656,48 @@ function App() {
   };
 
   const handleWatermark = (doc: PDFDocument) => {
-    setInputState({
-      isOpen: true,
-      title: "Add Watermark",
-      message: "Enter the text you want to use as a watermark:",
-      placeholder: "e.g. CONFIDENTIAL",
-      onConfirm: async (text) => {
-        setInputState((prev) => ({ ...prev, isOpen: false }));
-        if (!text) return;
+    setVisualWatermarkState({ isOpen: true, docId: doc.id });
+  };
 
-        let isCancelled = false;
-        startProcessing("Adding watermark...", true, () => {
-          isCancelled = true;
-          stopProcessing();
-        });
+  const executeWatermark = async (text: string) => {
+    const docId = visualWatermarkState.docId;
+    setVisualWatermarkState({ isOpen: false, docId: null });
+    if (!docId || !text) return;
 
-        try {
-          const watermarkedBytes = await watermarkPdf(doc.file, text);
-          if (isCancelled) return;
+    const doc = documents.find(d => d.id === docId);
+    if (!doc) return;
 
-          const standardBuffer = new Uint8Array(watermarkedBytes.length);
-          standardBuffer.set(watermarkedBytes);
-          const newFile = new File([standardBuffer], doc.name, {
-            type: "application/pdf",
-          });
-          await updateDocumentFile(doc.id, newFile);
-          addLog("Watermark", `Added watermark: "${text}"`, doc.name);
-        } catch (e) {
-          if (isCancelled) return;
-          console.error(e);
-          setErrorState({
-            isOpen: true,
-            title: "Watermark Error",
-            message: "An error occurred while adding the watermark.",
-          });
-        } finally {
-          if (!isCancelled) stopProcessing();
-        }
-      },
+    let isCancelled = false;
+    startProcessing("Adding watermark...", true, () => {
+      isCancelled = true;
+      stopProcessing();
     });
+
+    try {
+      const watermarkedBytes = await watermarkPdf(doc.file, text);
+      if (isCancelled) return;
+
+      const standardBuffer = new Uint8Array(watermarkedBytes.length);
+      standardBuffer.set(watermarkedBytes);
+      const newFile = new File([standardBuffer], doc.name, {
+        type: "application/pdf",
+      });
+      await updateDocumentFile(doc.id, newFile, undefined, {
+        type: 'watermark',
+        params: { description: `Added watermark: ${text}` }
+      });
+      addLog("Watermark", `Added watermark: "${text}"`, doc.name);
+    } catch (e) {
+      if (isCancelled) return;
+      console.error(e);
+      setErrorState({
+        isOpen: true,
+        title: "Watermark Error",
+        message: "An error occurred while adding the watermark.",
+      });
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
   };
 
   const handleOptimize = async (doc: PDFDocument) => {
@@ -1648,21 +1752,17 @@ function App() {
   };
 
   const handleDeletePages = (doc: PDFDocument) => {
-    setInputState({
+    setPageSelectorState({
       isOpen: true,
       title: "Delete Pages",
-      message:
-        "Enter the page numbers to delete (comma separated, e.g. 1, 3, 5):",
-      placeholder: "1, 3, 5",
-      onConfirm: async (text) => {
-        setInputState((prev) => ({ ...prev, isOpen: false }));
-        if (!text) return;
+      docId: doc.id,
+      pageCount: doc.pageCount || 0,
+      onConfirm: async (selectedPages) => {
+        setPageSelectorState((prev) => ({ ...prev, isOpen: false }));
+        if (selectedPages.length === 0) return;
 
-        const indices = text
-          .split(",")
-          .map((n) => parseInt(n.trim(), 10) - 1)
-          .filter((n) => !isNaN(n));
-        if (indices.length === 0) return;
+        // Convert to 0-based indices for PDFLib
+        const indices = selectedPages.map(p => p - 1);
 
         let isCancelled = false;
         startProcessing("Deleting pages...", true, () => {
@@ -1680,12 +1780,16 @@ function App() {
             type: "application/pdf",
           });
           const newPageCount = (doc.pageCount || 0) - indices.length;
-          updateDocumentFile(
+          await updateDocumentFile(
             doc.id,
             newFile,
             newPageCount > 0 ? newPageCount : undefined,
+            {
+              type: 'delete_pages',
+              params: { description: `Deleted ${indices.length} pages` }
+            }
           );
-          addLog("Delete Pages", `Deleted pages: ${text}`, doc.name);
+          addLog("Delete Pages", `Deleted pages: ${selectedPages.join(", ")}`, doc.name);
         } catch (e) {
           if (isCancelled) return;
           console.error(e);
@@ -1697,7 +1801,7 @@ function App() {
         } finally {
           if (!isCancelled) stopProcessing();
         }
-      },
+      }
     });
   };
 
@@ -2023,19 +2127,15 @@ function App() {
   };
 
   const handleOcr = (doc: PDFDocument) => {
-    setInputState({
+    setPageSelectorState({
       isOpen: true,
       title: "OCR (Text Recognition)",
-      message: `Enter the page numbers to process (comma separated, e.g., 1, 3, 5). Max pages: ${doc.pageCount}. Default is 1.`,
-      placeholder: "1",
-      defaultValue: "1",
-      onConfirm: async (text) => {
-        setInputState((prev) => ({ ...prev, isOpen: false }));
+      docId: doc.id,
+      pageCount: doc.pageCount || 0,
+      onConfirm: async (selectedPages) => {
+        setPageSelectorState((prev) => ({ ...prev, isOpen: false }));
 
-        let pagesToProcess: number[] = [];
-        if (text) {
-          pagesToProcess = text.split(",").map(n => parseInt(n.trim(), 10)).filter(n => !isNaN(n));
-        }
+        let pagesToProcess = selectedPages;
         if (pagesToProcess.length === 0) pagesToProcess = [1];
 
         let isCancelled = false;
@@ -2072,7 +2172,7 @@ function App() {
         } finally {
           if (!isCancelled) stopProcessing();
         }
-      },
+      }
     });
   };
 
@@ -2295,47 +2395,49 @@ function App() {
   };
 
   const handleHighlight = (doc: PDFDocument) => {
-    setInputState({
-      isOpen: true,
-      title: "Highlight Text",
-      message: "Enter the text you want to highlight:",
-      placeholder: "e.g. Important Clause",
-      onConfirm: async (text) => {
-        setInputState((prev) => ({ ...prev, isOpen: false }));
-        if (!text) return;
+    setInteractiveHighlightState({ isOpen: true, docId: doc.id });
+  };
 
-        let isCancelled = false;
-        startProcessing("Highlighting text...", true, () => {
-          isCancelled = true;
-          stopProcessing();
-        });
+  const executeHighlight = async (texts: string[]) => {
+    const docId = interactiveHighlightState.docId;
+    if (!docId) return;
+    setInteractiveHighlightState({ isOpen: false, docId: null });
+    const doc = documents.find(d => d.id === docId);
+    if (!doc) return;
 
-        try {
-          const arrayBuffer = await doc.file.arrayBuffer();
-          const pdfBytes = new Uint8Array(arrayBuffer);
-          const highlightedBytes = await highlightPdf(pdfBytes, [text]);
-          if (isCancelled) return;
-
-          const standardBuffer = new Uint8Array(highlightedBytes.length);
-          standardBuffer.set(highlightedBytes);
-          const newFile = new File([standardBuffer], doc.name, {
-            type: "application/pdf",
-          });
-          await updateDocumentFile(doc.id, newFile);
-          addLog("Highlight", `Highlighted text: "${text}"`, doc.name);
-        } catch (e) {
-          if (isCancelled) return;
-          console.error(e);
-          setErrorState({
-            isOpen: true,
-            title: "Highlight Error",
-            message: "An error occurred while highlighting text.",
-          });
-        } finally {
-          if (!isCancelled) stopProcessing();
-        }
-      },
+    let isCancelled = false;
+    startProcessing("Highlighting text...", true, () => {
+      isCancelled = true;
+      stopProcessing();
     });
+
+    try {
+      const arrayBuffer = await doc.file.arrayBuffer();
+      const pdfBytes = new Uint8Array(arrayBuffer);
+      const highlightedBytes = await highlightPdf(pdfBytes, texts);
+      if (isCancelled) return;
+
+      const standardBuffer = new Uint8Array(highlightedBytes.length);
+      standardBuffer.set(highlightedBytes);
+      const newFile = new File([standardBuffer], doc.name, {
+        type: "application/pdf",
+      });
+      await updateDocumentFile(doc.id, newFile, undefined, {
+        type: 'other',
+        params: { description: `Highlighted texts: ${texts.join(", ")}` }
+      });
+      addLog("Highlight", `Highlighted text`, doc.name);
+    } catch (e) {
+      if (isCancelled) return;
+      console.error(e);
+      setErrorState({
+        isOpen: true,
+        title: "Highlight Error",
+        message: "An error occurred while highlighting text.",
+      });
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
   };
 
 
@@ -2510,51 +2612,51 @@ function App() {
   };
 
   const handleReorderPages = (doc: PDFDocument) => {
-    setInputState({
-      isOpen: true,
-      title: "Reorder Pages",
-      message: `Enter the new order of pages (comma separated, e.g. 3, 1, 2) [Total Pages: ${doc.pageCount}]:`,
-      placeholder: "3, 1, 2",
-      onConfirm: async (text) => {
-        setInputState((prev) => ({ ...prev, isOpen: false }));
-        if (!text) return;
+    setSingleReorderState({ isOpen: true, docId: doc.id });
+  };
 
-        const indices = text
-          .split(",")
-          .map((n) => parseInt(n.trim(), 10) - 1)
-          .filter((n) => !isNaN(n));
-        if (indices.length === 0) return;
+  const executeSingleReorder = async (newOrder: number[]) => {
+    const docId = singleReorderState.docId;
+    setSingleReorderState({ isOpen: false, docId: null });
+    if (!docId) return;
 
-        let isCancelled = false;
-        startProcessing("Reordering pages...", true, () => {
-          isCancelled = true;
-          stopProcessing();
-        });
+    const doc = documents.find(d => d.id === docId);
+    if (!doc) return;
 
-        try {
-          const reorderedBytes = await reorderPages(doc.file, indices);
-          if (isCancelled) return;
+    // Convert to 0-based indices
+    const indices = newOrder.map(n => n - 1);
 
-          const standardBuffer = new Uint8Array(reorderedBytes.length);
-          standardBuffer.set(reorderedBytes);
-          const newFile = new File([standardBuffer], doc.name, {
-            type: "application/pdf",
-          });
-          await updateDocumentFile(doc.id, newFile);
-          addLog("Reorder Pages", `Reordered pages to: ${text}`, doc.name);
-        } catch (e) {
-          if (isCancelled) return;
-          console.error(e);
-          setErrorState({
-            isOpen: true,
-            title: "Reorder Error",
-            message: "An error occurred while reordering pages.",
-          });
-        } finally {
-          if (!isCancelled) stopProcessing();
-        }
-      },
+    let isCancelled = false;
+    startProcessing("Reordering pages...", true, () => {
+      isCancelled = true;
+      stopProcessing();
     });
+
+    try {
+      const reorderedBytes = await reorderPages(doc.file, indices);
+      if (isCancelled) return;
+
+      const standardBuffer = new Uint8Array(reorderedBytes.length);
+      standardBuffer.set(reorderedBytes);
+      const newFile = new File([standardBuffer], doc.name, {
+        type: "application/pdf",
+      });
+      await updateDocumentFile(doc.id, newFile, undefined, {
+        type: 'reorder',
+        params: { description: `Reordered pages` }
+      });
+      addLog("Reorder Pages", `Reordered pages to: ${newOrder.join(", ")}`, doc.name);
+    } catch (e) {
+      if (isCancelled) return;
+      console.error(e);
+      setErrorState({
+        isOpen: true,
+        title: "Reorder Error",
+        message: "Failed to reorder pages.",
+      });
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
   };
 
   return (
@@ -2596,6 +2698,17 @@ function App() {
         onConfirm={executeSplit}
         onCancel={() => setSplitModalState({ isOpen: false, doc: null })}
       />
+      <PageSelectorModal
+        isOpen={pageSelectorState.isOpen}
+        title={pageSelectorState.title}
+        docId={pageSelectorState.docId || ""}
+        pageCount={pageSelectorState.pageCount}
+        singleSelection={pageSelectorState.singleSelection}
+        thumbnailCache={thumbnailCache}
+        setThumbnailCache={setThumbnailCache}
+        onConfirm={pageSelectorState.onConfirm}
+        onCancel={() => setPageSelectorState(prev => ({ ...prev, isOpen: false }))}
+      />
       <ErrorModal
         isOpen={errorState.isOpen}
         title={errorState.title}
@@ -2612,6 +2725,26 @@ function App() {
         isOpen={isCrossReorderOpen}
         onClose={() => setIsCrossReorderOpen(false)}
         onApply={handleCrossReorderApply}
+      />
+      <SingleDocumentReorder
+        isOpen={singleReorderState.isOpen}
+        docId={singleReorderState.docId}
+        onClose={() => setSingleReorderState({ isOpen: false, docId: null })}
+        onApply={executeSingleReorder}
+        thumbnailCache={thumbnailCache}
+        setThumbnailCache={setThumbnailCache}
+      />
+      <InteractiveHighlightModal
+        isOpen={interactiveHighlightState.isOpen}
+        docId={interactiveHighlightState.docId}
+        onClose={() => setInteractiveHighlightState({ isOpen: false, docId: null })}
+        onApply={executeHighlight}
+      />
+      <VisualWatermarkModal
+        isOpen={visualWatermarkState.isOpen}
+        docId={visualWatermarkState.docId}
+        onClose={() => setVisualWatermarkState({ isOpen: false, docId: null })}
+        onApply={executeWatermark}
       />
       {documents.length === 0 ? (
         <div className="flex flex-col h-screen">

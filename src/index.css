@@ -3,3 +3,28 @@
 @theme {
   --color-primary: #3b82f6; /* blue-500 */
 }
+/* PDF.js Text Layer styling for native text selection */
+.textLayer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  opacity: 0.2; /* Make it invisible but selectable. Set to 0.2 to see text layer for debugging if needed */
+  line-height: 1.0;
+  color: transparent;
+}
+
+.textLayer ::selection {
+  background: rgba(0, 0, 255, 0.3);
+  color: transparent;
+}
+
+.textLayer span {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
