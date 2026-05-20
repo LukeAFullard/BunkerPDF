@@ -29,7 +29,11 @@ export function InteractiveHighlightModal({ isOpen, docId, onClose, onApply }: I
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [selectedTexts, setSelectedTexts] = useState<Set<string>>(new Set());
+  interface HighlightData {
+    text: string;
+    rects: { left: number; top: number; width: number; height: number; page: number }[];
+  }
+  const [highlights, setHighlights] = useState<HighlightData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const renderTaskRef = useRef<pdfjsLib.RenderTask | null>(null);
@@ -152,17 +156,34 @@ export function InteractiveHighlightModal({ isOpen, docId, onClose, onApply }: I
     const selection = window.getSelection();
     if (selection && selection.toString().trim().length > 0) {
       const text = selection.toString().trim();
-      setSelectedTexts(prev => new Set(prev).add(text));
+
+      const layerRect = textLayerRef.current?.getBoundingClientRect();
+      const rects: { left: number; top: number; width: number; height: number; page: number }[] = [];
+
+      if (layerRect) {
+        for (let i = 0; i < selection.rangeCount; i++) {
+          const range = selection.getRangeAt(i);
+          const clientRects = range.getClientRects();
+          for (let j = 0; j < clientRects.length; j++) {
+            const r = clientRects[j];
+            rects.push({
+              left: (r.left - layerRect.left) / layerRect.width,
+              top: (r.top - layerRect.top) / layerRect.height,
+              width: r.width / layerRect.width,
+              height: r.height / layerRect.height,
+              page: currentPage
+            });
+          }
+        }
+      }
+
+      setHighlights(prev => [...prev, { text, rects }]);
       selection.removeAllRanges(); // clear selection after adding
     }
   };
 
-  const removeText = (text: string) => {
-    setSelectedTexts(prev => {
-      const newSet = new Set(prev);
-      newSet.delete(text);
-      return newSet;
-    });
+  const removeHighlight = (index: number) => {
+    setHighlights(prev => prev.filter((_, i) => i !== index));
   };
 
   if (!isOpen || !doc) return null;
@@ -216,8 +237,26 @@ export function InteractiveHighlightModal({ isOpen, docId, onClose, onApply }: I
                 <div
                   ref={textLayerRef}
                   className="absolute inset-0 textLayer"
-                  style={{ opacity: 0.2 }} // slightly visible for debugging, usually 0 or transparent via CSS
+                  style={{ opacity: 0.2 }}
                 />
+                <div className="absolute inset-0 pointer-events-none" style={{ mixBlendMode: 'multiply' }}>
+                  {highlights.filter(h => h.rects.some(r => r.page === currentPage)).map((h, i) => (
+                    <div key={i}>
+                      {h.rects.filter(r => r.page === currentPage).map((rect, j) => (
+                        <div
+                          key={j}
+                          className="absolute bg-yellow-300 opacity-50"
+                          style={{
+                            left: `${rect.left * 100}%`,
+                            top: `${rect.top * 100}%`,
+                            width: `${rect.width * 100}%`,
+                            height: `${rect.height * 100}%`,
+                          }}
+                        />
+                      ))}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
@@ -233,16 +272,16 @@ export function InteractiveHighlightModal({ isOpen, docId, onClose, onApply }: I
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-2">
-            {selectedTexts.size === 0 ? (
+            {highlights.length === 0 ? (
               <div className="text-center text-sm text-gray-400 mt-10">
                 No text selected yet.
               </div>
             ) : (
-              Array.from(selectedTexts).map((text, i) => (
+              highlights.map((h, i) => (
                 <div key={i} className="bg-yellow-50 border border-yellow-200 rounded p-2 text-sm flex justify-between items-start gap-2 group">
-                  <span className="line-clamp-3 text-gray-800 font-medium">{text}</span>
+                  <span className="line-clamp-3 text-gray-800 font-medium">{h.text}</span>
                   <button
-                    onClick={() => removeText(text)}
+                    onClick={() => removeHighlight(i)}
                     className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
                   >
                     <X className="w-4 h-4" />
@@ -254,8 +293,8 @@ export function InteractiveHighlightModal({ isOpen, docId, onClose, onApply }: I
 
           <div className="p-4 border-t bg-gray-50 flex flex-col gap-2">
             <button
-              onClick={() => onApply(Array.from(selectedTexts))}
-              disabled={selectedTexts.size === 0}
+              onClick={() => onApply(highlights.map(h => h.text))}
+              disabled={highlights.length === 0}
               className="w-full py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Check className="w-4 h-4" />
