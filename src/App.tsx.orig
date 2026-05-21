@@ -40,7 +40,6 @@ import type { WorkflowRecipe } from "./store/recipeStore";
 import { ErrorModal } from "./components/ui/ErrorModal";
 import { InputModal } from "./components/ui/InputModal";
 import { PageSelectorModal } from "./components/ui/PageSelectorModal";
-import { RotateModal } from "./components/ui/RotateModal";
 import { ProcessingModal } from "./components/ui/ProcessingModal";
 import { FeedbackPrompt } from "./components/ui/FeedbackPrompt";
 import { PWAInstallPrompt } from "./components/ui/PWAInstallPrompt";
@@ -403,14 +402,6 @@ function App() {
     pageCount: 0,
     onConfirm: () => {},
   });
-
-  const [rotateModalState, setRotateModalState] = useState<{
-    isOpen: boolean;
-    title: string;
-    docId: string | null;
-    pageCount: number;
-    onConfirm: (rotations: Record<number, number>) => void;
-  }>({ isOpen: false, title: "", docId: null, pageCount: 0, onConfirm: () => {} });
 
   const [thumbnailCache, setThumbnailCache] = useState<Record<string, string>>({});
 
@@ -1634,16 +1625,14 @@ function App() {
   };
 
   const handleRotate = (doc: PDFDocument) => {
-    setRotateModalState({
+    setPageSelectorState({
       isOpen: true,
       title: "Rotate Pages",
       docId: doc.id,
       pageCount: doc.pageCount || 0,
-      onConfirm: async (pageRotations) => {
-        setRotateModalState((prev) => ({ ...prev, isOpen: false }));
-
-        const rotatedPagesCount = Object.values(pageRotations).filter(r => r !== 0).length;
-        if (rotatedPagesCount === 0) return;
+      onConfirm: async (selectedPages) => {
+        setPageSelectorState((prev) => ({ ...prev, isOpen: false }));
+        if (selectedPages.length === 0) return;
 
         let isCancelled = false;
         startProcessing("Rotating pages...", true, () => {
@@ -1652,7 +1641,7 @@ function App() {
         });
 
         try {
-          const rotatedBytes = await rotatePdf(doc.file, pageRotations);
+          const rotatedBytes = await rotatePdf(doc.file, 90, selectedPages);
           if (isCancelled) return;
 
           const standardBuffer = new Uint8Array(rotatedBytes.length);
@@ -1661,7 +1650,7 @@ function App() {
             type: "application/pdf",
           });
           await updateDocumentFile(doc.id, newFile);
-          addLog("Rotate", `Rotated ${rotatedPagesCount} pages.`, doc.name);
+          addLog("Rotate", `Rotated ${selectedPages.length} pages by 90 degrees.`, doc.name);
         } catch (e) {
           if (isCancelled) return;
           console.error(e);
@@ -2730,16 +2719,6 @@ function App() {
         setThumbnailCache={setThumbnailCache}
         onConfirm={pageSelectorState.onConfirm}
         onCancel={() => setPageSelectorState(prev => ({ ...prev, isOpen: false }))}
-      />
-      <RotateModal
-        isOpen={rotateModalState.isOpen}
-        title={rotateModalState.title}
-        docId={rotateModalState.docId || ""}
-        pageCount={rotateModalState.pageCount}
-        thumbnailCache={thumbnailCache}
-        setThumbnailCache={setThumbnailCache}
-        onConfirm={rotateModalState.onConfirm}
-        onCancel={() => setRotateModalState(prev => ({ ...prev, isOpen: false }))}
       />
       <ErrorModal
         isOpen={errorState.isOpen}
