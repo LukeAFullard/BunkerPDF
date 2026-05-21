@@ -436,7 +436,7 @@ function App() {
 
   const [isCrossReorderOpen, setIsCrossReorderOpen] = useState(false);
   const [isBatchMenuOpen, setIsBatchMenuOpen] = useState(false);
-  const [metadataModalState, setMetadataModalState] = useState<{ isOpen: boolean, metadata: Record<string, string> | null }>({ isOpen: false, metadata: null });
+  const [metadataModalState, setMetadataModalState] = useState<{ isOpen: boolean, metadata: { standard: Record<string, string>, xmp: string } | null, doc: PDFDocument | null }>({ isOpen: false, metadata: null, doc: null });
   const batchMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -826,6 +826,33 @@ function App() {
         type: "EXTRACT_METADATA",
         jobId,
         pdfBytes,
+      });
+    });
+  };
+
+
+  const editMetadata = (pdfBytes: Uint8Array, metadata: { standard: Record<string, string>, xmp: string }): Promise<Uint8Array> => {
+    return new Promise((resolve, reject) => {
+      const jobId = Date.now().toString();
+      const messageHandler = (e: MessageEvent) => {
+        if (e.data.jobId === jobId) {
+          if (e.data.type === "RESULT") {
+            pyodideWorkerRef.current?.removeEventListener("message", messageHandler);
+            resolve(e.data.result);
+          } else if (e.data.type === "ERROR") {
+            pyodideWorkerRef.current?.removeEventListener("message", messageHandler);
+            reject(new Error(e.data.error));
+          } else if (e.data.type === "PROGRESS") {
+            useEngineStore.getState().setPyodideStatus("loading", null, e.data.stage);
+          }
+        }
+      };
+      pyodideWorkerRef.current?.addEventListener("message", messageHandler);
+      pyodideWorkerRef.current?.postMessage({
+        type: "EDIT_METADATA",
+        jobId,
+        pdfBytes,
+        metadata,
       });
     });
   };
@@ -1933,8 +1960,50 @@ function App() {
   };
 
 
-  const handleViewMetadata = (metadata: Record<string, string>) => {
-    setMetadataModalState({ isOpen: true, metadata });
+  const handleViewMetadata = (doc: PDFDocument, metadata: { standard: Record<string, string>; xmp: string }) => {
+    setMetadataModalState({ isOpen: true, metadata, doc });
+  };
+
+
+  const handleSaveMetadata = async (newMetadata: { standard: Record<string, string>; xmp: string }) => {
+    const docToUpdate = metadataModalState.doc;
+    if (!docToUpdate) return;
+
+    let isCancelled = false;
+    startProcessing("Updating metadata...", true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
+    try {
+      const buffer = await docToUpdate.file.arrayBuffer();
+      const pdfBytes = new Uint8Array(buffer);
+      const updatedBytes = await editMetadata(pdfBytes, newMetadata);
+      if (isCancelled) return;
+
+      const standardBuffer = new Uint8Array(updatedBytes.length);
+      standardBuffer.set(updatedBytes);
+      const newFile = new File([standardBuffer], docToUpdate.file.name, { type: "application/pdf" });
+      await updateDocumentFile(docToUpdate.id, newFile, docToUpdate.pageCount, {
+        type: "other",
+        timestamp: Date.now(),
+        params: { action: "Edit Metadata" }
+      });
+
+      setMetadataModalState({ isOpen: false, metadata: null, doc: null });
+      addLog("Edit Metadata", "Updated document metadata.", docToUpdate.name);
+      useUIStore.getState().showFeedbackPrompt("Edit Metadata");
+    } catch (err: any) {
+      if (isCancelled) return;
+      console.error(err);
+      setErrorState({
+        isOpen: true,
+        title: "Metadata Update Error",
+        message: err.message || "An error occurred while updating metadata."
+      });
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
   };
 
   const handleVerifySignature = async (doc: PDFDocument) => {
@@ -2719,7 +2788,9 @@ function App() {
       <MetadataModal
         isOpen={metadataModalState.isOpen}
         metadata={metadataModalState.metadata}
-        onClose={() => setMetadataModalState({ isOpen: false, metadata: null })}
+        onClose={() => setMetadataModalState({ isOpen: false, metadata: null, doc: null })}
+        onSave={handleSaveMetadata}
+        isSaving={isGlobalProcessing}
       />
       <PrivacyAuditLogModal
         isOpen={isAuditModalOpen}

@@ -46,7 +46,7 @@ interface DocumentCardProps {
   extractLinks?: (bytes: Uint8Array) => Promise<string>;
   extractAnnotations?: (bytes: Uint8Array) => Promise<string>;
   extractMetadata?: (bytes: Uint8Array) => Promise<string>;
-  onViewMetadata?: (metadata: Record<string, string>) => void;
+  onViewMetadata?: (doc: PDFDocument, metadata: { standard: Record<string, string>; xmp: string }) => void;
   extractBookmarks?: (bytes: Uint8Array) => Promise<string>;
   editBookmarks?: (bytes: Uint8Array, bookmarks: Bookmark[]) => Promise<Uint8Array>;
   redactPdf: (bytes: Uint8Array, redactions: string[]) => Promise<Uint8Array>;
@@ -702,7 +702,7 @@ export function DocumentCard({
       if (isCancelled) return;
 
       const metadata = JSON.parse(jsonMetadata);
-      onViewMetadata(metadata);
+      onViewMetadata(doc, metadata);
     } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
       if (isCancelled) return;
       console.error(err);
@@ -891,7 +891,7 @@ items={[
             { variant: "separator" },
             { label: "Protect (Password) (~2s)", onClick: () => onEncrypt?.(doc) },
             (doc.isEncrypted ? { label: "Unlock (Remove Password)", onClick: () => onUnlock?.(doc) } : null),
-            { label: "View Metadata (~2s)", onClick: handleViewMetadataLocal },
+            { label: "Edit Metadata (~2s)", onClick: handleViewMetadataLocal },
             { label: "Sanitize & Send (~Instant)", onClick: () => onSanitize?.(doc) },
             { label: "Flatten Forms (~1s)", onClick: () => onFlatten?.(doc) },
             { variant: "separator" },

@@ -22,6 +22,7 @@ export type PyodideWorkerMessage = {
     | "EXTRACT_LINKS"
     | "EXTRACT_ANNOTATIONS"
     | "EXTRACT_METADATA"
+    | "EDIT_METADATA"
     | "EXTRACT_BOOKMARKS"
     | "EDIT_BOOKMARKS"
     | "DOCX_TO_PDF"
@@ -38,6 +39,7 @@ export type PyodideWorkerMessage = {
   pageCount?: number;
   highlights?: string[];
   password?: string;
+  metadata?: { standard: Record<string, string>, xmp: string };
   csvData?: string;
   bookmarks?: { level: number; title: string; page: number }[];
 };
@@ -201,7 +203,7 @@ for page in doc:
         for r in rl:
             page.add_redact_annot(r, fill=(0, 0, 0))
     page.apply_redactions()
-out_bytes = doc.write()
+out_bytes = doc.tobytes()
 doc.close()
 bytes(out_bytes)
       `;
@@ -602,7 +604,7 @@ doc = fitz.open(stream=bytes(doc_bytes), filetype="pdf")
 py_toc = [[item[0], item[1], item[2]] for item in toc_data]
 doc.set_toc(py_toc)
 
-out_bytes = doc.write()
+out_bytes = doc.tobytes()
 doc.close()
 del doc, doc_bytes, toc_data
 out_bytes
@@ -665,7 +667,10 @@ import fitz
 import json
 
 doc = fitz.open(stream=bytes(doc_bytes), filetype="pdf")
-metadata = doc.metadata
+metadata = {
+    "standard": doc.metadata,
+    "xmp": doc.get_xml_metadata()
+}
 doc.close()
 del doc, doc_bytes
 json.dumps(metadata)
@@ -676,6 +681,45 @@ json.dumps(metadata)
         type: "RESULT",
         jobId,
         result: jsonMetadata,
+      } satisfies PyodideWorkerResponse);
+
+    } else if (type === "EDIT_METADATA") {
+      if (!initPromise) initPromise = initializePyodide();
+      await initPromise;
+      if (!pyodide) throw new Error("Pyodide not initialized");
+      if (!pdfBytes) throw new Error("No PDF bytes provided");
+
+      const { metadata } = e.data;
+      if (!metadata) throw new Error("No metadata provided");
+
+      pyodide.globals.set("doc_bytes", pdfBytes);
+      pyodide.globals.set("metadata_str", JSON.stringify(metadata));
+
+      const editMetadataCode = `
+import fitz
+import json
+
+doc = fitz.open(stream=bytes(doc_bytes), filetype="pdf")
+metadata_dict = json.loads(metadata_str)
+
+if "standard" in metadata_dict:
+    doc.set_metadata(metadata_dict["standard"])
+if "xmp" in metadata_dict:
+    doc.set_xml_metadata(metadata_dict["xmp"])
+
+out_bytes = doc.tobytes()
+doc.close()
+del doc, doc_bytes
+bytes(out_bytes)
+`;
+      const pdfBytesProxy = await pyodide.runPythonAsync(editMetadataCode);
+      const pdfBytesOut = pdfBytesProxy.toJs();
+      const resultBytes = new Uint8Array(pdfBytesOut);
+
+      self.postMessage({
+        type: "RESULT",
+        jobId,
+        result: resultBytes,
       } satisfies PyodideWorkerResponse);
 
 } else if (type === "EXTRACT_ANNOTATIONS") {
