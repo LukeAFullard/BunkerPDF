@@ -14,6 +14,13 @@ interface SortableItemProps {
   setThumbnailCache: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   onMoveToFront?: () => void;
   onMoveToEnd?: () => void;
+  isSelected?: boolean;
+  onSelectToggle?: (e: React.MouseEvent | React.TouchEvent) => void;
+  isOverlay?: boolean;
+  badgeCount?: number;
+  thumbnailSize?: number;
+  rotation?: number;
+  fade?: boolean;
 }
 
 export function SortableItem({
@@ -23,7 +30,14 @@ export function SortableItem({
   thumbnailCache,
   setThumbnailCache,
   onMoveToFront,
-  onMoveToEnd
+  onMoveToEnd,
+  isSelected = false,
+  onSelectToggle,
+  isOverlay = false,
+  badgeCount = 0,
+  thumbnailSize = 120,
+  rotation = 0,
+  fade = false,
 }: SortableItemProps) {
   const {
     attributes,
@@ -74,8 +88,8 @@ export function SortableItem({
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    zIndex: isDragging || contextMenu ? 10 : 1,
-    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging || isOverlay || contextMenu ? 10 : 1,
+    opacity: isDragging || fade ? 0.3 : 1,
     touchAction: 'none' as const,
   };
 
@@ -121,20 +135,47 @@ export function SortableItem({
             listeners.onTouchEnd(e as any);
           }
         }}
-        className="relative p-2 bg-white border border-gray-200 rounded-lg shadow-sm cursor-grab active:cursor-grabbing hover:border-blue-400 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+        className={`relative p-2 bg-white border rounded-lg shadow-sm cursor-grab active:cursor-grabbing group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${isSelected ? 'border-blue-500 ring-2 ring-blue-500' : 'border-gray-200 hover:border-blue-400'}`}
         tabIndex={0}
         role="button"
         aria-label={`Page ${pageNumber}`}
       >
-      <PDFPageThumbnail
-        docId={docId}
-        pageNumber={pageNumber}
-        width={120}
-        className="rounded"
-        thumbnailCache={thumbnailCache}
-        setThumbnailCache={setThumbnailCache}
-      />
-        <div className="absolute top-1 left-1 bg-black/50 text-white text-[10px] px-1.5 py-0.5 rounded font-medium backdrop-blur-sm group-hover:bg-blue-600/80 transition-colors">
+        {onSelectToggle && (
+          <div
+            className="absolute top-2 left-2 z-10 cursor-pointer"
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelectToggle(e);
+            }}
+            onPointerDown={(e) => e.stopPropagation()} // Prevent drag when clicking checkbox
+          >
+            <input
+              type="checkbox"
+              checked={isSelected}
+              readOnly
+              className="w-4 h-4 text-blue-600 bg-white border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
+            />
+          </div>
+        )}
+
+        <div style={{ transform: `rotate(${rotation}deg)`, transition: 'transform 0.2s ease-in-out' }}>
+          <PDFPageThumbnail
+            docId={docId}
+            pageNumber={pageNumber}
+            width={thumbnailSize}
+            className="rounded"
+            thumbnailCache={thumbnailCache}
+            setThumbnailCache={setThumbnailCache}
+          />
+        </div>
+
+        {badgeCount > 1 && (
+          <div className="absolute -top-3 -right-3 bg-blue-600 text-white text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center shadow-md z-20">
+            {badgeCount}
+          </div>
+        )}
+
+        <div className={`absolute bottom-1 right-1 bg-black/50 text-white text-[10px] px-1.5 py-0.5 rounded font-medium backdrop-blur-sm transition-colors ${isSelected ? 'bg-blue-600/90' : 'group-hover:bg-blue-600/80'}`}>
           {pageNumber}
         </div>
 

@@ -451,7 +451,7 @@ export async function resizePages(file: File, targetSizeStr: string = 'A4'): Pro
 
 export async function crossDocumentReorderPages(
   originalFiles: Record<string, File>,
-  newStructures: Record<string, { docId: string; originalPageNumber: number }[]>
+  newStructures: Record<string, { docId: string; originalPageNumber: number; rotation?: number }[]>
 ): Promise<Record<string, Uint8Array>> {
   const result: Record<string, Uint8Array> = {};
   const loadedDocs: Record<string, PDFDocument> = {};
@@ -504,7 +504,12 @@ export async function crossDocumentReorderPages(
       const index = pageInfo.originalPageNumber - 1;
 
       if (copiedPagesMap[sourceDocId] && copiedPagesMap[sourceDocId][index] && copiedPagesMap[sourceDocId][index].length > 0) {
-         newDoc.addPage(copiedPagesMap[sourceDocId][index].shift());
+         const page = copiedPagesMap[sourceDocId][index].shift();
+         if (pageInfo.rotation && pageInfo.rotation % 360 !== 0) {
+           const currentRotation = page.getRotation().angle;
+           page.setRotation(degrees(currentRotation + pageInfo.rotation));
+         }
+         newDoc.addPage(page);
       }
     }
 
