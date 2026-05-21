@@ -21,6 +21,7 @@ export type PyodideWorkerMessage = {
     | "EXTRACT_IMAGES"
     | "EXTRACT_LINKS"
     | "EXTRACT_ANNOTATIONS"
+    | "EXTRACT_METADATA"
     | "EXTRACT_BOOKMARKS"
     | "EDIT_BOOKMARKS"
     | "DOCX_TO_PDF"
@@ -652,7 +653,32 @@ json.dumps(links)
         result: jsonLinks,
       } satisfies PyodideWorkerResponse);
 
-    } else if (type === "EXTRACT_ANNOTATIONS") {
+    } else if (type === "EXTRACT_METADATA") {
+      if (!initPromise) initPromise = initializePyodide();
+      await initPromise;
+      if (!pyodide) throw new Error("Pyodide not initialized");
+      if (!pdfBytes) throw new Error("No PDF bytes provided");
+
+      pyodide.globals.set("doc_bytes", pdfBytes);
+      const extractMetadataCode = `
+import fitz
+import json
+
+doc = fitz.open(stream=bytes(doc_bytes), filetype="pdf")
+metadata = doc.metadata
+doc.close()
+del doc, doc_bytes
+json.dumps(metadata)
+`;
+      const jsonMetadata = await pyodide.runPythonAsync(extractMetadataCode);
+
+      self.postMessage({
+        type: "RESULT",
+        jobId,
+        result: jsonMetadata,
+      } satisfies PyodideWorkerResponse);
+
+} else if (type === "EXTRACT_ANNOTATIONS") {
       if (!initPromise) initPromise = initializePyodide();
       await initPromise;
       if (!pyodide) throw new Error("Pyodide not initialized");

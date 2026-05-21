@@ -45,6 +45,8 @@ interface DocumentCardProps {
   extractImages?: (bytes: Uint8Array) => Promise<Uint8Array>;
   extractLinks?: (bytes: Uint8Array) => Promise<string>;
   extractAnnotations?: (bytes: Uint8Array) => Promise<string>;
+  extractMetadata?: (bytes: Uint8Array) => Promise<string>;
+  onViewMetadata?: (metadata: Record<string, string>) => void;
   extractBookmarks?: (bytes: Uint8Array) => Promise<string>;
   editBookmarks?: (bytes: Uint8Array, bookmarks: Bookmark[]) => Promise<Uint8Array>;
   redactPdf: (bytes: Uint8Array, redactions: string[]) => Promise<Uint8Array>;
@@ -90,6 +92,8 @@ export function DocumentCard({
   extractImages,
   extractLinks,
   extractAnnotations,
+  extractMetadata,
+  onViewMetadata,
   extractBookmarks,
   editBookmarks,
   redactPdf,
@@ -682,6 +686,36 @@ export function DocumentCard({
     }
   };
 
+
+  const handleViewMetadataLocal = async () => {
+    if (!extractMetadata || !onViewMetadata) return;
+    let isCancelled = false;
+    startProcessing("Extracting metadata...", true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
+    try {
+      const buffer = await doc.file.arrayBuffer();
+      const pdfBytes = new Uint8Array(buffer);
+      const jsonMetadata = await extractMetadata(pdfBytes);
+      if (isCancelled) return;
+
+      const metadata = JSON.parse(jsonMetadata);
+      onViewMetadata(metadata);
+    } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+      if (isCancelled) return;
+      console.error(err);
+      setErrorState({
+        isOpen: true,
+        title: "Metadata Error",
+        message: err.message || "An error occurred while extracting metadata.",
+      });
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
+  };
+
   const handleExtractImages = async () => {
     let isCancelled = false;
     startProcessing("Initializing Pyodide (First load takes longer)...", true, () => {
@@ -857,6 +891,7 @@ items={[
             { variant: "separator" },
             { label: "Protect (Password) (~2s)", onClick: () => onEncrypt?.(doc) },
             (doc.isEncrypted ? { label: "Unlock (Remove Password)", onClick: () => onUnlock?.(doc) } : null),
+            { label: "View Metadata (~2s)", onClick: handleViewMetadataLocal },
             { label: "Sanitize & Send (~Instant)", onClick: () => onSanitize?.(doc) },
             { label: "Flatten Forms (~1s)", onClick: () => onFlatten?.(doc) },
             { variant: "separator" },

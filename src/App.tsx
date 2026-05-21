@@ -32,6 +32,7 @@ import { VisualWatermarkModal } from "./components/pdf/VisualWatermarkModal";
 import { getSmartOutputName } from "./lib/utils";
 import { ocrPdf } from "./lib/ocrEngine";
 import { ReadAloudModal } from "./components/ui/ReadAloudModal";
+import { MetadataModal } from "./components/ui/MetadataModal";
 import { DocumentCard } from "./components/pdf/DocumentCard";
 import { FileTabs } from "./components/ui/FileTabs";
 import { DiffModal } from "./components/pdf/diff/DiffModal";
@@ -435,6 +436,7 @@ function App() {
 
   const [isCrossReorderOpen, setIsCrossReorderOpen] = useState(false);
   const [isBatchMenuOpen, setIsBatchMenuOpen] = useState(false);
+  const [metadataModalState, setMetadataModalState] = useState<{ isOpen: boolean, metadata: Record<string, string> | null }>({ isOpen: false, metadata: null });
   const batchMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -798,6 +800,32 @@ function App() {
         type: "EXPORT_DARK",
         jobId,
         pdfBytes: bytes,
+      });
+    });
+  };
+
+
+  const extractMetadata = (pdfBytes: Uint8Array): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const jobId = Date.now().toString();
+      const messageHandler = (e: MessageEvent) => {
+        if (e.data.jobId === jobId) {
+          if (e.data.type === "RESULT") {
+            pyodideWorkerRef.current?.removeEventListener("message", messageHandler);
+            resolve(e.data.result);
+          } else if (e.data.type === "ERROR") {
+            pyodideWorkerRef.current?.removeEventListener("message", messageHandler);
+            reject(new Error(e.data.error));
+          } else if (e.data.type === "PROGRESS") {
+            useEngineStore.getState().setPyodideStatus("loading", null, e.data.stage);
+          }
+        }
+      };
+      pyodideWorkerRef.current?.addEventListener("message", messageHandler);
+      pyodideWorkerRef.current?.postMessage({
+        type: "EXTRACT_METADATA",
+        jobId,
+        pdfBytes,
       });
     });
   };
@@ -1904,6 +1932,11 @@ function App() {
     }
   };
 
+
+  const handleViewMetadata = (metadata: Record<string, string>) => {
+    setMetadataModalState({ isOpen: true, metadata });
+  };
+
   const handleVerifySignature = async (doc: PDFDocument) => {
     let isCancelled = false;
     startProcessing("Verifying digital signatures...", true, () => {
@@ -2683,6 +2716,11 @@ function App() {
 
   return (
     <div className={`App font-sans min-h-screen flex flex-col ${isDarkMode ? "dark bg-gray-900 text-gray-100" : "bg-gray-50 text-gray-900"}`}>
+      <MetadataModal
+        isOpen={metadataModalState.isOpen}
+        metadata={metadataModalState.metadata}
+        onClose={() => setMetadataModalState({ isOpen: false, metadata: null })}
+      />
       <PrivacyAuditLogModal
         isOpen={isAuditModalOpen}
         onClose={() => setIsAuditModalOpen(false)}
@@ -3003,6 +3041,8 @@ function App() {
                       extractImages={extractImages}
                       extractLinks={extractLinks}
                       extractAnnotations={extractAnnotations}
+                      extractMetadata={extractMetadata}
+                      onViewMetadata={handleViewMetadata}
                       extractBookmarks={extractBookmarks}
                       editBookmarks={editBookmarks}
                       redactPdf={redactPdf}
