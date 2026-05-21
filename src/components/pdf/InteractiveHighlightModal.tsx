@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import 'pdfjs-dist/web/pdf_viewer.css';
-import { X, Check, Highlighter, Search } from 'lucide-react';
+import { X, Check, Highlighter, Search, ZoomIn, ZoomOut } from 'lucide-react';
 import { useFileStore } from '../../store/fileStore';
 import { cleanupPdfResources } from '../../lib/pdfCleanup';
 import { useUIStore } from '../../store/uiStore';
@@ -35,12 +35,14 @@ export function InteractiveHighlightModal({ isOpen, docId, onClose, onApply }: I
   }
   const [highlights, setHighlights] = useState<HighlightData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [zoomLevel, setZoomLevel] = useState(1.0);
 
   const renderTaskRef = useRef<pdfjsLib.RenderTask | null>(null);
   const pdfDocRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
 
   useEffect(() => {
     if (!isOpen || !doc) return;
+    setZoomLevel(1.0);
 
     let isMounted = true;
     setIsLoading(true);
@@ -82,7 +84,7 @@ export function InteractiveHighlightModal({ isOpen, docId, onClose, onApply }: I
       renderPage(currentPage, pdfDocRef.current);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage]);
+  }, [currentPage, zoomLevel]);
 
   const renderPage = async (pageNum: number, pdf: pdfjsLib.PDFDocumentProxy) => {
     setIsLoading(true);
@@ -101,9 +103,11 @@ export function InteractiveHighlightModal({ isOpen, docId, onClose, onApply }: I
       if (!context) return;
 
       // Fixed height to fit well in modal, calc scale
+      // Fixed height to fit well in modal, calc scale
       const viewportHeight = window.innerHeight * 0.6;
       const unscaledViewport = page.getViewport({ scale: 1.0 });
-      const scale = viewportHeight / unscaledViewport.height;
+      const baseScale = viewportHeight / unscaledViewport.height;
+      const scale = baseScale * zoomLevel;
       const viewport = page.getViewport({ scale });
 
       const outputScale = window.devicePixelRatio || 1;
@@ -201,6 +205,23 @@ export function InteractiveHighlightModal({ isOpen, docId, onClose, onApply }: I
             </div>
 
             <div className="flex items-center gap-4">
+              <div className="flex items-center gap-1 border-r pr-4">
+                <button
+                  onClick={() => setZoomLevel(z => Math.max(0.5, z - 0.25))}
+                  className="p-1 hover:bg-gray-100 rounded text-gray-600"
+                  title="Zoom Out"
+                >
+                  <ZoomOut className="w-4 h-4" />
+                </button>
+                <span className="text-xs font-medium w-12 text-center">{Math.round(zoomLevel * 100)}%</span>
+                <button
+                  onClick={() => setZoomLevel(z => Math.min(3.0, z + 0.25))}
+                  className="p-1 hover:bg-gray-100 rounded text-gray-600"
+                  title="Zoom In"
+                >
+                  <ZoomIn className="w-4 h-4" />
+                </button>
+              </div>
                <button
                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                 disabled={currentPage <= 1}
