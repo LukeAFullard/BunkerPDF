@@ -1054,7 +1054,7 @@ function App() {
     });
   };
 
-  const handleCrossReorderApply = async (newStructures: Record<string, { docId: string; originalPageNumber: number }[]>) => {
+  const handleCrossReorderApply = async (newStructures: Record<string, { docId: string; originalPageNumber: number; rotation?: number }[]>) => {
     setIsCrossReorderOpen(false);
     let isCancelled = false;
     startProcessing("Applying cross-document changes...", true, () => {

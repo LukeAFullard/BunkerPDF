@@ -17,12 +17,11 @@ import type {
 } from '@dnd-kit/core';
 import {
   SortableContext,
-  arrayMove,
   sortableKeyboardCoordinates,
   rectSortingStrategy,
 } from '@dnd-kit/sortable';
 import * as pdfjsLib from 'pdfjs-dist';
-import { X, Check } from 'lucide-react';
+import { X, Check, RotateCw, RotateCcw, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
 
 import { useFileStore } from '../../../store/fileStore';
 import { cleanupPdfResources } from '../../../lib/pdfCleanup';
@@ -32,6 +31,7 @@ interface PageItem {
   id: string; // format: docId-originalPageNumber
   docId: string;
   originalPageNumber: number;
+  rotation?: number;
 }
 
 interface DocColumn {
@@ -43,7 +43,7 @@ interface DocColumn {
 interface CrossDocumentReorderProps {
   isOpen: boolean;
   onClose: () => void;
-  onApply: (newStructures: Record<string, { docId: string; originalPageNumber: number }[]>) => void;
+  onApply: (newStructures: Record<string, { docId: string; originalPageNumber: number; rotation?: number }[]>) => void;
 }
 
 export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocumentReorderProps) {
@@ -52,6 +52,10 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
   const [thumbnailCache, setThumbnailCache] = useState<Record<string, string>>({});
   const [activeId, setActiveId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [lastSelectedId, setLastSelectedId] = useState<string | null>(null);
+  const [thumbnailScale, setThumbnailScale] = useState(1);
 
   // Initialize data
   useEffect(() => {
@@ -75,7 +79,7 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
 
           const items: PageItem[] = [];
           for (let i = 1; i <= (numPages || 1); i++) {
-            items.push({ id: `${doc.id}-${i}`, docId: doc.id, originalPageNumber: i });
+            items.push({ id: `${doc.id}-${i}`, docId: doc.id, originalPageNumber: i, rotation: 0 });
           }
 
           initialColumns.push({
@@ -121,7 +125,14 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
 
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event;
-    setActiveId(active.id as string);
+    const activeStr = active.id as string;
+    setActiveId(activeStr);
+
+    // If we drag something that isn't selected, clear selection and select it
+    if (!selectedIds.has(activeStr)) {
+      setSelectedIds(new Set([activeStr]));
+      setLastSelectedId(activeStr);
+    }
   };
 
   const handleDragOver = (event: DragOverEvent) => {
@@ -147,15 +158,26 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
     if (activeColumnIndex !== overColumnIndex) {
       setColumns((prevColumns) => {
         const newColumns = [...prevColumns];
-        const activeItems = [...newColumns[activeColumnIndex].items];
+
+        // Find all selected items and remove them from all columns
+        const movedItems: PageItem[] = [];
+
+        newColumns.forEach((col, colIdx) => {
+          const itemsToKeep = col.items.filter(item => {
+            if (selectedIds.has(item.id)) {
+              movedItems.push(item);
+              return false;
+            }
+            return true;
+          });
+          newColumns[colIdx] = { ...col, items: itemsToKeep };
+        });
+
         const overItems = [...newColumns[overColumnIndex].items];
-
-        const activeItemIndex = activeItems.findIndex((item) => item.id === activeId);
-        const [movedItem] = activeItems.splice(activeItemIndex, 1);
-
         const overItemIndex = overItems.findIndex((item) => item.id === overId);
+
         if (overItemIndex === -1) {
-            overItems.push(movedItem);
+            overItems.push(...movedItems);
         } else {
              const isBelowOverItem =
               over &&
@@ -163,12 +185,10 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
               active.rect.current.translated.top > over.rect.top + over.rect.height;
 
              const modifier = isBelowOverItem ? 1 : 0;
-             overItems.splice(overItemIndex >= 0 ? overItemIndex + modifier : overItems.length + 1, 0, movedItem);
+             overItems.splice(overItemIndex >= 0 ? overItemIndex + modifier : overItems.length + 1, 0, ...movedItems);
         }
 
-        newColumns[activeColumnIndex] = { ...newColumns[activeColumnIndex], items: activeItems };
         newColumns[overColumnIndex] = { ...newColumns[overColumnIndex], items: overItems };
-
         return newColumns;
       });
     }
@@ -184,6 +204,11 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
     const activeId = active.id;
     const overId = over.id;
 
+    if (activeId === overId) {
+       setActiveId(null);
+       return;
+    }
+
     const activeColumnIndex = columns.findIndex((col) => col.items.some((item) => item.id === activeId));
     const overColumnIndex = columns.findIndex((col) => col.docId === overId) !== -1
                             ? columns.findIndex((col) => col.docId === overId)
@@ -191,16 +216,45 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
 
 
     if (activeColumnIndex !== -1 && overColumnIndex !== -1 && activeColumnIndex === overColumnIndex) {
-      const items = columns[activeColumnIndex].items;
-      const oldIndex = items.findIndex((item) => item.id === activeId);
-      const newIndex = items.findIndex((item) => item.id === overId);
+      const items = [...columns[activeColumnIndex].items];
 
-      if (oldIndex !== newIndex) {
+      const newIndex = items.findIndex((item) => item.id === overId);
+      if (newIndex !== -1) {
+        // Find selected items and their relative order
+        const selectedItems = items.filter(item => selectedIds.has(item.id));
+        const unselectedItems = items.filter(item => !selectedIds.has(item.id));
+
+        // Find insert position in the unselected array.
+        // If we drop over a selected item, default to its original position.
+        let targetIndex = unselectedItems.findIndex(item => item.id === overId);
+
+        if (targetIndex === -1) {
+           // Find the closest unselected item before the drop target
+           const originalTargetIndex = items.findIndex(item => item.id === overId);
+           let closestUnselectedIdx = -1;
+           for (let i = originalTargetIndex - 1; i >= 0; i--) {
+              if (!selectedIds.has(items[i].id)) {
+                 closestUnselectedIdx = unselectedItems.findIndex(u => u.id === items[i].id);
+                 break;
+              }
+           }
+           targetIndex = closestUnselectedIdx !== -1 ? closestUnselectedIdx + 1 : 0;
+        } else {
+             const isBelowOverItem =
+              over &&
+              active.rect.current.translated &&
+              active.rect.current.translated.top > over.rect.top + over.rect.height;
+
+             if (isBelowOverItem) targetIndex++;
+        }
+
+        unselectedItems.splice(targetIndex, 0, ...selectedItems);
+
         setColumns((prev) => {
           const newCols = [...prev];
           newCols[activeColumnIndex] = {
             ...newCols[activeColumnIndex],
-            items: arrayMove(items, oldIndex, newIndex),
+            items: unselectedItems,
           };
           return newCols;
         });
@@ -208,6 +262,80 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
     }
 
     setActiveId(null);
+  };
+
+  const handleSelectToggle = (e: React.MouseEvent | React.TouchEvent, id: string) => {
+    const isShift = (e as React.MouseEvent).shiftKey;
+    const isCtrl = (e as React.MouseEvent).ctrlKey || (e as React.MouseEvent).metaKey;
+
+    setSelectedIds(prev => {
+      const newSelected = new Set(prev);
+
+      if (isShift && lastSelectedId) {
+        // Shift select: Find all items between lastSelectedId and id
+        const allItems = columns.flatMap(c => c.items);
+        const startIdx = allItems.findIndex(i => i.id === lastSelectedId);
+        const endIdx = allItems.findIndex(i => i.id === id);
+
+        if (startIdx !== -1 && endIdx !== -1) {
+          const start = Math.min(startIdx, endIdx);
+          const end = Math.max(startIdx, endIdx);
+          for (let i = start; i <= end; i++) {
+            newSelected.add(allItems[i].id);
+          }
+        }
+      } else if (isCtrl) {
+        // Ctrl/Cmd select: toggle individual
+        if (newSelected.has(id)) {
+          newSelected.delete(id);
+        } else {
+          newSelected.add(id);
+        }
+      } else {
+        // Normal select: replace selection
+        if (newSelected.has(id) && newSelected.size === 1) {
+          newSelected.clear();
+        } else {
+          newSelected.clear();
+          newSelected.add(id);
+        }
+      }
+
+      setLastSelectedId(newSelected.size > 0 ? id : null);
+      return newSelected;
+    });
+  };
+
+  const handleSelectAll = () => {
+    const allIds = columns.flatMap(c => c.items).map(i => i.id);
+    setSelectedIds(new Set(allIds));
+  };
+
+  const handleDeselectAll = () => {
+    setSelectedIds(new Set());
+    setLastSelectedId(null);
+  };
+
+  const handleRotate = (degrees: number) => {
+    setColumns(prev => prev.map(col => ({
+      ...col,
+      items: col.items.map(item =>
+        selectedIds.has(item.id)
+          ? { ...item, rotation: ((item.rotation || 0) + degrees) % 360 }
+          : item
+      )
+    })));
+  };
+
+  const handleDeleteSelected = () => {
+    if (selectedIds.size === 0) return;
+
+    setColumns(prev => prev.map(col => ({
+      ...col,
+      items: col.items.filter(item => !selectedIds.has(item.id))
+    })));
+    setSelectedIds(new Set());
+    setLastSelectedId(null);
   };
 
   const handleMoveToFront = (itemId: string, colId: string) => {
@@ -249,11 +377,12 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
   };
 
   const handleApply = () => {
-    const result: Record<string, { docId: string; originalPageNumber: number }[]> = {};
+    const result: Record<string, { docId: string; originalPageNumber: number; rotation?: number }[]> = {};
     columns.forEach(col => {
       result[col.docId] = col.items.map(item => ({
         docId: item.docId,
-        originalPageNumber: item.originalPageNumber
+        originalPageNumber: item.originalPageNumber,
+        rotation: item.rotation
       }));
     });
     onApply(result);
@@ -267,12 +396,62 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-gray-50/95 backdrop-blur-sm">
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center shadow-sm">
+      <div className="bg-white border-b border-gray-200 px-6 py-4 flex flex-col sm:flex-row justify-between items-center shadow-sm gap-4">
         <div>
           <h2 className="text-xl font-bold text-gray-800">Cross-Document Reorder</h2>
           <p className="text-sm text-gray-500">Drag and drop pages within or between documents.</p>
         </div>
-        <div className="flex items-center gap-3">
+
+        {/* Toolbar */}
+        <div className="flex items-center gap-2 bg-gray-100 p-1.5 rounded-lg">
+           <div className="flex items-center gap-1 px-2 border-r border-gray-300">
+              <span className="text-xs text-gray-500 font-medium whitespace-nowrap">
+                {selectedIds.size} Selected
+              </span>
+              <button onClick={handleSelectAll} className="text-xs text-blue-600 hover:text-blue-700 px-2 py-1 rounded hover:bg-blue-50">All</button>
+              <button onClick={handleDeselectAll} disabled={selectedIds.size === 0} className="text-xs text-gray-600 hover:text-gray-800 px-2 py-1 rounded hover:bg-gray-200 disabled:opacity-50">None</button>
+           </div>
+           <button
+             onClick={() => handleRotate(90)}
+             disabled={selectedIds.size === 0}
+             className="p-1.5 text-gray-700 hover:bg-white rounded shadow-sm disabled:opacity-50 disabled:shadow-none"
+             title="Rotate Right"
+           >
+             <RotateCw size={16} />
+           </button>
+           <button
+             onClick={() => handleRotate(-90)}
+             disabled={selectedIds.size === 0}
+             className="p-1.5 text-gray-700 hover:bg-white rounded shadow-sm disabled:opacity-50 disabled:shadow-none"
+             title="Rotate Left"
+           >
+             <RotateCcw size={16} />
+           </button>
+           <button
+             onClick={handleDeleteSelected}
+             disabled={selectedIds.size === 0}
+             className="p-1.5 text-red-600 hover:bg-red-50 rounded shadow-sm disabled:opacity-50 disabled:shadow-none"
+             title="Delete Selected"
+           >
+             <Trash2 size={16} />
+           </button>
+
+           <div className="w-px h-6 bg-gray-300 mx-1"></div>
+
+           <div className="flex items-center gap-1 px-2">
+             <ZoomOut size={14} className="text-gray-500" />
+             <input
+                type="range"
+                min="0.5" max="2" step="0.1"
+                value={thumbnailScale}
+                onChange={(e) => setThumbnailScale(parseFloat(e.target.value))}
+                className="w-20"
+             />
+             <ZoomIn size={14} className="text-gray-500" />
+           </div>
+        </div>
+
+        <div className="flex items-center gap-3 shrink-0">
           <button
             onClick={onClose}
             className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 flex items-center gap-2"
@@ -313,7 +492,12 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
 
                   <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
                     <SortableContext id={col.docId} items={col.items.map(i => i.id)} strategy={rectSortingStrategy}>
-                      <div className="grid grid-cols-2 gap-3 min-h-[100px]">
+                      <div
+                        className="grid gap-3 min-h-[100px]"
+                        style={{
+                          gridTemplateColumns: `repeat(auto-fill, minmax(${Math.max(100, 120 * thumbnailScale)}px, 1fr))`
+                        }}
+                      >
                         {col.items.map((item) => (
                           <SortableItem
                             key={item.id}
@@ -324,6 +508,11 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
                             setThumbnailCache={setThumbnailCache}
                             onMoveToFront={() => handleMoveToFront(item.id, col.docId)}
                             onMoveToEnd={() => handleMoveToEnd(item.id, col.docId)}
+                            isSelected={selectedIds.has(item.id)}
+                            onSelectToggle={(e) => handleSelectToggle(e, item.id)}
+                            thumbnailSize={120 * thumbnailScale}
+                            rotation={item.rotation}
+                            fade={activeId !== null && activeId !== item.id && selectedIds.has(item.id)}
                           />
                         ))}
                       </div>
@@ -341,6 +530,10 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
                       pageNumber={activeItem.originalPageNumber}
                       thumbnailCache={thumbnailCache}
                       setThumbnailCache={setThumbnailCache}
+                      isOverlay={true}
+                      badgeCount={selectedIds.has(activeItem.id) ? selectedIds.size : 1}
+                      thumbnailSize={120 * thumbnailScale}
+                      rotation={activeItem.rotation}
                     />
                   </div>
                 ) : null}
