@@ -134,14 +134,15 @@ export async function splitPdf(file: File, rangesStr?: string): Promise<{bytes: 
   return splitPdfs;
 }
 
-export async function rotatePdf(file: File, degreesToRotate: number = 90, selectedPages?: number[]): Promise<Uint8Array> {
+export async function rotatePdf(file: File, pageRotations: Record<number, number>): Promise<Uint8Array> {
   const arrayBuffer = await file.arrayBuffer();
   const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
 
   const pages = pdfDoc.getPages();
   for (let i = 0; i < pages.length; i++) {
-    // selectedPages is 1-indexed. If not provided, rotate all pages.
-    if (!selectedPages || selectedPages.includes(i + 1)) {
+    const pageNum = i + 1;
+    const degreesToRotate = pageRotations[pageNum];
+    if (degreesToRotate && degreesToRotate % 360 !== 0) {
       const page = pages[i];
       const currentRotation = page.getRotation().angle;
       page.setRotation(degrees(currentRotation + degreesToRotate));
