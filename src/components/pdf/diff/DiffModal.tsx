@@ -140,20 +140,43 @@ export function DiffModal({ onClose, extractText }: DiffModalProps) {
                   <span className="flex items-center gap-1"><span className="w-3 h-3 bg-green-100 text-green-800 rounded inline-block"></span> Added</span>
                 </div>
               </div>
-              <div className="p-6 overflow-y-auto font-mono text-sm leading-relaxed whitespace-pre-wrap bg-white dark:bg-gray-800 flex-1">
-                {diffResult.map((part, index) => {
-                  const colorClass = part.added
-                    ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300'
-                    : part.removed
+
+              <div className="flex flex-1 overflow-hidden">
+                {/* Left Side: Original Document (Removed Text) */}
+                <div className="flex-1 border-r border-gray-200 dark:border-gray-700 p-6 overflow-y-auto font-mono text-sm leading-relaxed whitespace-pre-wrap bg-white dark:bg-gray-800">
+                  <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4 border-b pb-2">Original</h4>
+                  {diffResult.map((part, index) => {
+                    if (part.added) return null; // Don't show added parts in the original document
+
+                    const colorClass = part.removed
                       ? 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 line-through'
                       : 'text-gray-700 dark:text-gray-300';
-                  return (
-                    <span key={index} className={colorClass}>
-                      {part.value}
-                    </span>
-                  );
-                })}
+                    return (
+                      <span key={`orig-${index}`} className={colorClass}>
+                        {part.value}
+                      </span>
+                    );
+                  })}
+                </div>
+
+                {/* Right Side: Modified Document (Added Text) */}
+                <div className="flex-1 p-6 overflow-y-auto font-mono text-sm leading-relaxed whitespace-pre-wrap bg-white dark:bg-gray-800">
+                  <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4 border-b pb-2">Modified</h4>
+                  {diffResult.map((part, index) => {
+                    if (part.removed) return null; // Don't show removed parts in the modified document
+
+                    const colorClass = part.added
+                      ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300'
+                      : 'text-gray-700 dark:text-gray-300';
+                    return (
+                      <span key={`mod-${index}`} className={colorClass}>
+                        {part.value}
+                      </span>
+                    );
+                  })}
+                </div>
               </div>
+
             </div>
           )}
         </div>
