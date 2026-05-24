@@ -6,9 +6,10 @@ import * as diff from 'diff';
 interface DiffModalProps {
   onClose: () => void;
   extractText: (bytes: Uint8Array) => Promise<string>;
+  diffHighlightPdf: (bytes: Uint8Array, highlights: string[], color: [number, number, number]) => Promise<Uint8Array>;
 }
 
-export function DiffModal({ onClose, extractText }: DiffModalProps) {
+export function DiffModal({ onClose, extractText, diffHighlightPdf }: DiffModalProps) {
   const documents = useFileStore(state => state.documents);
 
   const [diffResult, setDiffResult] = useState<diff.Change[] | null>(null);
@@ -57,6 +58,64 @@ export function DiffModal({ onClose, extractText }: DiffModalProps) {
       setError(err.message || 'Failed to compare documents.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const [isGeneratingOriginal, setIsGeneratingOriginal] = useState(false);
+  const [isGeneratingModified, setIsGeneratingModified] = useState(false);
+
+  const handleGenerateOriginalHighlight = async () => {
+    if (!diffResult || !doc1Id) return;
+    setIsGeneratingOriginal(true);
+    try {
+      const doc = documents.find(d => d.id === doc1Id);
+      if (!doc) throw new Error("Original document not found");
+      const buffer = await doc.file.arrayBuffer();
+      const removedText = diffResult.filter(part => part.removed).map(part => part.value);
+
+      const newPdfBytes = await diffHighlightPdf(new Uint8Array(buffer), removedText, [1, 0.5, 0.5]); // Red-ish
+      const standardBuffer = new Uint8Array(newPdfBytes.length);
+      standardBuffer.set(newPdfBytes);
+      const blob = new Blob([standardBuffer], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = doc.name.replace(/\.pdf$/i, "-diff-removed.pdf");
+      a.click();
+      URL.revokeObjectURL(url);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || "Failed to generate highlighted PDF");
+    } finally {
+      setIsGeneratingOriginal(false);
+    }
+  };
+
+  const handleGenerateModifiedHighlight = async () => {
+    if (!diffResult || !doc2Id) return;
+    setIsGeneratingModified(true);
+    try {
+      const doc = documents.find(d => d.id === doc2Id);
+      if (!doc) throw new Error("Modified document not found");
+      const buffer = await doc.file.arrayBuffer();
+      const addedText = diffResult.filter(part => part.added).map(part => part.value);
+
+      const newPdfBytes = await diffHighlightPdf(new Uint8Array(buffer), addedText, [0.5, 1, 0.5]); // Green-ish
+      const standardBuffer = new Uint8Array(newPdfBytes.length);
+      standardBuffer.set(newPdfBytes);
+      const blob = new Blob([standardBuffer], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = doc.name.replace(/\.pdf$/i, "-diff-added.pdf");
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || "Failed to generate highlighted PDF");
+    } finally {
+      setIsGeneratingModified(false);
     }
   };
 
@@ -143,8 +202,19 @@ export function DiffModal({ onClose, extractText }: DiffModalProps) {
 
               <div className="flex flex-1 overflow-hidden">
                 {/* Left Side: Original Document (Removed Text) */}
-                <div className="flex-1 border-r border-gray-200 dark:border-gray-700 p-6 overflow-y-auto font-mono text-sm leading-relaxed whitespace-pre-wrap bg-white dark:bg-gray-800">
-                  <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4 border-b pb-2">Original</h4>
+                <div className="flex-1 border-r border-gray-200 dark:border-gray-700 p-6 overflow-y-auto font-mono text-sm leading-relaxed whitespace-pre-wrap bg-white dark:bg-gray-800 flex flex-col">
+                  <div className="flex justify-between items-center mb-4 border-b pb-2">
+                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Original</h4>
+                    <button
+                      onClick={handleGenerateOriginalHighlight}
+                      disabled={isGeneratingOriginal || diffResult.filter(p => p.removed).length === 0}
+                      className="text-xs bg-red-50 text-red-600 hover:bg-red-100 px-2 py-1 rounded transition-colors disabled:opacity-50"
+                      title="Download PDF with red highlights"
+                    >
+                      {isGeneratingOriginal ? 'Generating...' : 'Export Highlighted PDF'}
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto">
                   {diffResult.map((part, index) => {
                     if (part.added) return null; // Don't show added parts in the original document
 
@@ -157,11 +227,23 @@ export function DiffModal({ onClose, extractText }: DiffModalProps) {
                       </span>
                     );
                   })}
+                  </div>
                 </div>
 
                 {/* Right Side: Modified Document (Added Text) */}
-                <div className="flex-1 p-6 overflow-y-auto font-mono text-sm leading-relaxed whitespace-pre-wrap bg-white dark:bg-gray-800">
-                  <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4 border-b pb-2">Modified</h4>
+                <div className="flex-1 p-6 overflow-y-auto font-mono text-sm leading-relaxed whitespace-pre-wrap bg-white dark:bg-gray-800 flex flex-col">
+                  <div className="flex justify-between items-center mb-4 border-b pb-2">
+                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Modified</h4>
+                    <button
+                      onClick={handleGenerateModifiedHighlight}
+                      disabled={isGeneratingModified || diffResult.filter(p => p.added).length === 0}
+                      className="text-xs bg-green-50 text-green-600 hover:bg-green-100 px-2 py-1 rounded transition-colors disabled:opacity-50"
+                      title="Download PDF with green highlights"
+                    >
+                      {isGeneratingModified ? 'Generating...' : 'Export Highlighted PDF'}
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto">
                   {diffResult.map((part, index) => {
                     if (part.removed) return null; // Don't show removed parts in the modified document
 
@@ -174,6 +256,7 @@ export function DiffModal({ onClose, extractText }: DiffModalProps) {
                       </span>
                     );
                   })}
+                  </div>
                 </div>
               </div>
 
