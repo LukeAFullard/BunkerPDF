@@ -30,7 +30,8 @@ export type PyodideWorkerMessage = {
     | "VERIFY_SIGNATURE"
     | "EXPORT_DARK"
     | "EXTRACT_PAGE_TEXT"
-    | "EXTRACT_ALL_PAGES_TEXT";
+    | "EXTRACT_ALL_PAGES_TEXT"
+    | "DIFF_HIGHLIGHT_DOCUMENT";
   code?: string;
   jobId?: string;
   pdfBytes?: Uint8Array;
@@ -38,6 +39,7 @@ export type PyodideWorkerMessage = {
   pageNum?: number;
   pageCount?: number;
   highlights?: string[];
+  color?: [number, number, number];
   password?: string;
   metadata?: { standard: Record<string, string>, xmp: string };
   csvData?: string;
@@ -243,6 +245,50 @@ bytes(out_bytes)
       const highlightedBytes = highlightedProxy.toJs();
 
       const resultBytes = new Uint8Array(highlightedBytes);
+      self.postMessage({
+        type: "RESULT",
+        jobId,
+        result: resultBytes,
+      } satisfies PyodideWorkerResponse);
+    } else if (type === "DIFF_HIGHLIGHT_DOCUMENT") {
+      if (!initPromise) initPromise = initializePyodide();
+      await initPromise;
+      if (!pyodide) throw new Error("Pyodide not initialized");
+      if (!pdfBytes) throw new Error("No PDF bytes provided");
+      const { highlights, color } = e.data;
+      if (!highlights) throw new Error("No highlights provided");
+
+      const rgbColor = color || [1, 1, 0]; // Default yellow
+
+      pyodide.globals.set("doc_bytes", pdfBytes);
+      pyodide.globals.set("highlights", highlights);
+      pyodide.globals.set("color", rgbColor);
+      const highlightCode = `
+import fitz
+doc = fitz.open(stream=bytes(doc_bytes), filetype="pdf")
+strings_to_highlight = highlights.to_py()
+c = color.to_py()
+
+for page in doc:
+    for t in strings_to_highlight:
+        # Ignore whitespace-only strings
+        if not t.strip():
+            continue
+        rl = page.search_for(t)
+        for r in rl:
+            annot = page.add_highlight_annot(r)
+            annot.set_colors(stroke=(c[0], c[1], c[2]))
+            annot.update()
+out_bytes = doc.tobytes()
+doc.close()
+bytes(out_bytes)
+      `;
+      const highlightedProxy = await pyodide.runPythonAsync(highlightCode);
+      const highlightedBytes = highlightedProxy.toJs();
+
+      const resultBytes = new Uint8Array(highlightedBytes);
+      highlightedProxy.destroy();
+
       self.postMessage({
         type: "RESULT",
         jobId,
