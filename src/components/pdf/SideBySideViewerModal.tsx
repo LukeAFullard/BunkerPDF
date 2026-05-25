@@ -120,7 +120,7 @@ export function SideBySideViewerModal({ onClose }: SideBySideViewerModalProps) {
             <div
               ref={pane1Ref}
               onScroll={handleScroll1}
-              className="flex-1 overflow-y-auto p-4 custom-scrollbar flex flex-col items-center gap-6"
+              className="flex-1 overflow-auto p-4 custom-scrollbar flex flex-col gap-6" style={{ alignItems: scale > 1 ? "flex-start" : "center" }}
             >
               {doc1 && <PDFDocumentView file={doc1.file} scale={scale} />}
             </div>
@@ -143,7 +143,7 @@ export function SideBySideViewerModal({ onClose }: SideBySideViewerModalProps) {
             <div
               ref={pane2Ref}
               onScroll={handleScroll2}
-              className="flex-1 overflow-y-auto p-4 custom-scrollbar flex flex-col items-center gap-6"
+              className="flex-1 overflow-auto p-4 custom-scrollbar flex flex-col gap-6" style={{ alignItems: scale > 1 ? "flex-start" : "center" }}
             >
               {doc2 && <PDFDocumentView file={doc2.file} scale={scale} />}
             </div>
@@ -278,8 +278,8 @@ function PDFPageView({ pdfDoc, pageNumber, scale }: { pdfDoc: pdfjsLib.PDFDocume
   return (
     <div
       ref={containerRef}
-      className="bg-white shadow-md relative min-h-[500px] flex justify-center items-center"
-      style={{ minWidth: '300px' }}
+      className="bg-white shadow-md relative min-h-[500px] flex justify-center items-center mx-auto"
+      style={{ minWidth: 'min-content' }}
     >
        {!isRendered && <div className="absolute text-gray-400 text-sm">Loading page {pageNumber}...</div>}
        <canvas ref={canvasRef} className={`block transition-opacity duration-300 ${isRendered ? 'opacity-100' : 'opacity-0'}`} />
