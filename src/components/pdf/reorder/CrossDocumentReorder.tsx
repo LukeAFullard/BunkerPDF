@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   DndContext,
   closestCenter,
+  useDroppable,
   KeyboardSensor,
   PointerSensor,
   TouchSensor,
@@ -46,11 +47,30 @@ interface CrossDocumentReorderProps {
   onApply: (newStructures: Record<string, { docId: string; originalPageNumber: number; rotation?: number }[]>) => void;
 }
 
+
+interface DroppableContainerProps {
+  id: string;
+  children: React.ReactNode;
+  className?: string;
+  style?: React.CSSProperties;
+}
+
+function DroppableContainer({ id, children, className, style }: DroppableContainerProps) {
+  const { setNodeRef } = useDroppable({ id });
+  return (
+    <div ref={setNodeRef} className={className} style={style}>
+      {children}
+    </div>
+  );
+}
+
 export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocumentReorderProps) {
   const documents = useFileStore((state) => state.documents);
   const [columns, setColumns] = useState<DocColumn[]>([]);
   const [thumbnailCache, setThumbnailCache] = useState<Record<string, string>>({});
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [previewItem, setPreviewItem] = useState<PageItem | null>(null);
+
   const [loading, setLoading] = useState(true);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -327,7 +347,45 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
     })));
   };
 
-  const handleDeleteSelected = () => {
+
+  const handleSelectAllInColumn = (docId: string) => {
+    const col = columns.find(c => c.docId === docId);
+    if (!col) return;
+
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      col.items.forEach(item => next.add(item.id));
+      return next;
+    });
+  };
+
+  const handleRotateSingle = (id: string, degrees: number) => {
+    setColumns(prev => prev.map(col => ({
+      ...col,
+      items: col.items.map(item =>
+        item.id === id
+          ? { ...item, rotation: ((item.rotation || 0) + degrees) % 360 }
+          : item
+      )
+    })));
+  };
+
+  const handleDeleteSingle = (id: string) => {
+    setColumns(prev => prev.map(col => ({
+      ...col,
+      items: col.items.filter(item => item.id !== id)
+    })));
+    setSelectedIds(prev => {
+      if (prev.has(id)) {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      }
+      return prev;
+    });
+  };
+
+const handleDeleteSelected = () => {
     if (selectedIds.size === 0) return;
 
     setColumns(prev => prev.map(col => ({
@@ -487,12 +545,21 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
                 <div key={col.docId} className="flex flex-col w-[300px] bg-gray-100/50 border border-gray-200 rounded-xl overflow-hidden shrink-0 shadow-sm flex-1 max-h-[calc(100vh-120px)]">
                   <div className="bg-gray-200/50 px-4 py-3 border-b border-gray-200">
                     <h3 className="font-semibold text-gray-800 truncate" title={col.name}>{col.name}</h3>
-                    <div className="text-xs text-gray-500">{col.items.length} pages</div>
+                    <div className="text-xs text-gray-500 flex justify-between items-center">
+                      <span>{col.items.length} pages</span>
+                      <button
+                        onClick={() => handleSelectAllInColumn(col.docId)}
+                        className="text-blue-600 hover:text-blue-700 hover:underline cursor-pointer px-1"
+                      >
+                        Select All
+                      </button>
+                    </div>
                   </div>
 
                   <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
                     <SortableContext id={col.docId} items={col.items.map(i => i.id)} strategy={rectSortingStrategy}>
-                      <div
+                      <DroppableContainer
+                        id={col.docId}
                         className="grid gap-3 min-h-[100px]"
                         style={{
                           gridTemplateColumns: `repeat(auto-fill, minmax(${Math.max(100, 120 * thumbnailScale)}px, 1fr))`
@@ -508,6 +575,9 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
                             setThumbnailCache={setThumbnailCache}
                             onMoveToFront={() => handleMoveToFront(item.id, col.docId)}
                             onMoveToEnd={() => handleMoveToEnd(item.id, col.docId)}
+                            onRotate={(degrees) => handleRotateSingle(item.id, degrees)}
+                            onDelete={() => handleDeleteSingle(item.id)}
+                            onExpand={() => setPreviewItem(item)}
                             isSelected={selectedIds.has(item.id)}
                             onSelectToggle={(e) => handleSelectToggle(e, item.id)}
                             thumbnailSize={120 * thumbnailScale}
@@ -515,7 +585,7 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
                             fade={activeId !== null && activeId !== item.id && selectedIds.has(item.id)}
                           />
                         ))}
-                      </div>
+                      </DroppableContainer>
                     </SortableContext>
                   </div>
                 </div>
@@ -541,6 +611,41 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
             </DndContext>
           </div>
         )}
+
+        {/* Full Screen Preview Overlay */}
+        {previewItem && (
+          <div className="fixed inset-0 z-[60] bg-black/90 flex flex-col backdrop-blur-sm transition-opacity">
+            <div className="flex justify-end p-4">
+              <button
+                onClick={() => setPreviewItem(null)}
+                className="text-white hover:bg-white/20 p-2 rounded-full transition-colors"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            <div className="flex-1 flex items-center justify-center p-8 overflow-hidden">
+              <div
+                style={{
+                  transform: `rotate(${previewItem.rotation || 0}deg)`,
+                  transition: 'transform 0.3s ease-in-out'
+                }}
+                className="max-h-full max-w-full flex items-center justify-center"
+              >
+                <SortableItem
+                  id={previewItem.id + "_preview"}
+                  docId={previewItem.docId}
+                  pageNumber={previewItem.originalPageNumber}
+                  thumbnailCache={thumbnailCache}
+                  setThumbnailCache={setThumbnailCache}
+                  thumbnailSize={800}
+                  rotation={0}
+                  isOverlay={true}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );
