@@ -2559,7 +2559,7 @@ function App() {
     });
   };
 
-  const diffMergedHighlightPdf = (bytes: Uint8Array, removedHighlights: string[], addedHighlights: string[]): Promise<Uint8Array> => {
+  const diffMergedHighlightPdf = (bytes1: Uint8Array, bytes2: Uint8Array, removedHighlights: string[], addedHighlights: string[]): Promise<Uint8Array> => {
     return new Promise((resolve, reject) => {
       if (!pyodideWorkerRef.current)
         return reject(new Error("Worker not initialized"));
@@ -2587,7 +2587,8 @@ function App() {
       pyodideWorkerRef.current.postMessage({
         type: "DIFF_MERGED_HIGHLIGHT_DOCUMENT",
         jobId,
-        pdfBytes: bytes,
+        pdfBytes: bytes1,
+        pdfBytes2: bytes2,
         removedHighlights,
         addedHighlights,
       } satisfies PyodideWorkerMessage);

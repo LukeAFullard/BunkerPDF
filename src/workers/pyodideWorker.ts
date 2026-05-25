@@ -36,6 +36,7 @@ export type PyodideWorkerMessage = {
   code?: string;
   jobId?: string;
   pdfBytes?: Uint8Array;
+  pdfBytes2?: Uint8Array;
   redactions?: string[];
   pageNum?: number;
   pageCount?: number;
@@ -302,19 +303,22 @@ bytes(out_bytes)
       await initPromise;
       if (!pyodide) throw new Error("Pyodide not initialized");
       if (!pdfBytes) throw new Error("No PDF bytes provided");
-      const { removedHighlights, addedHighlights } = e.data;
+      const { pdfBytes2, removedHighlights, addedHighlights } = e.data;
+      if (!pdfBytes2) throw new Error("Second PDF bytes not provided");
       if (!removedHighlights || !addedHighlights) throw new Error("Missing highlights arrays");
 
-      pyodide.globals.set("doc_bytes", pdfBytes);
+      pyodide.globals.set("doc1_bytes", pdfBytes);
+      pyodide.globals.set("doc2_bytes", pdfBytes2);
       pyodide.globals.set("removed_highlights", removedHighlights);
       pyodide.globals.set("added_highlights", addedHighlights);
       const highlightCode = `
 import fitz
-doc = fitz.open(stream=bytes(doc_bytes), filetype="pdf")
+doc1 = fitz.open(stream=bytes(doc1_bytes), filetype="pdf")
+doc2 = fitz.open(stream=bytes(doc2_bytes), filetype="pdf")
 removed = removed_highlights.to_py()
 added = added_highlights.to_py()
 
-for page in doc:
+for page in doc1:
     for t in removed:
         if not t.strip():
             continue
@@ -324,6 +328,7 @@ for page in doc:
             annot.set_colors(stroke=(1, 0.5, 0.5))
             annot.update()
 
+for page in doc2:
     for t in added:
         if not t.strip():
             continue
@@ -333,8 +338,12 @@ for page in doc:
             annot.set_colors(stroke=(0.5, 1, 0.5))
             annot.update()
 
-out_bytes = doc.tobytes()
-doc.close()
+doc1.insert_pdf(doc2)
+out_bytes = doc1.tobytes()
+doc1.close()
+doc2.close()
+del doc1_bytes
+del doc2_bytes
 bytes(out_bytes)
       `;
       const highlightedProxy = await pyodide.runPythonAsync(highlightCode);
