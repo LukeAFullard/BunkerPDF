@@ -12,7 +12,7 @@ import { useUIStore } from "./store/uiStore";
 import { SignatureModal } from "./components/ui/SignatureModal";
 import { SearchModal } from "./components/ui/SearchModal";
 import { generateEmbedding } from "./lib/searchEngine";
-import { Sun, Moon, ChevronDown, FileDiff } from "lucide-react";
+import { Sun, Moon, ChevronDown, FileDiff, Plus } from "lucide-react";
 import {
   mergePdfs,
   splitPdf,
@@ -58,6 +58,111 @@ function App() {
   const documents = useFileStore((state) => state.documents);
   const activeDocumentId = useFileStore((state) => state.activeDocumentId);
   const { isDarkMode, toggleDarkMode } = useUIStore();
+
+  const handleWorkspaceFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files) return;
+    const files = Array.from(e.target.files);
+
+    const docxFiles = files.filter(f => f.name.toLowerCase().endsWith('.docx') || f.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    const imageFiles = files.filter(f => f.type.startsWith('image/'));
+    let pdfFiles = files.filter(f => f.type === 'application/pdf');
+
+    if (docxFiles.length > 0) {
+      handleDocxDropped(docxFiles);
+    }
+
+    if (imageFiles.length > 0) {
+      const newItems = imageFiles.map((file) => ({
+        id: crypto.randomUUID(),
+        file,
+        previewUrl: URL.createObjectURL(file),
+      }));
+      setPendingImages((prev) => [...prev, ...newItems]);
+    }
+
+    if (pdfFiles.length === 0) {
+        if (workspaceFileInputRef.current) workspaceFileInputRef.current.value = '';
+        return;
+    }
+
+    const MAX_FILE_SIZE = 80 * 1024 * 1024;
+    const oversizedFiles = pdfFiles.filter(f => f.size > MAX_FILE_SIZE);
+
+    if (oversizedFiles.length > 0) {
+      setErrorState({
+        isOpen: true,
+        title: 'File Too Large',
+        message: 'Some files are too large (max 80MB) and were skipped.'
+      });
+      pdfFiles = pdfFiles.filter(f => f.size <= MAX_FILE_SIZE);
+    }
+
+    if (pdfFiles.length === 0) {
+        if (workspaceFileInputRef.current) workspaceFileInputRef.current.value = '';
+        return;
+    }
+
+    const availableSlots = 50 - documents.length;
+    if (pdfFiles.length > availableSlots) {
+       setErrorState({
+         isOpen: true,
+         title: 'File Limit Reached',
+         message: `Maximum 50 files allowed. Only the next ${availableSlots} will be loaded.`
+       });
+       pdfFiles = pdfFiles.slice(0, Math.max(0, availableSlots));
+    }
+
+    if (pdfFiles.length === 0) {
+        if (workspaceFileInputRef.current) workspaceFileInputRef.current.value = '';
+        return;
+    }
+
+    const { getPdfInfo } = await import('./lib/pdfProcessing');
+    const parsedDocs: PDFDocument[] = [];
+
+    for (const file of pdfFiles) {
+      let pageCount;
+      let isEncrypted = false;
+      let isCorrupt = false;
+
+      try {
+        const info = await getPdfInfo(file);
+        pageCount = info.pageCount;
+        isEncrypted = info.isEncrypted;
+      } catch (err: any) {
+        if (err.message === 'CORRUPT_PDF') isCorrupt = true;
+      }
+
+      if (isCorrupt) {
+        setErrorState({
+          isOpen: true,
+          title: 'Corrupt PDF',
+          message: `We couldn't read "${file.name}". It may be damaged or in an unsupported format.`
+        });
+        continue;
+      }
+
+      parsedDocs.push({
+        id: crypto.randomUUID(),
+        file,
+        name: file.name,
+        size: file.size,
+        lastModified: file.lastModified,
+        pageCount,
+        isEncrypted,
+        isCorrupt
+      });
+    }
+
+    if (parsedDocs.length > 0) {
+      addDocuments(parsedDocs);
+    }
+
+    if (workspaceFileInputRef.current) {
+      workspaceFileInputRef.current.value = '';
+    }
+  };
+
   const addLog = useAuditStore(state => state.addLog);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
   const [isDiffModalOpen, setIsDiffModalOpen] = useState(false);
@@ -440,6 +545,7 @@ function App() {
   const [isBatchMenuOpen, setIsBatchMenuOpen] = useState(false);
   const [metadataModalState, setMetadataModalState] = useState<{ isOpen: boolean, metadata: { standard: Record<string, string>, xmp: string } | null, doc: PDFDocument | null }>({ isOpen: false, metadata: null, doc: null });
   const batchMenuRef = useRef<HTMLDivElement>(null);
+  const workspaceFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -2967,6 +3073,23 @@ function App() {
               <EngineStatusPill />
             </div>
             <div className="flex gap-4 items-center">
+
+              <input
+                type="file"
+                ref={workspaceFileInputRef}
+                onChange={handleWorkspaceFiles}
+                accept="application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,image/*"
+                multiple
+                className="hidden"
+              />
+              <button
+                onClick={() => workspaceFileInputRef.current?.click()}
+                disabled={isGlobalProcessing || documents.length >= 50}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${isDarkMode ? "bg-gray-700 text-gray-200 hover:bg-gray-600 focus-visible:ring-gray-500" : "bg-white text-gray-800 border border-gray-200 shadow-sm hover:bg-gray-50 focus-visible:ring-gray-300"}`}
+                title="Add Files"
+              >
+                <Plus size={16} /> Add Files
+              </button>
               <button
                 onClick={toggleDarkMode}
                 className={`p-2 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 ${isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-600 hover:bg-gray-200"}`}
