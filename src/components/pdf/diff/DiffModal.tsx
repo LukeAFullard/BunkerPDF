@@ -7,7 +7,7 @@ interface DiffModalProps {
   onClose: () => void;
   extractText: (bytes: Uint8Array) => Promise<string>;
   diffHighlightPdf: (bytes: Uint8Array, highlights: string[], color: [number, number, number]) => Promise<Uint8Array>;
-  diffMergedHighlightPdf: (bytes: Uint8Array, removedHighlights: string[], addedHighlights: string[]) => Promise<Uint8Array>;
+  diffMergedHighlightPdf: (bytes1: Uint8Array, bytes2: Uint8Array, removedHighlights: string[], addedHighlights: string[]) => Promise<Uint8Array>;
 }
 
 export function DiffModal({ onClose, extractText, diffMergedHighlightPdf }: DiffModalProps) {
@@ -65,23 +65,26 @@ export function DiffModal({ onClose, extractText, diffMergedHighlightPdf }: Diff
   const [isGeneratingMerged, setIsGeneratingMerged] = useState(false);
 
   const handleGenerateMergedHighlight = async () => {
-    if (!diffResult || !doc2Id) return;
+    if (!diffResult || !doc1Id || !doc2Id) return;
     setIsGeneratingMerged(true);
     try {
-      const doc = documents.find(d => d.id === doc2Id);
-      if (!doc) throw new Error("Modified document not found");
-      const buffer = await doc.file.arrayBuffer();
+      const doc1 = documents.find(d => d.id === doc1Id);
+      const doc2 = documents.find(d => d.id === doc2Id);
+      if (!doc1 || !doc2) throw new Error("Documents not found");
+      const buffer1 = await doc1.file.arrayBuffer();
+      const buffer2 = await doc2.file.arrayBuffer();
+
       const removedText = diffResult.filter(part => part.removed).map(part => part.value);
       const addedText = diffResult.filter(part => part.added).map(part => part.value);
 
-      const newPdfBytes = await diffMergedHighlightPdf(new Uint8Array(buffer), removedText, addedText);
+      const newPdfBytes = await diffMergedHighlightPdf(new Uint8Array(buffer1), new Uint8Array(buffer2), removedText, addedText);
       const standardBuffer = new Uint8Array(newPdfBytes.length);
       standardBuffer.set(newPdfBytes);
       const blob = new Blob([standardBuffer], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = doc.name.replace(/\.pdf$/i, "-diff-merged.pdf");
+      a.download = "diff-merged.pdf";
       a.click();
       URL.revokeObjectURL(url);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
