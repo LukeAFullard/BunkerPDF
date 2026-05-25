@@ -31,7 +31,8 @@ export type PyodideWorkerMessage = {
     | "EXPORT_DARK"
     | "EXTRACT_PAGE_TEXT"
     | "EXTRACT_ALL_PAGES_TEXT"
-    | "DIFF_HIGHLIGHT_DOCUMENT";
+    | "DIFF_HIGHLIGHT_DOCUMENT"
+    | "DIFF_MERGED_HIGHLIGHT_DOCUMENT";
   code?: string;
   jobId?: string;
   pdfBytes?: Uint8Array;
@@ -40,6 +41,8 @@ export type PyodideWorkerMessage = {
   pageCount?: number;
   highlights?: string[];
   color?: [number, number, number];
+  removedHighlights?: string[];
+  addedHighlights?: string[];
   password?: string;
   metadata?: { standard: Record<string, string>, xmp: string };
   csvData?: string;
@@ -279,6 +282,57 @@ for page in doc:
             annot = page.add_highlight_annot(r)
             annot.set_colors(stroke=(c[0], c[1], c[2]))
             annot.update()
+out_bytes = doc.tobytes()
+doc.close()
+bytes(out_bytes)
+      `;
+      const highlightedProxy = await pyodide.runPythonAsync(highlightCode);
+      const highlightedBytes = highlightedProxy.toJs();
+
+      const resultBytes = new Uint8Array(highlightedBytes);
+      highlightedProxy.destroy();
+
+      self.postMessage({
+        type: "RESULT",
+        jobId,
+        result: resultBytes,
+      } satisfies PyodideWorkerResponse);
+    } else if (type === "DIFF_MERGED_HIGHLIGHT_DOCUMENT") {
+      if (!initPromise) initPromise = initializePyodide();
+      await initPromise;
+      if (!pyodide) throw new Error("Pyodide not initialized");
+      if (!pdfBytes) throw new Error("No PDF bytes provided");
+      const { removedHighlights, addedHighlights } = e.data;
+      if (!removedHighlights || !addedHighlights) throw new Error("Missing highlights arrays");
+
+      pyodide.globals.set("doc_bytes", pdfBytes);
+      pyodide.globals.set("removed_highlights", removedHighlights);
+      pyodide.globals.set("added_highlights", addedHighlights);
+      const highlightCode = `
+import fitz
+doc = fitz.open(stream=bytes(doc_bytes), filetype="pdf")
+removed = removed_highlights.to_py()
+added = added_highlights.to_py()
+
+for page in doc:
+    for t in removed:
+        if not t.strip():
+            continue
+        rl = page.search_for(t)
+        for r in rl:
+            annot = page.add_highlight_annot(r)
+            annot.set_colors(stroke=(1, 0.5, 0.5))
+            annot.update()
+
+    for t in added:
+        if not t.strip():
+            continue
+        rl = page.search_for(t)
+        for r in rl:
+            annot = page.add_highlight_annot(r)
+            annot.set_colors(stroke=(0.5, 1, 0.5))
+            annot.update()
+
 out_bytes = doc.tobytes()
 doc.close()
 bytes(out_bytes)
