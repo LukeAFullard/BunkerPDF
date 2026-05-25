@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ArrowUpToLine, ArrowDownToLine, MoreVertical } from 'lucide-react';
+import { ArrowUpToLine, ArrowDownToLine, MoreVertical, Maximize2, RotateCw, Trash2 } from 'lucide-react';
 import { PDFPageThumbnail } from './PDFPageThumbnail';
 import { ContextMenu } from '../../ui/ContextMenu';
 import type { ContextMenuItem } from '../../ui/ContextMenu';
@@ -21,6 +21,9 @@ interface SortableItemProps {
   thumbnailSize?: number;
   rotation?: number;
   fade?: boolean;
+  onRotate?: (degrees: number) => void;
+  onDelete?: () => void;
+  onExpand?: () => void;
 }
 
 export function SortableItem({
@@ -38,6 +41,9 @@ export function SortableItem({
   thumbnailSize = 120,
   rotation = 0,
   fade = false,
+  onRotate,
+  onDelete,
+  onExpand,
 }: SortableItemProps) {
   const {
     attributes,
@@ -178,6 +184,45 @@ export function SortableItem({
         <div className={`absolute bottom-1 right-1 bg-black/50 text-white text-[10px] px-1.5 py-0.5 rounded font-medium backdrop-blur-sm transition-colors ${isSelected ? 'bg-blue-600/90' : 'group-hover:bg-blue-600/80'}`}>
           {pageNumber}
         </div>
+
+
+        {/* Quick action buttons */}
+        {!isOverlay && (
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-20 pointer-events-none">
+            <div className="bg-black/60 backdrop-blur-md rounded-lg p-1 flex items-center gap-1 shadow-lg pointer-events-auto">
+              {onExpand && (
+                <button
+                  className="p-1.5 text-white hover:bg-white/20 rounded transition-colors"
+                  onClick={(e) => { e.stopPropagation(); onExpand(); }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  title="Expand"
+                >
+                  <Maximize2 size={14} />
+                </button>
+              )}
+              {onRotate && (
+                <button
+                  className="p-1.5 text-white hover:bg-white/20 rounded transition-colors"
+                  onClick={(e) => { e.stopPropagation(); onRotate(90); }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  title="Rotate Right"
+                >
+                  <RotateCw size={14} />
+                </button>
+              )}
+              {onDelete && (
+                <button
+                  className="p-1.5 text-white hover:bg-red-500/50 rounded transition-colors"
+                  onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  title="Delete"
+                >
+                  <Trash2 size={14} />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Menu button for mobile/accessibility without long-press/right-click */}
         <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
