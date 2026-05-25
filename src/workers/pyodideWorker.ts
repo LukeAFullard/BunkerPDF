@@ -313,30 +313,39 @@ bytes(out_bytes)
       pyodide.globals.set("added_highlights", addedHighlights);
       const highlightCode = `
 import fitz
+import re
+
 doc1 = fitz.open(stream=bytes(doc1_bytes), filetype="pdf")
 doc2 = fitz.open(stream=bytes(doc2_bytes), filetype="pdf")
 removed = removed_highlights.to_py()
 added = added_highlights.to_py()
 
+def robust_highlight(page, text_array, color):
+    for t in text_array:
+        # Split by newlines to maximize matching across pages/lines
+        segments = [s.strip() for s in re.split(r'\\n+', t) if len(s.strip()) > 2]
+        for seg in segments:
+            rl = page.search_for(seg)
+            if not rl:
+                # Try breaking it down further by sentences if still not found
+                sub_segments = [s.strip() for s in re.split(r'(?<=[.!?])\\s+', seg) if len(s.strip()) > 3]
+                for sub in sub_segments:
+                    sub_rl = page.search_for(sub)
+                    for r in sub_rl:
+                        annot = page.add_highlight_annot(r)
+                        annot.set_colors(stroke=color)
+                        annot.update()
+            else:
+                for r in rl:
+                    annot = page.add_highlight_annot(r)
+                    annot.set_colors(stroke=color)
+                    annot.update()
+
 for page in doc1:
-    for t in removed:
-        if not t.strip():
-            continue
-        rl = page.search_for(t)
-        for r in rl:
-            annot = page.add_highlight_annot(r)
-            annot.set_colors(stroke=(1, 0.5, 0.5))
-            annot.update()
+    robust_highlight(page, removed, (1, 0.5, 0.5))
 
 for page in doc2:
-    for t in added:
-        if not t.strip():
-            continue
-        rl = page.search_for(t)
-        for r in rl:
-            annot = page.add_highlight_annot(r)
-            annot.set_colors(stroke=(0.5, 1, 0.5))
-            annot.update()
+    robust_highlight(page, added, (0.5, 1, 0.5))
 
 doc1.insert_pdf(doc2)
 out_bytes = doc1.tobytes()
