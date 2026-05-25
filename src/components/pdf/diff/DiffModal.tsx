@@ -74,21 +74,14 @@ export function DiffModal({ onClose, extractText, diffMergedHighlightPdf }: Diff
       const buffer1 = await doc1.file.arrayBuffer();
       const buffer2 = await doc2.file.arrayBuffer();
 
-      // Calculate a sentence-level diff specifically for the PDF export so that PyMuPDF
-      // has enough context to uniquely identify the location of the change, rather than
-      // highlighting every instance of an isolated changed word (e.g., "water").
-      const text1 = await extractText(new Uint8Array(buffer1));
-      const text2 = await extractText(new Uint8Array(buffer2));
+      // We no longer need to pass the diff arrays to the Python worker for PDF highlight generation.
+      // The worker uses its own \`difflib.SequenceMatcher\` internally against the actual PDF coordinates,
+      // avoiding all text search ambiguities.
 
       // Yield to the event loop so the UI can render the "Generating..." state
       await new Promise(resolve => setTimeout(resolve, 10));
 
-      const sentenceDiff = diff.diffSentences(text1, text2);
-
-      const removedText = sentenceDiff.filter(part => part.removed).map(part => part.value);
-      const addedText = sentenceDiff.filter(part => part.added).map(part => part.value);
-
-      const newPdfBytes = await diffMergedHighlightPdf(new Uint8Array(buffer1), new Uint8Array(buffer2), removedText, addedText);
+      const newPdfBytes = await diffMergedHighlightPdf(new Uint8Array(buffer1), new Uint8Array(buffer2), [], []);
       const standardBuffer = new Uint8Array(newPdfBytes.length);
       standardBuffer.set(newPdfBytes);
       const blob = new Blob([standardBuffer], { type: 'application/zip' });

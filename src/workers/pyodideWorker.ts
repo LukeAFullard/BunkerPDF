@@ -312,43 +312,43 @@ bytes(out_bytes)
 
       pyodide.globals.set("doc1_bytes", pdfBytes);
       pyodide.globals.set("doc2_bytes", pdfBytes2);
-      pyodide.globals.set("removed_highlights", removedHighlights);
-      pyodide.globals.set("added_highlights", addedHighlights);
       const highlightCode = `
 import fitz
 import zipfile
 import io
+import difflib
 
 doc1 = fitz.open(stream=bytes(doc1_bytes), filetype="pdf")
 doc2 = fitz.open(stream=bytes(doc2_bytes), filetype="pdf")
-removed = removed_highlights.to_py()
-added = added_highlights.to_py()
 
-for page in doc1:
-    for text_block in removed:
-        if not text_block.strip():
-            continue
-        for t in text_block.split('\\n'):
-            if not t.strip():
-                continue
-            rl = page.search_for(t.strip())
-            for r in rl:
-                annot = page.add_highlight_annot(r)
-                annot.set_colors(stroke=(1, 0.5, 0.5))
-                annot.update()
+words1 = []
+words1_data = []
+for p in doc1:
+    for w in p.get_text("words"):
+        words1.append(w[4])
+        words1_data.append((p, fitz.Rect(w[:4])))
 
-for page in doc2:
-    for text_block in added:
-        if not text_block.strip():
-            continue
-        for t in text_block.split('\\n'):
-            if not t.strip():
-                continue
-            rl = page.search_for(t.strip())
-            for r in rl:
-                annot = page.add_highlight_annot(r)
-                annot.set_colors(stroke=(0.5, 1, 0.5))
-                annot.update()
+words2 = []
+words2_data = []
+for p in doc2:
+    for w in p.get_text("words"):
+        words2.append(w[4])
+        words2_data.append((p, fitz.Rect(w[:4])))
+
+matcher = difflib.SequenceMatcher(None, words1, words2)
+for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+    if tag in ('delete', 'replace'):
+        for idx in range(i1, i2):
+            page, rect = words1_data[idx]
+            annot = page.add_highlight_annot(rect)
+            annot.set_colors(stroke=(1, 0.5, 0.5))
+            annot.update()
+    if tag in ('insert', 'replace'):
+        for idx in range(j1, j2):
+            page, rect = words2_data[idx]
+            annot = page.add_highlight_annot(rect)
+            annot.set_colors(stroke=(0.5, 1, 0.5))
+            annot.update()
 
 zip_buffer = io.BytesIO()
 with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
