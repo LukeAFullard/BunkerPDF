@@ -2559,6 +2559,41 @@ function App() {
     });
   };
 
+  const diffMergedHighlightPdf = (bytes: Uint8Array, removedHighlights: string[], addedHighlights: string[]): Promise<Uint8Array> => {
+    return new Promise((resolve, reject) => {
+      if (!pyodideWorkerRef.current)
+        return reject(new Error("Worker not initialized"));
+
+      const jobId = Math.random().toString(36).substring(7);
+
+      const handleMessage = (e: MessageEvent) => {
+        if (e.data.jobId !== jobId) return;
+        if (e.data.type === "RESULT" && e.data.result) {
+          pyodideWorkerRef.current?.removeEventListener(
+            "message",
+            handleMessage,
+          );
+          resolve(e.data.result as Uint8Array);
+        } else if (e.data.type === "ERROR") {
+          pyodideWorkerRef.current?.removeEventListener(
+            "message",
+            handleMessage,
+          );
+          reject(new Error(e.data.error));
+        }
+      };
+
+      pyodideWorkerRef.current.addEventListener("message", handleMessage);
+      pyodideWorkerRef.current.postMessage({
+        type: "DIFF_MERGED_HIGHLIGHT_DOCUMENT",
+        jobId,
+        pdfBytes: bytes,
+        removedHighlights,
+        addedHighlights,
+      } satisfies PyodideWorkerMessage);
+    });
+  };
+
   const executeHighlight = async (texts: string[]) => {
     const docId = interactiveHighlightState.docId;
     if (!docId) return;
@@ -2833,7 +2868,7 @@ function App() {
         isOpen={isAuditModalOpen}
         onClose={() => setIsAuditModalOpen(false)}
       />
-      {isDiffModalOpen && <DiffModal onClose={() => setIsDiffModalOpen(false)} extractText={extractText} diffHighlightPdf={diffHighlightPdf} />}
+      {isDiffModalOpen && <DiffModal onClose={() => setIsDiffModalOpen(false)} extractText={extractText} diffHighlightPdf={diffHighlightPdf} diffMergedHighlightPdf={diffMergedHighlightPdf} />}
       {isSideBySideModalOpen && <SideBySideViewerModal onClose={() => setIsSideBySideModalOpen(false)} />}
       <ProcessingModal />
       <FeedbackPrompt />
