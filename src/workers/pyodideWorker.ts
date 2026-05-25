@@ -274,15 +274,18 @@ strings_to_highlight = highlights.to_py()
 c = color.to_py()
 
 for page in doc:
-    for t in strings_to_highlight:
-        # Ignore whitespace-only strings
-        if not t.strip():
+    for text_block in strings_to_highlight:
+        if not text_block.strip():
             continue
-        rl = page.search_for(t)
-        for r in rl:
-            annot = page.add_highlight_annot(r)
-            annot.set_colors(stroke=(c[0], c[1], c[2]))
-            annot.update()
+        # Split by newline to handle strings that span across multiple lines in PDF text extraction
+        for t in text_block.split('\\n'):
+            if not t.strip():
+                continue
+            rl = page.search_for(t.strip())
+            for r in rl:
+                annot = page.add_highlight_annot(r)
+                annot.set_colors(stroke=(c[0], c[1], c[2]))
+                annot.update()
 out_bytes = doc.tobytes()
 doc.close()
 bytes(out_bytes)
@@ -322,24 +325,30 @@ removed = removed_highlights.to_py()
 added = added_highlights.to_py()
 
 for page in doc1:
-    for t in removed:
-        if not t.strip():
+    for text_block in removed:
+        if not text_block.strip():
             continue
-        rl = page.search_for(t)
-        for r in rl:
-            annot = page.add_highlight_annot(r)
-            annot.set_colors(stroke=(1, 0.5, 0.5))
-            annot.update()
+        for t in text_block.split('\\n'):
+            if not t.strip():
+                continue
+            rl = page.search_for(t.strip())
+            for r in rl:
+                annot = page.add_highlight_annot(r)
+                annot.set_colors(stroke=(1, 0.5, 0.5))
+                annot.update()
 
 for page in doc2:
-    for t in added:
-        if not t.strip():
+    for text_block in added:
+        if not text_block.strip():
             continue
-        rl = page.search_for(t)
-        for r in rl:
-            annot = page.add_highlight_annot(r)
-            annot.set_colors(stroke=(0.5, 1, 0.5))
-            annot.update()
+        for t in text_block.split('\\n'):
+            if not t.strip():
+                continue
+            rl = page.search_for(t.strip())
+            for r in rl:
+                annot = page.add_highlight_annot(r)
+                annot.set_colors(stroke=(0.5, 1, 0.5))
+                annot.update()
 
 zip_buffer = io.BytesIO()
 with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
