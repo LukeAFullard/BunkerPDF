@@ -321,34 +321,83 @@ import difflib
 doc1 = fitz.open(stream=bytes(doc1_bytes), filetype="pdf")
 doc2 = fitz.open(stream=bytes(doc2_bytes), filetype="pdf")
 
-words1 = []
-words1_data = []
-for p in doc1:
-    for w in p.get_text("words"):
-        words1.append(w[4])
-        words1_data.append((p, fitz.Rect(w[:4])))
+def extract_doc_structure(doc):
+    blocks = []
+    for p in doc:
+        page_words = p.get_text("words")
+        if not page_words:
+            continue
 
-words2 = []
-words2_data = []
-for p in doc2:
-    for w in p.get_text("words"):
-        words2.append(w[4])
-        words2_data.append((p, fitz.Rect(w[:4])))
+        current_block_no = -1
+        current_block = None
 
-matcher = difflib.SequenceMatcher(None, words1, words2)
+        for w in page_words:
+            block_no = w[5]
+            if block_no != current_block_no:
+                if current_block is not None:
+                    blocks.append(current_block)
+                current_block = {'text': '', 'words': []}
+                current_block_no = block_no
+
+            current_block['words'].append((p, fitz.Rect(w[:4]), w[4]))
+            current_block['text'] += w[4] + " "
+
+        if current_block is not None:
+            blocks.append(current_block)
+
+    for b in blocks:
+        b['text'] = b['text'].strip()
+    return blocks
+
+b1 = extract_doc_structure(doc1)
+b2 = extract_doc_structure(doc2)
+
+b1_texts = [b['text'] for b in b1]
+b2_texts = [b['text'] for b in b2]
+
+matcher = difflib.SequenceMatcher(None, b1_texts, b2_texts)
 for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-    if tag in ('delete', 'replace'):
+    if tag == 'equal':
+        continue
+
+    if tag == 'delete':
         for idx in range(i1, i2):
-            page, rect = words1_data[idx]
-            annot = page.add_highlight_annot(rect)
-            annot.set_colors(stroke=(1, 0.5, 0.5))
-            annot.update()
-    if tag in ('insert', 'replace'):
+            for p, rect, w in b1[idx]['words']:
+                annot = p.add_highlight_annot(rect)
+                annot.set_colors(stroke=(1, 0.5, 0.5))
+                annot.update()
+    elif tag == 'insert':
         for idx in range(j1, j2):
-            page, rect = words2_data[idx]
-            annot = page.add_highlight_annot(rect)
-            annot.set_colors(stroke=(0.5, 1, 0.5))
-            annot.update()
+            for p, rect, w in b2[idx]['words']:
+                annot = p.add_highlight_annot(rect)
+                annot.set_colors(stroke=(0.5, 1, 0.5))
+                annot.update()
+    elif tag == 'replace':
+        words1 = []
+        for idx in range(i1, i2):
+            words1.extend(b1[idx]['words'])
+
+        words2 = []
+        for idx in range(j1, j2):
+            words2.extend(b2[idx]['words'])
+
+        w1_strs = [w[2] for w in words1]
+        w2_strs = [w[2] for w in words2]
+
+        word_matcher = difflib.SequenceMatcher(None, w1_strs, w2_strs)
+        for w_tag, wi1, wi2, wj1, wj2 in word_matcher.get_opcodes():
+            if w_tag in ('delete', 'replace'):
+                for w_idx in range(wi1, wi2):
+                    p, rect, w = words1[w_idx]
+                    annot = p.add_highlight_annot(rect)
+                    annot.set_colors(stroke=(1, 0.5, 0.5))
+                    annot.update()
+            if w_tag in ('insert', 'replace'):
+                for w_idx in range(wj1, wj2):
+                    p, rect, w = words2[w_idx]
+                    annot = p.add_highlight_annot(rect)
+                    annot.set_colors(stroke=(0.5, 1, 0.5))
+                    annot.update()
 
 zip_buffer = io.BytesIO()
 with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
