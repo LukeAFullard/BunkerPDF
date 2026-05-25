@@ -74,10 +74,14 @@ export function DiffModal({ onClose, extractText, diffMergedHighlightPdf }: Diff
       const buffer1 = await doc1.file.arrayBuffer();
       const buffer2 = await doc2.file.arrayBuffer();
 
-      const removedText = diffResult.filter(part => part.removed).map(part => part.value);
-      const addedText = diffResult.filter(part => part.added).map(part => part.value);
+      // We no longer need to pass the diff arrays to the Python worker for PDF highlight generation.
+      // The worker uses its own \`difflib.SequenceMatcher\` internally against the actual PDF coordinates,
+      // avoiding all text search ambiguities.
 
-      const newPdfBytes = await diffMergedHighlightPdf(new Uint8Array(buffer1), new Uint8Array(buffer2), removedText, addedText);
+      // Yield to the event loop so the UI can render the "Generating..." state
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      const newPdfBytes = await diffMergedHighlightPdf(new Uint8Array(buffer1), new Uint8Array(buffer2), [], []);
       const standardBuffer = new Uint8Array(newPdfBytes.length);
       standardBuffer.set(newPdfBytes);
       const blob = new Blob([standardBuffer], { type: 'application/zip' });
