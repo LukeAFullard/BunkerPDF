@@ -317,38 +317,81 @@ import fitz
 import zipfile
 import io
 import difflib
+import hashlib
 
 doc1 = fitz.open(stream=bytes(doc1_bytes), filetype="pdf")
 doc2 = fitz.open(stream=bytes(doc2_bytes), filetype="pdf")
 
-words1 = []
-words1_data = []
-for p in doc1:
-    for w in p.get_text("words"):
-        words1.append(w[4])
-        words1_data.append((p, fitz.Rect(w[:4])))
+word_to_id = {}
+def get_token_id(w):
+    w_norm = w.strip().lower()
+    w_norm = w_norm.replace('“', '"').replace('”', '"').replace('‘', "'").replace('’', "'")
+    w_norm = w_norm.replace('—', '-').replace('–', '-')
+    if w_norm not in word_to_id:
+        word_to_id[w_norm] = len(word_to_id)
+    return word_to_id[w_norm]
 
-words2 = []
-words2_data = []
-for p in doc2:
-    for w in p.get_text("words"):
-        words2.append(w[4])
-        words2_data.append((p, fitz.Rect(w[:4])))
+def get_block_hash(block_words):
+    text = "".join(w[0].strip().lower() for w in block_words)
+    return hashlib.md5(text.encode('utf-8')).hexdigest()
 
-matcher = difflib.SequenceMatcher(None, words1, words2)
-for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-    if tag in ('delete', 'replace'):
-        for idx in range(i1, i2):
-            page, rect = words1_data[idx]
-            annot = page.add_highlight_annot(rect)
-            annot.set_colors(stroke=(1, 0.5, 0.5))
-            annot.update()
-    if tag in ('insert', 'replace'):
-        for idx in range(j1, j2):
-            page, rect = words2_data[idx]
-            annot = page.add_highlight_annot(rect)
-            annot.set_colors(stroke=(0.5, 1, 0.5))
-            annot.update()
+def extract_blocks(doc):
+    blocks = []
+    for page in doc:
+        current_block_no = -1
+        current_block = []
+        for w in page.get_text("words"):
+            block_no = w[5]
+            if block_no != current_block_no:
+                if current_block:
+                    blocks.append(current_block)
+                current_block = []
+                current_block_no = block_no
+            current_block.append((w[4], fitz.Rect(w[:4]), page))
+        if current_block:
+            blocks.append(current_block)
+    return blocks
+
+blocks1 = extract_blocks(doc1)
+blocks2 = extract_blocks(doc2)
+
+hashes1 = [get_block_hash(b) for b in blocks1]
+hashes2 = [get_block_hash(b) for b in blocks2]
+
+block_matcher = difflib.SequenceMatcher(None, hashes1, hashes2)
+
+for b_tag, bi1, bi2, bj1, bj2 in block_matcher.get_opcodes():
+    if b_tag == 'equal':
+        continue
+
+    chunk1_words = []
+    chunk1_rects = []
+    for b in blocks1[bi1:bi2]:
+        for w, rect, page in b:
+            chunk1_words.append(get_token_id(w))
+            chunk1_rects.append((page, rect))
+
+    chunk2_words = []
+    chunk2_rects = []
+    for b in blocks2[bj1:bj2]:
+        for w, rect, page in b:
+            chunk2_words.append(get_token_id(w))
+            chunk2_rects.append((page, rect))
+
+    word_matcher = difflib.SequenceMatcher(None, chunk1_words, chunk2_words)
+    for tag, i1, i2, j1, j2 in word_matcher.get_opcodes():
+        if tag in ('delete', 'replace'):
+            for idx in range(i1, i2):
+                page, rect = chunk1_rects[idx]
+                annot = page.add_highlight_annot(rect)
+                annot.set_colors(stroke=(1, 0.5, 0.5))
+                annot.update()
+        if tag in ('insert', 'replace'):
+            for idx in range(j1, j2):
+                page, rect = chunk2_rects[idx]
+                annot = page.add_highlight_annot(rect)
+                annot.set_colors(stroke=(0.5, 1, 0.5))
+                annot.update()
 
 zip_buffer = io.BytesIO()
 with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
