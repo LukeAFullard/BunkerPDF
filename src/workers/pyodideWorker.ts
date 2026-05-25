@@ -313,6 +313,9 @@ bytes(out_bytes)
       pyodide.globals.set("added_highlights", addedHighlights);
       const highlightCode = `
 import fitz
+import zipfile
+import io
+
 doc1 = fitz.open(stream=bytes(doc1_bytes), filetype="pdf")
 doc2 = fitz.open(stream=bytes(doc2_bytes), filetype="pdf")
 removed = removed_highlights.to_py()
@@ -338,13 +341,16 @@ for page in doc2:
             annot.set_colors(stroke=(0.5, 1, 0.5))
             annot.update()
 
-doc1.insert_pdf(doc2)
-out_bytes = doc1.tobytes()
+zip_buffer = io.BytesIO()
+with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+    zip_file.writestr('original_removed.pdf', doc1.tobytes())
+    zip_file.writestr('updated_added.pdf', doc2.tobytes())
+
 doc1.close()
 doc2.close()
 del doc1_bytes
 del doc2_bytes
-bytes(out_bytes)
+bytes(zip_buffer.getvalue())
       `;
       const highlightedProxy = await pyodide.runPythonAsync(highlightCode);
       const highlightedBytes = highlightedProxy.toJs();

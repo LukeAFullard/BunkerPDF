@@ -80,17 +80,17 @@ export function DiffModal({ onClose, extractText, diffMergedHighlightPdf }: Diff
       const newPdfBytes = await diffMergedHighlightPdf(new Uint8Array(buffer1), new Uint8Array(buffer2), removedText, addedText);
       const standardBuffer = new Uint8Array(newPdfBytes.length);
       standardBuffer.set(newPdfBytes);
-      const blob = new Blob([standardBuffer], { type: 'application/pdf' });
+      const blob = new Blob([standardBuffer], { type: 'application/zip' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = "diff-merged.pdf";
+      a.download = "diff-highlighted.zip";
       a.click();
       URL.revokeObjectURL(url);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       console.error(err);
-      setError(err.message || "Failed to generate highlighted PDF");
+      setError(err.message || "Failed to generate highlighted PDFs");
     } finally {
       setIsGeneratingMerged(false);
     }
@@ -176,9 +176,9 @@ export function DiffModal({ onClose, extractText, diffMergedHighlightPdf }: Diff
                     onClick={handleGenerateMergedHighlight}
                     disabled={isGeneratingMerged || diffResult.filter(p => p.added || p.removed).length === 0}
                     className="text-xs bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-3 py-1.5 rounded transition-colors disabled:opacity-50 font-medium"
-                    title="Download merged PDF with red/green highlights"
+                    title="Download ZIP containing PDFs with red/green highlights"
                   >
-                    {isGeneratingMerged ? 'Generating...' : 'Export Highlighted PDF'}
+                    {isGeneratingMerged ? 'Generating...' : 'Export Highlighted PDFs (ZIP)'}
                   </button>
                 </div>
                 <div className="flex items-center gap-4 text-xs">
