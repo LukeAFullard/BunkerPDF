@@ -127,6 +127,7 @@ export function PDFPageThumbnail({ docId, pageNumber, width = 100, className = '
     <div
       ref={containerRef}
       className={`w-full overflow-hidden bg-gray-100 flex items-center justify-center rounded min-h-[150px] ${className}`}
+      style={{ width }}
     >
       {cachedDataUrl ? (
         <img
