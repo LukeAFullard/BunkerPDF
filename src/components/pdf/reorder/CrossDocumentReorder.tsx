@@ -635,15 +635,15 @@ const handleDeleteSelected = () => {
         {/* Full Screen Preview Overlay */}
         {previewItem && (
           <div className="fixed inset-0 z-[60] bg-black/90 flex flex-col backdrop-blur-sm transition-opacity">
-            <div className="flex justify-end p-4 absolute top-0 right-0 z-[70] pointer-events-auto">
+            <div className="flex justify-end p-4 absolute top-4 right-4 z-[100]">
               <button
                 onClick={() => setPreviewItem(null)}
-                className="text-white hover:bg-white/20 p-2 rounded-full transition-colors"
+                className="bg-black/50 hover:bg-black/70 text-white p-3 rounded-full transition-colors shadow-lg backdrop-blur-sm border border-white/20 relative z-[100]"
               >
                 <X size={24} />
               </button>
             </div>
-            <div className="flex-1 flex items-center justify-center overflow-hidden z-[60]">
+            <div className="flex-1 flex items-center justify-center overflow-hidden z-[40]">
               <TransformWrapper centerOnInit={true} initialScale={1} minScale={0.5} maxScale={5}>
                 <TransformComponent wrapperStyle={{ width: '100vw', height: '100vh' }} contentStyle={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <div
