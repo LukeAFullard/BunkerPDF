@@ -75,6 +75,7 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [lastSelectedId, setLastSelectedId] = useState<string | null>(null);
+  const [lastSelectedColId, setLastSelectedColId] = useState<string | null>(null);
   const [thumbnailScale, setThumbnailScale] = useState(1);
 
   // Initialize data
@@ -348,15 +349,33 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
   };
 
 
-  const handleSelectAllInColumn = (docId: string) => {
-    const col = columns.find(c => c.docId === docId);
-    if (!col) return;
+  const handleSelectAllInColumn = (e: React.MouseEvent, docId: string) => {
+    const isShift = e.shiftKey;
 
     setSelectedIds(prev => {
       const next = new Set(prev);
-      col.items.forEach(item => next.add(item.id));
+
+      if (isShift && lastSelectedColId) {
+        const startIdx = columns.findIndex(c => c.docId === lastSelectedColId);
+        const endIdx = columns.findIndex(c => c.docId === docId);
+
+        if (startIdx !== -1 && endIdx !== -1) {
+          const start = Math.min(startIdx, endIdx);
+          const end = Math.max(startIdx, endIdx);
+
+          for (let i = start; i <= end; i++) {
+            columns[i].items.forEach(item => next.add(item.id));
+          }
+        }
+      } else {
+        const col = columns.find(c => c.docId === docId);
+        if (col) {
+          col.items.forEach(item => next.add(item.id));
+        }
+      }
       return next;
     });
+    setLastSelectedColId(docId);
   };
 
   const handleRotateSingle = (id: string, degrees: number) => {
@@ -548,7 +567,7 @@ const handleDeleteSelected = () => {
                     <div className="text-xs text-gray-500 flex justify-between items-center">
                       <span>{col.items.length} pages</span>
                       <button
-                        onClick={() => handleSelectAllInColumn(col.docId)}
+                        onClick={(e) => handleSelectAllInColumn(e, col.docId)}
                         className="text-blue-600 hover:text-blue-700 hover:underline cursor-pointer px-1"
                       >
                         Select All
