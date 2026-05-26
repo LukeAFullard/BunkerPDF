@@ -565,14 +565,29 @@ const handleDeleteSelected = () => {
                 <div key={col.docId} className="flex flex-col w-[300px] bg-gray-100/50 border border-gray-200 rounded-xl overflow-hidden shrink-0 shadow-sm flex-1 max-h-[calc(100vh-120px)]">
                   <div className="bg-gray-200/50 px-4 py-3 border-b border-gray-200">
                     <h3 className="font-semibold text-gray-800 truncate" title={col.name}>{col.name}</h3>
-                    <div className="text-xs text-gray-500 flex justify-between items-center">
+                    <div className="text-xs text-gray-500 flex justify-between items-center mt-1">
                       <span>{col.items.length} pages</span>
-                      <button
-                        onClick={(e) => handleSelectAllInColumn(e, col.docId)}
-                        className="text-blue-600 hover:text-blue-700 hover:underline cursor-pointer px-1"
-                      >
-                        Select All
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={(e) => handleSelectAllInColumn(e, col.docId)}
+                          className="text-blue-600 hover:text-blue-700 hover:underline cursor-pointer px-1"
+                        >
+                          Select All
+                        </button>
+                        <span className="text-gray-300">|</span>
+                        <button
+                          onClick={() => {
+                            setSelectedIds(prev => {
+                              const next = new Set(prev);
+                              col.items.forEach(item => next.delete(item.id));
+                              return next;
+                            });
+                          }}
+                          className="text-gray-500 hover:text-gray-700 hover:underline cursor-pointer px-1"
+                        >
+                          Deselect All
+                        </button>
+                      </div>
                     </div>
                   </div>
 

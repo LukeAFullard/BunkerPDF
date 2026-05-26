@@ -104,7 +104,7 @@ export function SideBySideViewerModal({ onClose }: SideBySideViewerModalProps) {
         {/* Content */}
         <div className="flex flex-1 overflow-hidden bg-gray-100 dark:bg-gray-900">
           {/* Pane 1 */}
-          <div className="flex-1 flex flex-col border-r border-gray-300 dark:border-gray-700 relative">
+          <div className="flex-1 flex flex-col border-r border-gray-300 dark:border-gray-700 relative w-1/2">
             <div className="p-2 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm z-10">
               <select
                 value={doc1Id}
@@ -120,14 +120,16 @@ export function SideBySideViewerModal({ onClose }: SideBySideViewerModalProps) {
             <div
               ref={pane1Ref}
               onScroll={handleScroll1}
-              className="flex-1 overflow-auto p-4 custom-scrollbar flex flex-col gap-6" style={{ alignItems: scale > 1 ? "flex-start" : "center" }}
+              className="flex-1 overflow-auto p-4 custom-scrollbar"
             >
-              {doc1 && <PDFDocumentView file={doc1.file} scale={scale} />}
+              <div className="flex flex-col gap-6" style={{ alignItems: scale > 1 ? "flex-start" : "center", minWidth: "max-content" }}>
+                {doc1 && <PDFDocumentView file={doc1.file} scale={scale} />}
+              </div>
             </div>
           </div>
 
           {/* Pane 2 */}
-          <div className="flex-1 flex flex-col relative">
+          <div className="flex-1 flex flex-col relative w-1/2">
             <div className="p-2 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm z-10">
               <select
                 value={doc2Id}
@@ -143,9 +145,11 @@ export function SideBySideViewerModal({ onClose }: SideBySideViewerModalProps) {
             <div
               ref={pane2Ref}
               onScroll={handleScroll2}
-              className="flex-1 overflow-auto p-4 custom-scrollbar flex flex-col gap-6" style={{ alignItems: scale > 1 ? "flex-start" : "center" }}
+              className="flex-1 overflow-auto p-4 custom-scrollbar"
             >
-              {doc2 && <PDFDocumentView file={doc2.file} scale={scale} />}
+              <div className="flex flex-col gap-6" style={{ alignItems: scale > 1 ? "flex-start" : "center", minWidth: "max-content" }}>
+                {doc2 && <PDFDocumentView file={doc2.file} scale={scale} />}
+              </div>
             </div>
           </div>
         </div>
