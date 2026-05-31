@@ -876,7 +876,10 @@ function App() {
     });
   };
 
-  const extractMarkdown = (bytes: Uint8Array): Promise<string> => {
+  const extractMarkdown = async (bytes: Uint8Array): Promise<string> => {
+    if (useUIStore.getState().extractionMethod === 'liteparse') {
+      return await extractTextLiteparse(bytes);
+    }
     return new Promise((resolve, reject) => {
       if (!pyodideWorkerRef.current)
         return reject(new Error("Pyodide worker not ready"));
