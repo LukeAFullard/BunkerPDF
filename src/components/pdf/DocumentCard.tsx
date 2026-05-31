@@ -13,6 +13,7 @@ import { useAuditStore } from "../../store/auditStore";
 import { BookmarkModal, type Bookmark } from "../ui/BookmarkModal";
 import { DocumentHealthPanel } from './DocumentHealthPanel';
 import { analyzeDocumentHealth } from '../../lib/healthChecks';
+import { ParagraphEditModal } from './ParagraphEditModal';
 
 interface DocumentCardProps {
   doc: PDFDocument;
@@ -46,6 +47,7 @@ interface DocumentCardProps {
   extractLinks?: (bytes: Uint8Array) => Promise<string>;
   extractAnnotations?: (bytes: Uint8Array) => Promise<string>;
   extractMetadata?: (bytes: Uint8Array) => Promise<string>;
+  editParagraph?: (bytes: Uint8Array, searchText: string, replacementText: string) => Promise<Uint8Array>;
   onViewMetadata?: (doc: PDFDocument, metadata: { standard: Record<string, string>; xmp: string }) => void;
   extractBookmarks?: (bytes: Uint8Array) => Promise<string>;
   editBookmarks?: (bytes: Uint8Array, bookmarks: Bookmark[]) => Promise<Uint8Array>;
@@ -93,6 +95,7 @@ export function DocumentCard({
   extractLinks,
   extractAnnotations,
   extractMetadata,
+  editParagraph,
   onViewMetadata,
   extractBookmarks,
   editBookmarks,
@@ -304,6 +307,7 @@ export function DocumentCard({
     isOpen: boolean;
     bookmarks: Bookmark[];
   }>({ isOpen: false, bookmarks: [] });
+  const [isParagraphEditModalOpen, setIsParagraphEditModalOpen] = useState(false);
 
   const handleEditBookmarks = async () => {
     if (!extractBookmarks) return;
@@ -373,6 +377,33 @@ export function DocumentCard({
     }
   };
 
+
+  const handleEditParagraph = async (docToEdit: PDFDocument, searchText: string, replacementText: string) => {
+    if (!editParagraph) return;
+    let isCancelled = false;
+    startProcessing("Editing paragraph...", true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
+    try {
+      const buffer = await docToEdit.file.arrayBuffer();
+      const newBytes = await editParagraph(new Uint8Array(buffer), searchText, replacementText);
+      if (isCancelled) return;
+
+      const standardBuffer = new Uint8Array(newBytes.length);
+      standardBuffer.set(newBytes);
+      const newFile = new File([standardBuffer], docToEdit.file.name, { type: 'application/pdf' });
+      await updateDocumentFile(docToEdit.id, newFile);
+      addLog("Edit Paragraph", "Replaced paragraph text.", docToEdit.name);
+    } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+      if (isCancelled) return;
+      console.error(err);
+      setErrorState({ isOpen: true, title: "Edit Error", message: err.message || "Failed to edit paragraph." });
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
+  };
 
   const handleExtractMarkdown = async () => {
     if (!extractMarkdown) return;
@@ -871,6 +902,7 @@ items={[
             { label: "Add Watermark (~1s)", onClick: () => onWatermark?.(doc) },
             { label: "Highlight Text (~2s)", onClick: () => onHighlight?.(doc) },
             { label: "Sign Document (~2s)", onClick: () => onSign?.(doc) },
+            { label: "Edit Text (Beta) (~3s)", onClick: () => setIsParagraphEditModalOpen(true) },
             { variant: "separator" },
             (!isMobile ? { label: "Extract Tables (Excel) (~10s)", onClick: handleExtractTables } : null),
             { label: "Extract Notes (MD) (~5s)", onClick: handleExtractMarkdown },
@@ -1177,6 +1209,13 @@ items={[
           </div>
         </div>
       )}
+
+      <ParagraphEditModal
+        isOpen={isParagraphEditModalOpen}
+        doc={doc}
+        onClose={() => setIsParagraphEditModalOpen(false)}
+        onEdit={handleEditParagraph}
+      />
     </div>
   );
 }

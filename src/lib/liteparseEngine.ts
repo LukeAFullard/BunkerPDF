@@ -139,3 +139,95 @@ export const extractHtmlLiteparse = async (bytes: Uint8Array): Promise<string> =
 
   return htmlLines.join("\n<hr>\n");
 };
+
+export const editParagraphLiteparse = async (bytes: Uint8Array, searchText: string, replacementText: string): Promise<Uint8Array> => {
+  await initLiteParse();
+  const engine = new LiteParse({ outputFormat: "json", ocrEnabled: false });
+  const result = await engine.parse(bytes);
+
+  if (!result || !result.pages) return bytes;
+
+  // Find bounding box for search text
+  let targetBox = null;
+  let targetPageNum = -1;
+  let targetFontSize = 12;
+
+  // We will search for a block of text that includes the searchText.
+  for (let i = 0; i < result.pages.length; i++) {
+    const page = result.pages[i];
+    if (!page.textItems) continue;
+
+    // A very simple search: concatenate all text in the page, find index.
+    // If found, find the corresponding text items.
+    let fullText = "";
+    const itemStarts: number[] = [];
+    for (const item of page.textItems) {
+      itemStarts.push(fullText.length);
+      fullText += item.text + " ";
+    }
+
+    const searchIndex = fullText.indexOf(searchText);
+    if (searchIndex !== -1) {
+      targetPageNum = i;
+      // find which items match
+      let startIndex = -1;
+      let endIndex = -1;
+      for (let j = 0; j < itemStarts.length; j++) {
+        if (itemStarts[j] <= searchIndex && (j === itemStarts.length - 1 || itemStarts[j+1] > searchIndex)) {
+          startIndex = j;
+        }
+        if (itemStarts[j] <= searchIndex + searchText.length && (j === itemStarts.length - 1 || itemStarts[j+1] > searchIndex + searchText.length)) {
+          endIndex = j;
+        }
+      }
+
+      if (startIndex !== -1 && endIndex !== -1) {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (let j = startIndex; j <= endIndex; j++) {
+          const item = page.textItems[j];
+          if (item.x < minX) minX = item.x;
+          if (item.y < minY) minY = item.y;
+          if (item.x + item.width > maxX) maxX = item.x + item.width;
+          if (item.y + item.height > maxY) maxY = item.y + item.height;
+          if (item.fontSize) targetFontSize = item.fontSize;
+        }
+        targetBox = { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+        break; // found first occurrence
+      }
+    }
+  }
+
+  if (!targetBox) return bytes;
+
+  // Use pdf-lib to overwrite
+  const { PDFDocument, rgb } = await import('pdf-lib');
+  const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const pages = pdfDoc.getPages();
+  const pdfPage = pages[targetPageNum];
+
+  // LiteParse coordinates are usually top-left, but pdf-lib uses bottom-left.
+  // We need to map y coordinates.
+  const { height } = pdfPage.getSize();
+  const pdfLibY = height - targetBox.y - targetBox.height;
+
+  // draw white box
+  pdfPage.drawRectangle({
+    x: targetBox.x,
+    y: pdfLibY,
+    width: targetBox.width,
+    height: targetBox.height,
+    color: rgb(1, 1, 1),
+  });
+
+  // Write new text. For simplicity, just write it at the top left of the box.
+  pdfPage.drawText(replacementText, {
+    x: targetBox.x,
+    y: height - targetBox.y - targetFontSize, // baseline approximation
+    size: targetFontSize,
+    color: rgb(0, 0, 0),
+    maxWidth: targetBox.width,
+    lineHeight: targetFontSize * 1.2
+  });
+
+  return await pdfDoc.save();
+};

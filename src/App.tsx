@@ -54,7 +54,7 @@ import type {
 import { ImageReorderRail, type ImageItem } from "./components/ui/ImageReorderRail";
 import { convertImagesToPdf } from "./lib/engineA";
 import { SettingsDropdown } from "./components/ui/SettingsDropdown";
-import { extractTextLiteparse, extractMarkdownLiteparse, extractHtmlLiteparse } from "./lib/liteparseEngine";
+import { extractTextLiteparse, extractMarkdownLiteparse, extractHtmlLiteparse, editParagraphLiteparse } from "./lib/liteparseEngine";
 
 function App() {
   const documents = useFileStore((state) => state.documents);
@@ -1010,6 +1010,10 @@ function App() {
         pdfBytes: bytes,
       } satisfies PyodideWorkerMessage);
     });
+  };
+
+  const editParagraph = async (bytes: Uint8Array, searchText: string, replacementText: string): Promise<Uint8Array> => {
+    return editParagraphLiteparse(bytes, searchText, replacementText);
   };
 
   const extractAllPagesText = (bytes: Uint8Array, pageCount: number): Promise<string[]> => {
@@ -3342,6 +3346,7 @@ function App() {
                       extractLinks={extractLinks}
                       extractAnnotations={extractAnnotations}
                       extractMetadata={extractMetadata}
+                      editParagraph={editParagraph}
                       onViewMetadata={handleViewMetadata}
                       extractBookmarks={extractBookmarks}
                       editBookmarks={editBookmarks}
