@@ -21,19 +21,18 @@ When LiteParse is selected, it powers several key extraction and editing functio
 5. **Paragraph Editing / Replacement (`editParagraphLiteparse`)**:
    An experimental feature that uses LiteParse to locate the exact spatial bounding box coordinates of a searched text string. It then leverages `pdf-lib` to overlay a white masking rectangle and draw new replacement text over it, providing a form of "destructive" text editing that preserves layout.
 
+6. **Text Redaction / Sanitization (`redactDocumentLiteparse`)**:
+   Now utilizes LiteParse to locate precise bounding boxes natively in JavaScript via the JSON spatial output. These coordinates are then passed to `pdf-lib` to draw exact redaction rectangles over sensitive text blocks, bypassing the heavier PyMuPDF worker.
+
 ## What else could be ported
 
-Currently, several actions still exclusively rely on `pyodideWorker.ts`, PyMuPDF, or separate WebWorkers. Based on LiteParse's JSON output (which yields exact text content, spatial coordinates, dimensions, and font properties), the following features could optionally be ported to run on LiteParse:
+Currently, a few actions still exclusively rely on `pyodideWorker.ts` or separate WebWorkers. Based on LiteParse's JSON output, the following features could optionally be ported next to run on LiteParse:
 
-1. **Text Redaction / Sanitization targeting text blocks**:
-   - *Current Implementation*: Depends on PyMuPDF bounds matching (`REDACT_DOCUMENT` in `pyodideWorker.ts`).
-   - *LiteParse Portability*: We can locate precise PII bounding boxes natively in JS via LiteParse's item-level bounding boxes and dimensions (`x, y, width, height`), and pass these coordinates back to a lighter redaction engine (e.g., `pdf-lib` instead of PyMuPDF).
-
-2. **In-browser OCR for text-sparse PDFs**:
+1. **In-browser OCR for text-sparse PDFs**:
    - *Current Implementation*: OCR is handled separately via `tesseract.js` in `src/lib/ocrEngine.ts`, which renders canvas blocks and merges a new PDF document.
    - *LiteParse Portability*: LiteParse-WASM exposes an `ocrEnabled` parameter and allows passing a custom `ocrEngine` block containing a `recognize` callback. We could directly attach our existing `tesseract.js` worker into LiteParse's native engine flow, allowing LiteParse to seamlessly weave OCR-derived text directly into its spatial layout grids for mixed image/text PDFs, returning a single, unified structure.
 
-3. **Document Search / Diff Highlighting**:
+2. **Document Search / Diff Highlighting**:
    - *Current Implementation*: The `DiffModal` uses PyMuPDF (`DIFF_MERGED_HIGHLIGHT_DOCUMENT` in `pyodideWorker.ts`) to extract words, group them, perform sequence matching, and map opcodes directly back to the physical bounding boxes to avoid expensive re-searching passes before applying annotations.
    - *LiteParse Portability*: LiteParse's `json` output provides identically granular bounding boxes (`x, y, width, height`) for text items. The Diff or Search features could use LiteParse to map text indices to spatial regions within a pure Javascript environment and apply annotations directly via `pdf-lib`, eliminating the need to spin up the Pyodide WebWorker for search mapping.
 
