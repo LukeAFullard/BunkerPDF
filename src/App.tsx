@@ -54,7 +54,7 @@ import type {
 import { ImageReorderRail, type ImageItem } from "./components/ui/ImageReorderRail";
 import { convertImagesToPdf } from "./lib/engineA";
 import { SettingsDropdown } from "./components/ui/SettingsDropdown";
-import { extractTextLiteparse, extractMarkdownLiteparse, extractHtmlLiteparse, editParagraphLiteparse, extractTablesLiteparse, redactDocumentLiteparse } from "./lib/liteparseEngine";
+import { extractTextLiteparse, extractMarkdownLiteparse, extractHtmlLiteparse, editParagraphLiteparse, extractTablesLiteparse, redactDocumentLiteparse, diffMergedHighlightPdfLiteparse, diffHighlightPdfLiteparse } from "./lib/liteparseEngine";
 
 function App() {
   const documents = useFileStore((state) => state.documents);
@@ -2675,6 +2675,10 @@ function App() {
   };
 
   const diffHighlightPdf = (bytes: Uint8Array, highlights: string[], color: [number, number, number]): Promise<Uint8Array> => {
+    const method = useUIStore.getState().extractionMethod;
+    if (method === 'liteparse') {
+      return diffHighlightPdfLiteparse(bytes, highlights, color);
+    }
     return new Promise((resolve, reject) => {
       if (!pyodideWorkerRef.current)
         return reject(new Error("Worker not initialized"));
@@ -2710,6 +2714,10 @@ function App() {
   };
 
   const diffMergedHighlightPdf = (bytes1: Uint8Array, bytes2: Uint8Array, removedHighlights: string[], addedHighlights: string[]): Promise<Uint8Array> => {
+    const method = useUIStore.getState().extractionMethod;
+    if (method === 'liteparse') {
+      return diffMergedHighlightPdfLiteparse(bytes1, bytes2);
+    }
     return new Promise((resolve, reject) => {
       if (!pyodideWorkerRef.current)
         return reject(new Error("Worker not initialized"));
