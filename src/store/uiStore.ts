@@ -18,6 +18,8 @@ interface UIState {
   hideFeedbackPrompt: () => void;
   extractionMethod: 'pyodide' | 'liteparse';
   setExtractionMethod: (method: 'pyodide' | 'liteparse') => void;
+  liteparseOcrEnabled: boolean;
+  setLiteparseOcrEnabled: (enabled: boolean) => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -34,10 +36,17 @@ export const useUIStore = create<UIState>()(
   hideFeedbackPrompt: () => set({ feedbackPrompt: { isOpen: false, toolName: '' } }),
   extractionMethod: 'pyodide',
   setExtractionMethod: (method) => set({ extractionMethod: method }),
+  liteparseOcrEnabled: false,
+  setLiteparseOcrEnabled: (enabled) => set({ liteparseOcrEnabled: enabled }),
     }),
     {
       name: 'bunkerpdf-ui-storage',
-      partialize: (state) => ({ isDarkMode: state.isDarkMode, complexityMode: state.complexityMode, extractionMethod: state.extractionMethod }),
+      partialize: (state) => ({
+        isDarkMode: state.isDarkMode,
+        complexityMode: state.complexityMode,
+        extractionMethod: state.extractionMethod,
+        liteparseOcrEnabled: state.liteparseOcrEnabled
+      }),
     }
   )
 );

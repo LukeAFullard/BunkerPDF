@@ -19,7 +19,7 @@ When LiteParse is selected, it powers several key extraction and editing functio
    Uses the JSON output's horizontal alignments to extract grids. It groups text by Y coordinates into rows, then sorts by X coordinates to establish columns. It can export these natively detected tables directly into CSV, Markdown, or LaTeX formats.
 
 5. **Paragraph Editing / Replacement (`editParagraphLiteparse`)**:
-   An experimental feature that uses LiteParse to locate the exact spatial bounding box coordinates of a searched text string. It then leverages `pdf-lib` to overlay a white masking rectangle and draw new replacement text over it, providing a form of "destructive" text editing that preserves layout.
+   An experimental feature that uses LiteParse to locate the exact spatial bounding box coordinates of a given search text string. It then leverages `pdf-lib` to overlay a white masking rectangle and draw new replacement text over it, providing a form of "destructive" text editing that preserves layout.
 
 6. **Text Redaction / Sanitization (`redactDocumentLiteparse`)**:
    Now utilizes LiteParse to locate precise bounding boxes natively in JavaScript via the JSON spatial output. These coordinates are then passed to `pdf-lib` to draw exact redaction rectangles over sensitive text blocks, bypassing the heavier PyMuPDF worker.
@@ -34,6 +34,7 @@ Currently, a few actions still exclusively rely on `pyodideWorker.ts` or separat
 1. **In-browser OCR for text-sparse PDFs**:
    - *Current Implementation*: OCR is handled separately via `tesseract.js` in `src/lib/ocrEngine.ts`, which renders canvas blocks and merges a new PDF document.
    - *LiteParse Portability*: LiteParse-WASM exposes an `ocrEnabled` parameter and allows passing a custom `ocrEngine` block containing a `recognize` callback. We could directly attach our existing `tesseract.js` worker into LiteParse's native engine flow, allowing LiteParse to seamlessly weave OCR-derived text directly into its spatial layout grids for mixed image/text PDFs, returning a single, unified structure.
+   - *Status:* **Implemented**. The `SettingsDropdown` now includes an option to enable in-browser OCR specifically when the LiteParse extraction engine is active. This connects `tesseract.js` directly to `LiteParse` text projection via `getConfiguredLiteParse` in `liteparseEngine.ts`.
 
 ### Note on limitations:
 LiteParse focuses purely on spatial **text extraction**. Tasks like image extraction (`EXTRACT_IMAGES`), encryption/unlocking, bookmark (TOC) editing, metadata manipulation, or DOCX conversions are outside its scope and must continue utilizing PyMuPDF or `pdf-lib`.
