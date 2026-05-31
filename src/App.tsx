@@ -25,11 +25,13 @@ import {
   crossDocumentReorderPages,
 } from "./lib/engineA";
 import { EngineStatusPill } from "./components/ui/EngineStatusPill";
+import { SettingsDropdown } from "./components/ui/SettingsDropdown";
 import { CrossDocumentReorder } from "./components/pdf/reorder/CrossDocumentReorder";
 import { SingleDocumentReorder } from "./components/pdf/reorder/SingleDocumentReorder";
 import { InteractiveHighlightModal } from "./components/pdf/InteractiveHighlightModal";
 import { VisualWatermarkModal } from "./components/pdf/VisualWatermarkModal";
 import { getSmartOutputName } from "./lib/utils";
+import { extractTextLiteparse, extractAllPagesTextLiteparse } from "./lib/liteparseEngine";
 import { ocrPdf } from "./lib/ocrEngine";
 import { ReadAloudModal } from "./components/ui/ReadAloudModal";
 import { MetadataModal } from "./components/ui/MetadataModal";
@@ -979,7 +981,10 @@ function App() {
     });
   };
 
-  const extractText = (bytes: Uint8Array): Promise<string> => {
+  const extractText = async (bytes: Uint8Array): Promise<string> => {
+    if (useUIStore.getState().extractionMethod === 'liteparse') {
+      return await extractTextLiteparse(bytes);
+    }
     return new Promise((resolve, reject) => {
       if (!pyodideWorkerRef.current)
         return reject(new Error("Pyodide worker not ready"));
@@ -993,7 +998,10 @@ function App() {
     });
   };
 
-  const extractAllPagesText = (bytes: Uint8Array, pageCount: number): Promise<string[]> => {
+  const extractAllPagesText = async (bytes: Uint8Array, pageCount: number): Promise<string[]> => {
+    if (useUIStore.getState().extractionMethod === 'liteparse') {
+      return await extractAllPagesTextLiteparse(bytes);
+    }
     return new Promise((resolve, reject) => {
       if (!pyodideWorkerRef.current)
         return reject(new Error("Pyodide worker not ready"));
@@ -3073,7 +3081,10 @@ function App() {
             <div className={`font-bold text-xl tracking-tight ${isDarkMode ? "text-gray-100" : "text-gray-800"}`}>
               BunkerPDF
             </div>
-            <EngineStatusPill />
+            <div className="flex items-center gap-2">
+              <SettingsDropdown />
+              <EngineStatusPill />
+            </div>
           </header>
           <div className="flex-1 flex flex-col pb-8">
             <Dropzone
@@ -3141,7 +3152,10 @@ function App() {
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-4">
               <h1 className="text-3xl font-bold">Workspace</h1>
-              <EngineStatusPill />
+              <div className="flex items-center gap-2">
+                <SettingsDropdown />
+                <EngineStatusPill />
+              </div>
             </div>
             <div className="flex gap-4 items-center">
 
