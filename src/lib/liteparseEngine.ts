@@ -344,3 +344,74 @@ export const extractTablesLiteparse = async (bytes: Uint8Array, format: 'csv' | 
 
   return allTablesOutput.join("\n\n---\n\n");
 };
+
+export const redactDocumentLiteparse = async (bytes: Uint8Array, redactions: string[]): Promise<Uint8Array> => {
+  await initLiteParse();
+  const engine = new LiteParse({ outputFormat: "json", ocrEnabled: false });
+  const result = await engine.parse(bytes);
+
+  if (!result || !result.pages) return bytes;
+
+  const { PDFDocument, rgb } = await import('pdf-lib');
+  const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const pages = pdfDoc.getPages();
+
+  for (let i = 0; i < result.pages.length; i++) {
+    const page = result.pages[i];
+    if (!page.textItems || page.textItems.length === 0) continue;
+    const pdfPage = pages[i];
+    const { height } = pdfPage.getSize();
+
+    // Group text items by line
+    let fullText = "";
+    const itemStarts: number[] = [];
+    for (const item of page.textItems) {
+      itemStarts.push(fullText.length);
+      fullText += item.text + " ";
+    }
+
+    for (const searchText of redactions) {
+       let startIndex = fullText.indexOf(searchText);
+       while(startIndex !== -1) {
+          // find which items match
+          let startItemIdx = -1;
+          let endItemIdx = -1;
+          for (let j = 0; j < itemStarts.length; j++) {
+            if (itemStarts[j] <= startIndex && (j === itemStarts.length - 1 || itemStarts[j+1] > startIndex)) {
+              startItemIdx = j;
+            }
+            if (itemStarts[j] <= startIndex + searchText.length && (j === itemStarts.length - 1 || itemStarts[j+1] > startIndex + searchText.length)) {
+              endItemIdx = j;
+            }
+          }
+
+          if (startItemIdx !== -1 && endItemIdx !== -1) {
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            for (let j = startItemIdx; j <= endItemIdx; j++) {
+              const item = page.textItems[j];
+              if (item.x < minX) minX = item.x;
+              if (item.y < minY) minY = item.y;
+              if (item.x + item.width > maxX) maxX = item.x + item.width;
+              if (item.y + item.height > maxY) maxY = item.y + item.height;
+            }
+            const targetBox = { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+
+            // LiteParse coordinates are usually top-left, but pdf-lib uses bottom-left.
+            const pdfLibY = height - targetBox.y - targetBox.height;
+
+            // draw black box
+            pdfPage.drawRectangle({
+              x: targetBox.x,
+              y: pdfLibY,
+              width: targetBox.width,
+              height: targetBox.height,
+              color: rgb(0, 0, 0),
+            });
+          }
+          startIndex = fullText.indexOf(searchText, startIndex + 1);
+       }
+    }
+  }
+
+  return await pdfDoc.save();
+};
