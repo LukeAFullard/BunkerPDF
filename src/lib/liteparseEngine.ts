@@ -1,7 +1,66 @@
 import init, { LiteParse } from "@llamaindex/liteparse-wasm";
+import { useUIStore } from '../store/uiStore';
+import { createWorker } from 'tesseract.js';
+import type { Worker } from 'tesseract.js';
 
 let engineInstance: LiteParse | null = null;
 let initPromise: Promise<LiteParse> | null = null;
+
+let tesseractWorker: Worker | null = null;
+
+const getTesseractWorker = async () => {
+  if (!tesseractWorker) {
+    tesseractWorker = await createWorker('eng');
+  }
+  return tesseractWorker;
+};
+
+export const getConfiguredLiteParse = async (options: { outputFormat?: 'json' | 'text' } = {}): Promise<LiteParse> => {
+  await initLiteParse();
+  const ocrEnabled = useUIStore.getState().liteparseOcrEnabled;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let ocrEngineConfig: any = undefined;
+
+  if (ocrEnabled) {
+    ocrEngineConfig = {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      recognize: async (imageData: Uint8Array, width: number, height: number, _language: string) => {
+        const worker = await getTesseractWorker();
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          // Explicitly cast to ImageDataArray compatible type to satisfy TS
+          const clampedArray = new Uint8ClampedArray(imageData.buffer, imageData.byteOffset, imageData.byteLength) as unknown as Uint8ClampedArray<ArrayBuffer>;
+          const imgData = new ImageData(clampedArray, width, height);
+          ctx.putImageData(imgData, 0, 0);
+          const dataUrl = canvas.toDataURL('image/png');
+          const result = await worker.recognize(dataUrl, {}, { pdf: false });
+          // Cleanup
+          canvas.width = 0;
+          canvas.height = 0;
+          canvas.remove();
+
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          return (result.data as any).words?.map((w: any) => ({
+            text: w.text,
+            bbox: [w.bbox.x0, w.bbox.y0, w.bbox.x1, w.bbox.y1],
+            confidence: w.confidence / 100
+          })) || [];
+        }
+        return [];
+      }
+    };
+  }
+
+  return new LiteParse({
+    outputFormat: options.outputFormat || 'json',
+    ocrEnabled: ocrEnabled,
+    ...(ocrEngineConfig ? { ocrEngine: ocrEngineConfig } : {})
+  });
+};
 
 export const initLiteParse = async (): Promise<LiteParse> => {
   if (engineInstance) return engineInstance;
@@ -25,7 +84,7 @@ export const initLiteParse = async (): Promise<LiteParse> => {
 };
 
 export const extractTextLiteparse = async (bytes: Uint8Array): Promise<string> => {
-  const engine = await initLiteParse();
+  const engine = await getConfiguredLiteParse({ outputFormat: "text" });
   const result = await engine.parse(bytes);
   return result.text || "";
 };
@@ -33,10 +92,7 @@ export const extractTextLiteparse = async (bytes: Uint8Array): Promise<string> =
 
 export const extractMarkdownLiteparse = async (bytes: Uint8Array): Promise<string> => {
   // Use LiteParse's JSON output for spatial/layout data.
-  // We recreate a new engine here just for JSON output since the default one might be initialized for default parsing.
-  // Actually, we can just init() the module and create one with specific options.
-  await initLiteParse();
-  const engine = new LiteParse({ outputFormat: "json", ocrEnabled: false });
+  const engine = await getConfiguredLiteParse({ outputFormat: "json" });
   const result = await engine.parse(bytes);
 
   if (!result || !result.pages) return "";
@@ -104,8 +160,7 @@ export const extractMarkdownLiteparse = async (bytes: Uint8Array): Promise<strin
 };
 
 export const extractHtmlLiteparse = async (bytes: Uint8Array): Promise<string> => {
-  await initLiteParse();
-  const engine = new LiteParse({ outputFormat: "json", ocrEnabled: false });
+  const engine = await getConfiguredLiteParse({ outputFormat: "json" });
   const result = await engine.parse(bytes);
 
   if (!result || !result.pages) return "";
@@ -141,8 +196,7 @@ export const extractHtmlLiteparse = async (bytes: Uint8Array): Promise<string> =
 };
 
 export const editParagraphLiteparse = async (bytes: Uint8Array, searchText: string, replacementText: string): Promise<Uint8Array> => {
-  await initLiteParse();
-  const engine = new LiteParse({ outputFormat: "json", ocrEnabled: false });
+  const engine = await getConfiguredLiteParse({ outputFormat: "json" });
   const result = await engine.parse(bytes);
 
   if (!result || !result.pages) return bytes;
@@ -233,8 +287,7 @@ export const editParagraphLiteparse = async (bytes: Uint8Array, searchText: stri
 };
 
 export const extractTablesLiteparse = async (bytes: Uint8Array, format: 'csv' | 'markdown' | 'latex'): Promise<string> => {
-  await initLiteParse();
-  const engine = new LiteParse({ outputFormat: "json", ocrEnabled: false });
+  const engine = await getConfiguredLiteParse({ outputFormat: "json" });
   const result = await engine.parse(bytes);
 
   if (!result || !result.pages) return "";
@@ -346,8 +399,7 @@ export const extractTablesLiteparse = async (bytes: Uint8Array, format: 'csv' | 
 };
 
 export const redactDocumentLiteparse = async (bytes: Uint8Array, redactions: string[]): Promise<Uint8Array> => {
-  await initLiteParse();
-  const engine = new LiteParse({ outputFormat: "json", ocrEnabled: false });
+  const engine = await getConfiguredLiteParse({ outputFormat: "json" });
   const result = await engine.parse(bytes);
 
   if (!result || !result.pages) return bytes;
@@ -423,11 +475,9 @@ export const diffMergedHighlightPdfLiteparse = async (
   bytes1: Uint8Array,
   bytes2: Uint8Array
 ): Promise<Uint8Array> => {
-  await initLiteParse();
-
-  const engine1 = new LiteParse({ outputFormat: "json", ocrEnabled: false });
+  const engine1 = await getConfiguredLiteParse({ outputFormat: "json" });
   const result1 = await engine1.parse(bytes1);
-  const engine2 = new LiteParse({ outputFormat: "json", ocrEnabled: false });
+  const engine2 = await getConfiguredLiteParse({ outputFormat: "json" });
   const result2 = await engine2.parse(bytes2);
 
   if (!result1 || !result2 || !result1.pages || !result2.pages) {
@@ -538,8 +588,7 @@ export const diffHighlightPdfLiteparse = async (
   highlights: string[],
   color: [number, number, number]
 ): Promise<Uint8Array> => {
-  await initLiteParse();
-  const engine = new LiteParse({ outputFormat: "json", ocrEnabled: false });
+  const engine = await getConfiguredLiteParse({ outputFormat: "json" });
   const result = await engine.parse(bytes);
 
   if (!result || !result.pages) return bytes;
