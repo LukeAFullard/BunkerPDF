@@ -377,7 +377,7 @@ function App() {
                const standardBuffer = new Uint8Array(result.data.length);
                standardBuffer.set(result.data);
                // Simple mime type logic for defaults
-               const mimeType = result.extension.includes('.md') ? "text/markdown" : result.extension.includes('.csv') ? "text/csv" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+               const mimeType = result.extension.includes('.md') ? "text/markdown" : result.extension.includes('.csv') ? "text/csv" : result.extension.includes('.tex') ? "text/plain" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
                const blob = new Blob([standardBuffer], { type: mimeType });
                const url = URL.createObjectURL(blob);
                const a = document.createElement("a");
