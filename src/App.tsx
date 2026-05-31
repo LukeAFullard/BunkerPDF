@@ -28,6 +28,7 @@ import { EngineStatusPill } from "./components/ui/EngineStatusPill";
 import { CrossDocumentReorder } from "./components/pdf/reorder/CrossDocumentReorder";
 import { SingleDocumentReorder } from "./components/pdf/reorder/SingleDocumentReorder";
 import { InteractiveHighlightModal } from "./components/pdf/InteractiveHighlightModal";
+import { InteractiveRedactModal, type RedactBox } from "./components/pdf/InteractiveRedactModal";
 import { VisualWatermarkModal } from "./components/pdf/VisualWatermarkModal";
 import { getSmartOutputName } from "./lib/utils";
 import { ocrPdf } from "./lib/ocrEngine";
@@ -54,7 +55,7 @@ import type {
 import { ImageReorderRail, type ImageItem } from "./components/ui/ImageReorderRail";
 import { convertImagesToPdf } from "./lib/engineA";
 import { SettingsDropdown } from "./components/ui/SettingsDropdown";
-import { extractTextLiteparse, extractMarkdownLiteparse, extractHtmlLiteparse, editParagraphLiteparse, extractTablesLiteparse, redactDocumentLiteparse, diffMergedHighlightPdfLiteparse, diffHighlightPdfLiteparse } from "./lib/liteparseEngine";
+import { extractTextLiteparse, extractAllPagesTextLiteparse, extractMarkdownLiteparse, extractHtmlLiteparse, editParagraphLiteparse, extractTablesLiteparse, redactDocumentLiteparse, redactBoxesLiteparse, diffMergedHighlightPdfLiteparse, diffHighlightPdfLiteparse } from "./lib/liteparseEngine";
 
 function App() {
   const documents = useFileStore((state) => state.documents);
@@ -493,6 +494,11 @@ function App() {
   }>({ isOpen: false, doc: null });
 
   const [interactiveHighlightState, setInteractiveHighlightState] = useState<{
+    isOpen: boolean;
+    docId: string | null;
+  }>({ isOpen: false, docId: null });
+
+  const [interactiveRedactState, setInteractiveRedactState] = useState<{
     isOpen: boolean;
     docId: string | null;
   }>({ isOpen: false, docId: null });
@@ -1032,7 +1038,7 @@ function App() {
   const extractAllPagesText = (bytes: Uint8Array, pageCount: number): Promise<string[]> => {
     const method = useUIStore.getState().extractionMethod;
     if (method === 'liteparse') {
-      return extractTextLiteparse(bytes).then(text => [text]);
+      return extractAllPagesTextLiteparse(bytes);
     }
     return new Promise((resolve, reject) => {
       if (!pyodideWorkerRef.current)
@@ -2225,6 +2231,47 @@ function App() {
     }
   };
 
+  const executeInteractiveRedact = async (boxes: RedactBox[]) => {
+    const docId = interactiveRedactState.docId;
+    if (!docId) return;
+    setInteractiveRedactState({ isOpen: false, docId: null });
+    const doc = documents.find(d => d.id === docId);
+    if (!doc) return;
+
+    let isCancelled = false;
+    startProcessing("Redacting selected boxes...", true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
+    try {
+      const buffer = await doc.file.arrayBuffer();
+      const pdfBytes = new Uint8Array(buffer);
+
+      const redactedBytes = await redactBoxesLiteparse(pdfBytes, boxes);
+
+      if (isCancelled) return;
+
+      const standardBuffer = new Uint8Array(redactedBytes.length);
+      standardBuffer.set(redactedBytes);
+      const newFile = new File([standardBuffer], doc.name, { type: "application/pdf" });
+      updateDocumentFile(doc.id, newFile);
+      addLog("Manual Action", `Redacted ${boxes.length} sections interactively`, doc.name);
+      useUIStore.getState().showFeedbackPrompt("Redact");
+
+    } catch (e) {
+      if (isCancelled) return;
+      console.error(e);
+      setErrorState({
+        isOpen: true,
+        title: "Redact Error",
+        message: "An error occurred while redacting the document.",
+      });
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
+  };
+
   const handleSanitize = async (doc: PDFDocument) => {
     setInputState({
       isOpen: true,
@@ -2674,6 +2721,10 @@ function App() {
     setInteractiveHighlightState({ isOpen: true, docId: doc.id });
   };
 
+  const handleInteractiveRedact = (doc: PDFDocument) => {
+    setInteractiveRedactState({ isOpen: true, docId: doc.id });
+  };
+
   const diffHighlightPdf = (bytes: Uint8Array, highlights: string[], color: [number, number, number]): Promise<Uint8Array> => {
     const method = useUIStore.getState().extractionMethod;
     if (method === 'liteparse') {
@@ -3113,6 +3164,12 @@ function App() {
         onClose={() => setInteractiveHighlightState({ isOpen: false, docId: null })}
         onApply={executeHighlight}
       />
+      <InteractiveRedactModal
+        isOpen={interactiveRedactState.isOpen}
+        docId={interactiveRedactState.docId}
+        onClose={() => setInteractiveRedactState({ isOpen: false, docId: null })}
+        onApply={executeInteractiveRedact}
+      />
       <VisualWatermarkModal
         isOpen={visualWatermarkState.isOpen}
         docId={visualWatermarkState.docId}
@@ -3362,6 +3419,7 @@ function App() {
                       onVerifySignature={handleVerifySignature}
                       onReadAloud={handleReadAloud}
                       onOcr={handleOcr}
+                      onInteractiveRedact={handleInteractiveRedact}
                       extractText={extractText}
                       extractEntities={extractEntities}
                       extractTables={extractTables}

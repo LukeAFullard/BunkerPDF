@@ -89,6 +89,16 @@ export const extractTextLiteparse = async (bytes: Uint8Array): Promise<string> =
   return result.text || "";
 };
 
+export const extractAllPagesTextLiteparse = async (bytes: Uint8Array): Promise<string[]> => {
+  // We need per-page strings, so we use JSON output which contains an array of pages.
+  const engine = await getConfiguredLiteParse({ outputFormat: "json" });
+  const result = await engine.parse(bytes);
+
+  if (!result || !result.pages) return [];
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return result.pages.map((page: any) => page.text || "");
+};
 
 export const extractMarkdownLiteparse = async (bytes: Uint8Array): Promise<string> => {
   // Use LiteParse's JSON output for spatial/layout data.
@@ -396,6 +406,34 @@ export const extractTablesLiteparse = async (bytes: Uint8Array, format: 'csv' | 
   }
 
   return allTablesOutput.join("\n\n---\n\n");
+};
+
+export const redactBoxesLiteparse = async (
+  bytes: Uint8Array,
+  boxesToRedact: { pageNum: number; x: number; y: number; width: number; height: number }[]
+): Promise<Uint8Array> => {
+  const { PDFDocument, rgb } = await import('pdf-lib');
+  const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const pages = pdfDoc.getPages();
+
+  for (const box of boxesToRedact) {
+    if (box.pageNum < 0 || box.pageNum >= pages.length) continue;
+    const pdfPage = pages[box.pageNum];
+    const { height } = pdfPage.getSize();
+
+    // LiteParse coordinates are usually top-left, but pdf-lib uses bottom-left.
+    const pdfLibY = height - box.y - box.height;
+
+    pdfPage.drawRectangle({
+      x: box.x,
+      y: pdfLibY,
+      width: box.width,
+      height: box.height,
+      color: rgb(0, 0, 0),
+    });
+  }
+
+  return await pdfDoc.save();
 };
 
 export const redactDocumentLiteparse = async (bytes: Uint8Array, redactions: string[]): Promise<Uint8Array> => {

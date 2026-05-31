@@ -61,6 +61,7 @@ interface DocumentCardProps {
     newPageCount?: number,
   ) => void;
   onScanPii?: (doc: PDFDocument) => void;
+  onInteractiveRedact?: (doc: PDFDocument) => void;
 }
 
 export function DocumentCard({
@@ -104,6 +105,7 @@ export function DocumentCard({
   updateDocumentFile,
   convertPdfToDocx,
   exportPdfToDark,
+  onInteractiveRedact,
 }: DocumentCardProps) {
   const isMobile = useMobile();
   const { activeTool, setActiveTool } = useUIStore();
@@ -896,6 +898,7 @@ items={[
             (doc.isEncrypted ? { label: "Unlock (Remove Password)", onClick: () => onUnlock?.(doc) } : null),
             { label: "Edit Metadata (~2s)", onClick: handleViewMetadataLocal },
             { label: "Sanitize & Send (~Instant)", onClick: () => onSanitize?.(doc) },
+            { label: "Point & Click Redact (~Instant)", onClick: () => onInteractiveRedact?.(doc) },
             { label: "Flatten Forms (~1s)", onClick: () => onFlatten?.(doc) },
             { variant: "separator" },
             (!isMobile ? { label: "Audit Redactions (~5s)", onClick: () => onAudit?.(doc) } : null),
