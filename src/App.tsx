@@ -53,6 +53,8 @@ import type {
 } from "./workers/pyodideWorker";
 import { ImageReorderRail, type ImageItem } from "./components/ui/ImageReorderRail";
 import { convertImagesToPdf } from "./lib/engineA";
+import { SettingsDropdown } from "./components/ui/SettingsDropdown";
+import { extractTextLiteparse } from "./lib/liteparseEngine";
 
 function App() {
   const documents = useFileStore((state) => state.documents);
@@ -407,7 +409,12 @@ function App() {
           } else if (step === 'extract-text') {
              if (extractText) {
                const buffer = await currentDoc.file.arrayBuffer();
-               const text = await extractText(new Uint8Array(buffer));
+               let text = "";
+               if (useUIStore.getState().extractionMethod === 'liteparse') {
+                 text = await extractTextLiteparse(new Uint8Array(buffer));
+               } else {
+                 text = await extractText(new Uint8Array(buffer));
+               }
                if (isCancelled) break;
                const blob = new Blob([text], { type: "text/plain" });
                const url = URL.createObjectURL(blob);
@@ -980,6 +987,10 @@ function App() {
   };
 
   const extractText = (bytes: Uint8Array): Promise<string> => {
+    const method = useUIStore.getState().extractionMethod;
+    if (method === 'liteparse') {
+      return extractTextLiteparse(bytes);
+    }
     return new Promise((resolve, reject) => {
       if (!pyodideWorkerRef.current)
         return reject(new Error("Pyodide worker not ready"));
@@ -994,6 +1005,10 @@ function App() {
   };
 
   const extractAllPagesText = (bytes: Uint8Array, pageCount: number): Promise<string[]> => {
+    const method = useUIStore.getState().extractionMethod;
+    if (method === 'liteparse') {
+      return extractTextLiteparse(bytes).then(text => [text]);
+    }
     return new Promise((resolve, reject) => {
       if (!pyodideWorkerRef.current)
         return reject(new Error("Pyodide worker not ready"));
@@ -3073,7 +3088,10 @@ function App() {
             <div className={`font-bold text-xl tracking-tight ${isDarkMode ? "text-gray-100" : "text-gray-800"}`}>
               BunkerPDF
             </div>
-            <EngineStatusPill />
+            <div className="flex gap-2 items-center">
+              <EngineStatusPill />
+              <SettingsDropdown />
+            </div>
           </header>
           <div className="flex-1 flex flex-col pb-8">
             <Dropzone
@@ -3141,7 +3159,10 @@ function App() {
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-4">
               <h1 className="text-3xl font-bold">Workspace</h1>
-              <EngineStatusPill />
+              <div className="flex items-center gap-2">
+                <EngineStatusPill />
+                <SettingsDropdown />
+              </div>
             </div>
             <div className="flex gap-4 items-center">
 

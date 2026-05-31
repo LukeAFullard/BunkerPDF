@@ -14,6 +14,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@huggingface/transformers": "^4.2.0",
+    "@llamaindex/liteparse-wasm": "^2.0.4",
     "@types/react-signature-canvas": "^1.0.7",
     "@zxing/library": "^0.21.3",
     "clsx": "^2.1.1",
