@@ -231,3 +231,116 @@ export const editParagraphLiteparse = async (bytes: Uint8Array, searchText: stri
 
   return await pdfDoc.save();
 };
+
+export const extractTablesLiteparse = async (bytes: Uint8Array, format: 'csv' | 'markdown' | 'latex'): Promise<string> => {
+  await initLiteParse();
+  const engine = new LiteParse({ outputFormat: "json", ocrEnabled: false });
+  const result = await engine.parse(bytes);
+
+  if (!result || !result.pages) return "";
+
+  const allTablesOutput: string[] = [];
+
+  for (const page of result.pages) {
+    if (!page.textItems || page.textItems.length === 0) continue;
+
+    // A very basic heuristic to detect table grids:
+    // We group text by Y coordinates to form rows.
+    const rowTolerance = 5; // pixels
+    const rows: { items: typeof page.textItems, y: number }[] = [];
+
+    for (const item of page.textItems) {
+      let foundRow = false;
+      for (const row of rows) {
+        if (Math.abs(row.y - item.y) < rowTolerance) {
+          row.items.push(item);
+          foundRow = true;
+          break;
+        }
+      }
+      if (!foundRow) {
+        rows.push({ items: [item], y: item.y });
+      }
+    }
+
+    // Sort rows by Y coordinate
+    rows.sort((a, b) => a.y - b.y);
+
+    // Filter out rows with only 1 item if we assume tables have >= 2 columns
+    // We could be more sophisticated, but let's assume contiguous multi-column rows form a table.
+    const tables: { rows: typeof rows }[] = [];
+    let currentTable: typeof rows = [];
+
+    for (const row of rows) {
+      if (row.items.length >= 2) {
+        currentTable.push(row);
+      } else {
+        if (currentTable.length > 1) { // Need at least 2 rows to be a table
+          tables.push({ rows: currentTable });
+        }
+        currentTable = [];
+      }
+    }
+    if (currentTable.length > 1) {
+      tables.push({ rows: currentTable });
+    }
+
+    for (const table of tables) {
+      // Find all unique X coordinates to establish columns
+      const xPositions: number[] = [];
+      for (const row of table.rows) {
+        for (const item of row.items) {
+          if (!xPositions.some(x => Math.abs(x - item.x) < 10)) {
+            xPositions.push(item.x);
+          }
+        }
+      }
+      xPositions.sort((a, b) => a - b);
+
+      const tableGrid: string[][] = [];
+
+      for (const row of table.rows) {
+        const gridRow: string[] = Array(xPositions.length).fill('');
+        for (const item of row.items) {
+          // Find closest column
+          let minDiff = Infinity;
+          let colIndex = 0;
+          for (let i = 0; i < xPositions.length; i++) {
+            const diff = Math.abs(xPositions[i] - item.x);
+            if (diff < minDiff) {
+              minDiff = diff;
+              colIndex = i;
+            }
+          }
+          gridRow[colIndex] = item.text.replace(/(\r\n|\n|\r)/gm, " ");
+        }
+        tableGrid.push(gridRow);
+      }
+
+      if (format === 'csv') {
+        const csvRows = tableGrid.map(row => row.map(cell => `"${cell.replace(/"/g, '""')}"`).join(','));
+        allTablesOutput.push(csvRows.join('\n'));
+      } else if (format === 'markdown') {
+        let md = "";
+        for (let i = 0; i < tableGrid.length; i++) {
+          const row = tableGrid[i];
+          md += "| " + row.join(" | ") + " |\n";
+          if (i === 0) {
+            md += "|" + row.map(() => "---").join("|") + "|\n";
+          }
+        }
+        allTablesOutput.push(md);
+      } else if (format === 'latex') {
+        const colCount = xPositions.length;
+        let latex = "\\begin{tabular}{|" + "c|".repeat(colCount) + "}\n\\hline\n";
+        for (const row of tableGrid) {
+          latex += row.join(" & ") + " \\\\\n\\hline\n";
+        }
+        latex += "\\end{tabular}";
+        allTablesOutput.push(latex);
+      }
+    }
+  }
+
+  return allTablesOutput.join("\n\n---\n\n");
+};

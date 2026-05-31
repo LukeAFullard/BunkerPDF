@@ -14,6 +14,7 @@ import { BookmarkModal, type Bookmark } from "../ui/BookmarkModal";
 import { DocumentHealthPanel } from './DocumentHealthPanel';
 import { analyzeDocumentHealth } from '../../lib/healthChecks';
 import { ParagraphEditModal } from './ParagraphEditModal';
+import { TableExtractionModal } from './TableExtractionModal';
 
 interface DocumentCardProps {
   doc: PDFDocument;
@@ -40,7 +41,7 @@ interface DocumentCardProps {
   onReadAloud?: (doc: PDFDocument) => void;
   extractText: (bytes: Uint8Array) => Promise<string>;
   extractEntities: (text: string, customPatterns?: string[]) => Promise<string[]>;
-  extractTables?: (docFile: File) => Promise<Uint8Array>;
+  extractTables?: (docFile: File, format?: 'excel' | 'csv' | 'markdown' | 'latex') => Promise<{ data: Uint8Array, extension: string }>;
   extractMarkdown?: (bytes: Uint8Array) => Promise<string>;
   extractHtml?: (bytes: Uint8Array) => Promise<string>;
   extractImages?: (bytes: Uint8Array) => Promise<Uint8Array>;
@@ -217,40 +218,8 @@ export function DocumentCard({
             else handleScan();
             break;
           case 'extract-tables':
-            // Instead of calling handleExtractTables before declaration, we do the logic inline or via an effect dep
-            if (extractTables) {
-              const doExtract = async () => {
-                let isCancelled = false;
-                startProcessing("Extracting tables...", true, () => {
-                  isCancelled = true;
-                  stopProcessing();
-                });
-                try {
-                  const excelBytes = await extractTables(doc.file);
-                  if (isCancelled) return;
-                  const standardBuffer = new Uint8Array(excelBytes.length);
-                  standardBuffer.set(excelBytes);
-                  const blob = new Blob([standardBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = doc.name.replace(/\.pdf$/i, "-tables.xlsx");
-                  document.body.appendChild(a);
-                  a.click();
-                  document.body.removeChild(a);
-                  URL.revokeObjectURL(url);
-                  addLog("Extract Tables", "Extracted tables to Excel format.", doc.name);
-                  useUIStore.getState().showFeedbackPrompt("Extract Tables");
-                } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
-                  if (isCancelled) return;
-                  console.error(err);
-                  setErrorState({ isOpen: true, title: "Extraction Error", message: err.message || "Failed to extract tables." });
-                } finally {
-                  if (!isCancelled) stopProcessing();
-                }
-              };
-              doExtract();
-            }
+            setIsTableExtractionModalOpen(true);
+            setActiveTool(null);
             break;
           case 'watermark':
             onWatermark?.(doc);
@@ -308,6 +277,7 @@ export function DocumentCard({
     bookmarks: Bookmark[];
   }>({ isOpen: false, bookmarks: [] });
   const [isParagraphEditModalOpen, setIsParagraphEditModalOpen] = useState(false);
+  const [isTableExtractionModalOpen, setIsTableExtractionModalOpen] = useState(false);
 
   const handleEditBookmarks = async () => {
     if (!extractBookmarks) return;
@@ -568,7 +538,7 @@ export function DocumentCard({
     }
   };
 
-  const handleExtractTables = async () => {
+  const handleExtractTables = async (docToExtract: PDFDocument, format: 'excel' | 'csv' | 'markdown' | 'latex') => {
     if (!extractTables) return;
     let isCancelled = false;
     startProcessing("Extracting tables...", true, () => {
@@ -577,25 +547,26 @@ export function DocumentCard({
     });
 
     try {
-      const excelBytes = await extractTables(doc.file);
+      const result = await extractTables(docToExtract.file, format);
       if (isCancelled) return;
 
-      const standardBuffer = new Uint8Array(excelBytes.length);
-      standardBuffer.set(excelBytes);
+      const standardBuffer = new Uint8Array(result.data.length);
+      standardBuffer.set(result.data);
 
+      const mimeType = result.extension.includes('.md') ? "text/markdown" : result.extension.includes('.csv') ? "text/csv" : result.extension.includes('.tex') ? "text/plain" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
       const blob = new Blob([standardBuffer], {
-        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        type: mimeType,
       });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = doc.name.replace(/\.pdf$/i, "-tables.xlsx");
+      a.download = doc.name.replace(/\.pdf$/i, `-tables${result.extension}`);
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      addLog("Extract Tables", "Extracted tables to Excel format.", doc.name);
+      addLog("Extract Tables", `Extracted tables to ${format.toUpperCase()} format.`, doc.name);
       useUIStore.getState().showFeedbackPrompt("Extract Tables");
     } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
       if (isCancelled) return;
@@ -904,7 +875,7 @@ items={[
             { label: "Sign Document (~2s)", onClick: () => onSign?.(doc) },
             { label: "Edit Text (Beta) (~3s)", onClick: () => setIsParagraphEditModalOpen(true) },
             { variant: "separator" },
-            (!isMobile ? { label: "Extract Tables (Excel) (~10s)", onClick: handleExtractTables } : null),
+            (!isMobile ? { label: "Extract Tables (~10s)", onClick: () => setIsTableExtractionModalOpen(true) } : null),
             { label: "Extract Notes (MD) (~5s)", onClick: handleExtractMarkdown },
             { label: "Extract Web (HTML) (~5s)", onClick: handleExtractHtml },
             (!isMobile ? { label: "Export DOCX (~10s)", onClick: handleExportDocx } : null),
@@ -1215,6 +1186,13 @@ items={[
         doc={doc}
         onClose={() => setIsParagraphEditModalOpen(false)}
         onEdit={handleEditParagraph}
+      />
+
+      <TableExtractionModal
+        isOpen={isTableExtractionModalOpen}
+        doc={doc}
+        onClose={() => setIsTableExtractionModalOpen(false)}
+        onExtract={handleExtractTables}
       />
     </div>
   );
