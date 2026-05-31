@@ -139,3 +139,208 @@ export const extractHtmlLiteparse = async (bytes: Uint8Array): Promise<string> =
 
   return htmlLines.join("\n<hr>\n");
 };
+
+export const editParagraphLiteparse = async (bytes: Uint8Array, searchText: string, replacementText: string): Promise<Uint8Array> => {
+  await initLiteParse();
+  const engine = new LiteParse({ outputFormat: "json", ocrEnabled: false });
+  const result = await engine.parse(bytes);
+
+  if (!result || !result.pages) return bytes;
+
+  // Find bounding box for search text
+  let targetBox = null;
+  let targetPageNum = -1;
+  let targetFontSize = 12;
+
+  // We will search for a block of text that includes the searchText.
+  for (let i = 0; i < result.pages.length; i++) {
+    const page = result.pages[i];
+    if (!page.textItems) continue;
+
+    // A very simple search: concatenate all text in the page, find index.
+    // If found, find the corresponding text items.
+    let fullText = "";
+    const itemStarts: number[] = [];
+    for (const item of page.textItems) {
+      itemStarts.push(fullText.length);
+      fullText += item.text + " ";
+    }
+
+    const searchIndex = fullText.indexOf(searchText);
+    if (searchIndex !== -1) {
+      targetPageNum = i;
+      // find which items match
+      let startIndex = -1;
+      let endIndex = -1;
+      for (let j = 0; j < itemStarts.length; j++) {
+        if (itemStarts[j] <= searchIndex && (j === itemStarts.length - 1 || itemStarts[j+1] > searchIndex)) {
+          startIndex = j;
+        }
+        if (itemStarts[j] <= searchIndex + searchText.length && (j === itemStarts.length - 1 || itemStarts[j+1] > searchIndex + searchText.length)) {
+          endIndex = j;
+        }
+      }
+
+      if (startIndex !== -1 && endIndex !== -1) {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (let j = startIndex; j <= endIndex; j++) {
+          const item = page.textItems[j];
+          if (item.x < minX) minX = item.x;
+          if (item.y < minY) minY = item.y;
+          if (item.x + item.width > maxX) maxX = item.x + item.width;
+          if (item.y + item.height > maxY) maxY = item.y + item.height;
+          if (item.fontSize) targetFontSize = item.fontSize;
+        }
+        targetBox = { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+        break; // found first occurrence
+      }
+    }
+  }
+
+  if (!targetBox) return bytes;
+
+  // Use pdf-lib to overwrite
+  const { PDFDocument, rgb } = await import('pdf-lib');
+  const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const pages = pdfDoc.getPages();
+  const pdfPage = pages[targetPageNum];
+
+  // LiteParse coordinates are usually top-left, but pdf-lib uses bottom-left.
+  // We need to map y coordinates.
+  const { height } = pdfPage.getSize();
+  const pdfLibY = height - targetBox.y - targetBox.height;
+
+  // draw white box
+  pdfPage.drawRectangle({
+    x: targetBox.x,
+    y: pdfLibY,
+    width: targetBox.width,
+    height: targetBox.height,
+    color: rgb(1, 1, 1),
+  });
+
+  // Write new text. For simplicity, just write it at the top left of the box.
+  pdfPage.drawText(replacementText, {
+    x: targetBox.x,
+    y: height - targetBox.y - targetFontSize, // baseline approximation
+    size: targetFontSize,
+    color: rgb(0, 0, 0),
+    maxWidth: targetBox.width,
+    lineHeight: targetFontSize * 1.2
+  });
+
+  return await pdfDoc.save();
+};
+
+export const extractTablesLiteparse = async (bytes: Uint8Array, format: 'csv' | 'markdown' | 'latex'): Promise<string> => {
+  await initLiteParse();
+  const engine = new LiteParse({ outputFormat: "json", ocrEnabled: false });
+  const result = await engine.parse(bytes);
+
+  if (!result || !result.pages) return "";
+
+  const allTablesOutput: string[] = [];
+
+  for (const page of result.pages) {
+    if (!page.textItems || page.textItems.length === 0) continue;
+
+    // A very basic heuristic to detect table grids:
+    // We group text by Y coordinates to form rows.
+    const rowTolerance = 5; // pixels
+    const rows: { items: typeof page.textItems, y: number }[] = [];
+
+    for (const item of page.textItems) {
+      let foundRow = false;
+      for (const row of rows) {
+        if (Math.abs(row.y - item.y) < rowTolerance) {
+          row.items.push(item);
+          foundRow = true;
+          break;
+        }
+      }
+      if (!foundRow) {
+        rows.push({ items: [item], y: item.y });
+      }
+    }
+
+    // Sort rows by Y coordinate
+    rows.sort((a, b) => a.y - b.y);
+
+    // Filter out rows with only 1 item if we assume tables have >= 2 columns
+    // We could be more sophisticated, but let's assume contiguous multi-column rows form a table.
+    const tables: { rows: typeof rows }[] = [];
+    let currentTable: typeof rows = [];
+
+    for (const row of rows) {
+      if (row.items.length >= 2) {
+        currentTable.push(row);
+      } else {
+        if (currentTable.length > 1) { // Need at least 2 rows to be a table
+          tables.push({ rows: currentTable });
+        }
+        currentTable = [];
+      }
+    }
+    if (currentTable.length > 1) {
+      tables.push({ rows: currentTable });
+    }
+
+    for (const table of tables) {
+      // Find all unique X coordinates to establish columns
+      const xPositions: number[] = [];
+      for (const row of table.rows) {
+        for (const item of row.items) {
+          if (!xPositions.some(x => Math.abs(x - item.x) < 10)) {
+            xPositions.push(item.x);
+          }
+        }
+      }
+      xPositions.sort((a, b) => a - b);
+
+      const tableGrid: string[][] = [];
+
+      for (const row of table.rows) {
+        const gridRow: string[] = Array(xPositions.length).fill('');
+        for (const item of row.items) {
+          // Find closest column
+          let minDiff = Infinity;
+          let colIndex = 0;
+          for (let i = 0; i < xPositions.length; i++) {
+            const diff = Math.abs(xPositions[i] - item.x);
+            if (diff < minDiff) {
+              minDiff = diff;
+              colIndex = i;
+            }
+          }
+          gridRow[colIndex] = item.text.replace(/(\r\n|\n|\r)/gm, " ");
+        }
+        tableGrid.push(gridRow);
+      }
+
+      if (format === 'csv') {
+        const csvRows = tableGrid.map(row => row.map(cell => `"${cell.replace(/"/g, '""')}"`).join(','));
+        allTablesOutput.push(csvRows.join('\n'));
+      } else if (format === 'markdown') {
+        let md = "";
+        for (let i = 0; i < tableGrid.length; i++) {
+          const row = tableGrid[i];
+          md += "| " + row.join(" | ") + " |\n";
+          if (i === 0) {
+            md += "|" + row.map(() => "---").join("|") + "|\n";
+          }
+        }
+        allTablesOutput.push(md);
+      } else if (format === 'latex') {
+        const colCount = xPositions.length;
+        let latex = "\\begin{tabular}{|" + "c|".repeat(colCount) + "}\n\\hline\n";
+        for (const row of tableGrid) {
+          latex += row.join(" & ") + " \\\\\n\\hline\n";
+        }
+        latex += "\\end{tabular}";
+        allTablesOutput.push(latex);
+      }
+    }
+  }
+
+  return allTablesOutput.join("\n\n---\n\n");
+};

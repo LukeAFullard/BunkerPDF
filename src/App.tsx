@@ -54,7 +54,7 @@ import type {
 import { ImageReorderRail, type ImageItem } from "./components/ui/ImageReorderRail";
 import { convertImagesToPdf } from "./lib/engineA";
 import { SettingsDropdown } from "./components/ui/SettingsDropdown";
-import { extractTextLiteparse, extractMarkdownLiteparse, extractHtmlLiteparse } from "./lib/liteparseEngine";
+import { extractTextLiteparse, extractMarkdownLiteparse, extractHtmlLiteparse, editParagraphLiteparse, extractTablesLiteparse } from "./lib/liteparseEngine";
 
 function App() {
   const documents = useFileStore((state) => state.documents);
@@ -371,15 +371,18 @@ function App() {
             }
           } else if (step === 'extract-tables') {
              if (extractTables) {
-               const excelBytes = await extractTables(currentDoc.file);
+               const format = useUIStore.getState().extractionMethod === 'liteparse' ? 'csv' : 'excel';
+               const result = await extractTables(currentDoc.file, format);
                if (isCancelled) break;
-               const standardBuffer = new Uint8Array(excelBytes.length);
-               standardBuffer.set(excelBytes);
-               const blob = new Blob([standardBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+               const standardBuffer = new Uint8Array(result.data.length);
+               standardBuffer.set(result.data);
+               // Simple mime type logic for defaults
+               const mimeType = result.extension.includes('.md') ? "text/markdown" : result.extension.includes('.csv') ? "text/csv" : result.extension.includes('.tex') ? "text/plain" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+               const blob = new Blob([standardBuffer], { type: mimeType });
                const url = URL.createObjectURL(blob);
                const a = document.createElement("a");
                a.href = url;
-               a.download = currentDoc.name.replace(/\.pdf$/i, "-tables.xlsx");
+               a.download = currentDoc.name.replace(/\.pdf$/i, `-tables${result.extension}`);
                document.body.appendChild(a);
                a.click();
                document.body.removeChild(a);
@@ -770,9 +773,17 @@ function App() {
     };
   }, [setAiStatus, setPyodideStatus]);
 
-  const extractTables = async (docFile: File): Promise<Uint8Array> => {
-    const CHUNK_SIZE = 20; // Number of pages per chunk to prevent WASM OOM
+  const extractTables = async (docFile: File, format?: 'csv' | 'markdown' | 'latex' | 'excel'): Promise<{ data: Uint8Array, extension: string }> => {
+    const method = useUIStore.getState().extractionMethod;
     const arrayBuffer = await docFile.arrayBuffer();
+
+    if (method === 'liteparse' && format && format !== 'excel') {
+      const text = await extractTablesLiteparse(new Uint8Array(arrayBuffer), format);
+      const encoder = new TextEncoder();
+      return { data: encoder.encode(text), extension: `.${format === 'markdown' ? 'md' : format === 'latex' ? 'tex' : format}` };
+    }
+
+    const CHUNK_SIZE = 20; // Number of pages per chunk to prevent WASM OOM
     const pdfDoc = await PDFLibDocument.load(arrayBuffer);
     const totalPages = pdfDoc.getPageCount();
 
@@ -829,7 +840,7 @@ function App() {
 
     useProcessingStore.getState().updateStage("Converting to Excel format...");
 
-    return new Promise((resolve, reject) => {
+    const excelBytes = await new Promise<Uint8Array>((resolve, reject) => {
       const jobId = Math.random().toString(36).substring(7);
       const handler = (e: MessageEvent) => {
         const res = e.data as PyodideWorkerResponse;
@@ -850,6 +861,8 @@ function App() {
         csvData: JSON.stringify(allTables),
       });
     });
+
+    return { data: excelBytes, extension: '.xlsx' };
   };
 
 
@@ -1010,6 +1023,10 @@ function App() {
         pdfBytes: bytes,
       } satisfies PyodideWorkerMessage);
     });
+  };
+
+  const editParagraph = async (bytes: Uint8Array, searchText: string, replacementText: string): Promise<Uint8Array> => {
+    return editParagraphLiteparse(bytes, searchText, replacementText);
   };
 
   const extractAllPagesText = (bytes: Uint8Array, pageCount: number): Promise<string[]> => {
@@ -3342,6 +3359,7 @@ function App() {
                       extractLinks={extractLinks}
                       extractAnnotations={extractAnnotations}
                       extractMetadata={extractMetadata}
+                      editParagraph={editParagraph}
                       onViewMetadata={handleViewMetadata}
                       extractBookmarks={extractBookmarks}
                       editBookmarks={editBookmarks}
