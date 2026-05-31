@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useFileStore } from '../../../store/fileStore';
 import { FileDiff, X } from 'lucide-react';
 import * as diff from 'diff';
+import { parsePdfJsonLiteparse } from '../../../lib/liteparseEngine';
 
 interface DiffModalProps {
   onClose: () => void;
@@ -45,12 +46,23 @@ export function DiffModal({ onClose, extractText, diffMergedHighlightPdf }: Diff
 
     try {
       const buffer1 = await doc1.file.arrayBuffer();
-      const text1 = await extractText(new Uint8Array(buffer1));
-
       const buffer2 = await doc2.file.arrayBuffer();
-      const text2 = await extractText(new Uint8Array(buffer2));
 
-      // Compute diff
+      let text1 = "";
+      let text2 = "";
+
+      const useLiteparse = true; // For diffing, always prefer LiteParse JSON tokens for accuracy
+      if (useLiteparse) {
+        const json1 = await parsePdfJsonLiteparse(new Uint8Array(buffer1));
+        const json2 = await parsePdfJsonLiteparse(new Uint8Array(buffer2));
+        text1 = (json1 as any).text || "";
+        text2 = (json2 as any).text || "";
+      } else {
+        text1 = await extractText(new Uint8Array(buffer1));
+        text2 = await extractText(new Uint8Array(buffer2));
+      }
+
+      // Compute diff using diffWordsWithSpace for a granular token view
       const changes = diff.diffWordsWithSpace(text1, text2);
       setDiffResult(changes);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

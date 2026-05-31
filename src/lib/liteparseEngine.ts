@@ -37,3 +37,14 @@ export async function extractAllPagesTextLiteparse(pdfBytes: Uint8Array): Promis
     parser.free();
   }
 }
+
+export async function parsePdfJsonLiteparse(pdfBytes: Uint8Array): Promise<unknown> {
+  await initLiteparse();
+  const parser = new LiteParse({ outputFormat: "json", ocrEnabled: false });
+  try {
+    const result = await parser.parse(pdfBytes);
+    return result;
+  } finally {
+    parser.free();
+  }
+}
