@@ -161,7 +161,7 @@ export function InteractiveEditModal({ isOpen, docId, onClose, onApply }: Intera
     }
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleItemClick = (item: any, pageIdx: number, _idx: number) => {
     // Convert to edit box
