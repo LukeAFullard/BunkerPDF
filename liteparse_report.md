@@ -42,6 +42,9 @@ When LiteParse is selected, it powers several key extraction and editing functio
 12. **Smart Form Generation**:
     LiteParse's "Grid Projection" algorithm excels at identifying anchors and horizontal gaps (e.g., labels ending in colons like "Name:", or continuous underscores). The UI automatically highlights these empty spaces and allows users to click them, instantly injecting native, fillable PDF text field annotations at those exact coordinates using `pdf-lib`.
 
+13. **Smart Highlighting/Annotation**:
+    Allows users to point-and-click to permanently highlight text blocks natively based on LiteParse bounds. Users can enter an interactive mode, select specific highlight colors, and click to apply precise text highlights directly into the PDF via `pdf-lib`.
+
 ## What else could be ported
 
 Currently, a few actions still exclusively rely on `pyodideWorker.ts` or separate WebWorkers. Based on LiteParse's JSON output, the following feature could optionally be ported next to run on LiteParse:
@@ -76,11 +79,8 @@ By leveraging LiteParse's instant JSON spatial output, we have successfully buil
 *   **Idea**: When a user selects an area to crop on a single page or across multiple pages, the application can use LiteParse's spatial output to detect if any text blocks intersect with the crop boundaries. If a text bounding box spans across the crop line, the UI can immediately display a warning that text will be cut off.
 *   **Limitation Note**: Because LiteParse focuses purely on *text*, it cannot natively detect if an *image* or graphical chart will be cut off by the crop line. It can, however, accurately warn about textual content and tabular text grids being severed.
 
-### 6. Smart Highlighting/Annotation
-*   **Idea**: Similar to the redaction tool, allow users to point-and-click to permanently highlight or underline text blocks natively based on LiteParse bounds, rather than just extracting text.
-
-### 7. Interactive Auto-Linker
+### 6. Interactive Auto-Linker
 *   **Idea**: Scan the document for plain text URLs, emails, or references (like "See Figure 1"), find their bounding boxes with LiteParse, and inject clickable native PDF hyperlink annotations over them.
 
-### 8. Custom Regex Click-to-Redact
+### 7. Custom Regex Click-to-Redact
 *   **Idea**: Expand the Knowledge Graph feature so users can input a custom regex (e.g., social security numbers or custom ID formats). LiteParse would find all occurrences visually and let the user click to redact them.
