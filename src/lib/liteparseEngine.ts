@@ -408,6 +408,47 @@ export const extractTablesLiteparse = async (bytes: Uint8Array, format: 'csv' | 
   return allTablesOutput.join("\n\n---\n\n");
 };
 
+export const editBoxesLiteparse = async (
+  bytes: Uint8Array,
+  edits: { pageNum: number; x: number; y: number; width: number; height: number; newText: string }[]
+): Promise<Uint8Array> => {
+  const { PDFDocument, rgb, StandardFonts } = await import('pdf-lib');
+  const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const pages = pdfDoc.getPages();
+
+  for (const edit of edits) {
+    if (edit.pageNum < 0 || edit.pageNum >= pages.length) continue;
+    const pdfPage = pages[edit.pageNum];
+    const { height } = pdfPage.getSize();
+
+    // LiteParse coordinates are usually top-left, but pdf-lib uses bottom-left.
+    const pdfLibY = height - edit.y - edit.height;
+
+    // Draw white rectangle to mask old text
+    pdfPage.drawRectangle({
+      x: edit.x,
+      y: pdfLibY,
+      width: edit.width,
+      height: edit.height,
+      color: rgb(1, 1, 1),
+    });
+
+    // Draw new text over it
+    // Approximate a decent font size based on height
+    const fontSize = Math.max(8, Math.min(edit.height * 0.8, 14));
+    pdfPage.drawText(edit.newText, {
+      x: edit.x,
+      y: pdfLibY + (edit.height - fontSize) / 2, // Vertically center text
+      size: fontSize,
+      font,
+      color: rgb(0, 0, 0),
+    });
+  }
+
+  return await pdfDoc.save();
+};
+
 export const redactBoxesLiteparse = async (
   bytes: Uint8Array,
   boxesToRedact: { pageNum: number; x: number; y: number; width: number; height: number }[]

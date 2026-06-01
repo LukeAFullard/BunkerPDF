@@ -29,6 +29,7 @@ import { CrossDocumentReorder } from "./components/pdf/reorder/CrossDocumentReor
 import { SingleDocumentReorder } from "./components/pdf/reorder/SingleDocumentReorder";
 import { InteractiveHighlightModal } from "./components/pdf/InteractiveHighlightModal";
 import { InteractiveRedactModal, type RedactBox } from "./components/pdf/InteractiveRedactModal";
+import { InteractiveEditModal, type EditBox } from "./components/pdf/InteractiveEditModal";
 import { VisualWatermarkModal } from "./components/pdf/VisualWatermarkModal";
 import { getSmartOutputName } from "./lib/utils";
 import { ocrPdf } from "./lib/ocrEngine";
@@ -55,7 +56,7 @@ import type {
 import { ImageReorderRail, type ImageItem } from "./components/ui/ImageReorderRail";
 import { convertImagesToPdf } from "./lib/engineA";
 import { SettingsDropdown } from "./components/ui/SettingsDropdown";
-import { extractTextLiteparse, extractAllPagesTextLiteparse, extractMarkdownLiteparse, extractHtmlLiteparse, editParagraphLiteparse, extractTablesLiteparse, redactDocumentLiteparse, redactBoxesLiteparse, diffMergedHighlightPdfLiteparse, diffHighlightPdfLiteparse } from "./lib/liteparseEngine";
+import { extractTextLiteparse, extractAllPagesTextLiteparse, extractMarkdownLiteparse, extractHtmlLiteparse, editParagraphLiteparse, extractTablesLiteparse, redactDocumentLiteparse, redactBoxesLiteparse, editBoxesLiteparse, diffMergedHighlightPdfLiteparse, diffHighlightPdfLiteparse } from "./lib/liteparseEngine";
 
 function App() {
   const documents = useFileStore((state) => state.documents);
@@ -499,6 +500,11 @@ function App() {
   }>({ isOpen: false, docId: null });
 
   const [interactiveRedactState, setInteractiveRedactState] = useState<{
+    isOpen: boolean;
+    docId: string | null;
+  }>({ isOpen: false, docId: null });
+
+  const [interactiveEditState, setInteractiveEditState] = useState<{
     isOpen: boolean;
     docId: string | null;
   }>({ isOpen: false, docId: null });
@@ -2272,6 +2278,46 @@ function App() {
     }
   };
 
+  const executeInteractiveEdit = async (edits: EditBox[]) => {
+    const docId = interactiveEditState.docId;
+    if (!docId) return;
+    setInteractiveEditState({ isOpen: false, docId: null });
+    const doc = documents.find(d => d.id === docId);
+    if (!doc) return;
+
+    let isCancelled = false;
+    startProcessing("Applying edits...", true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
+    try {
+      const buffer = await doc.file.arrayBuffer();
+      const pdfBytes = new Uint8Array(buffer);
+
+      const updatedBytes = await editBoxesLiteparse(pdfBytes, edits);
+
+      if (isCancelled) return;
+
+      const standardBuffer = new Uint8Array(updatedBytes.length);
+      standardBuffer.set(updatedBytes);
+      const newFile = new File([standardBuffer], doc.name, { type: "application/pdf" });
+      updateDocumentFile(doc.id, newFile);
+      addLog("Manual Action", `Applied ${edits.length} inline edits`, doc.name);
+
+    } catch (e) {
+      if (isCancelled) return;
+      console.error(e);
+      setErrorState({
+        isOpen: true,
+        title: "Edit Error",
+        message: "An error occurred while editing the document.",
+      });
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
+  };
+
   const handleSanitize = async (doc: PDFDocument) => {
     setInputState({
       isOpen: true,
@@ -2725,6 +2771,10 @@ function App() {
     setInteractiveRedactState({ isOpen: true, docId: doc.id });
   };
 
+  const handleInteractiveEdit = (doc: PDFDocument) => {
+    setInteractiveEditState({ isOpen: true, docId: doc.id });
+  };
+
   const diffHighlightPdf = (bytes: Uint8Array, highlights: string[], color: [number, number, number]): Promise<Uint8Array> => {
     const method = useUIStore.getState().extractionMethod;
     if (method === 'liteparse') {
@@ -3170,6 +3220,12 @@ function App() {
         onClose={() => setInteractiveRedactState({ isOpen: false, docId: null })}
         onApply={executeInteractiveRedact}
       />
+      <InteractiveEditModal
+        isOpen={interactiveEditState.isOpen}
+        docId={interactiveEditState.docId}
+        onClose={() => setInteractiveEditState({ isOpen: false, docId: null })}
+        onApply={executeInteractiveEdit}
+      />
       <VisualWatermarkModal
         isOpen={visualWatermarkState.isOpen}
         docId={visualWatermarkState.docId}
@@ -3420,6 +3476,7 @@ function App() {
                       onReadAloud={handleReadAloud}
                       onOcr={handleOcr}
                       onInteractiveRedact={handleInteractiveRedact}
+                      onInteractiveEdit={handleInteractiveEdit}
                       extractText={extractText}
                       extractEntities={extractEntities}
                       extractTables={extractTables}
