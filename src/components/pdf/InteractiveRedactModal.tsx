@@ -45,6 +45,11 @@ export function InteractiveRedactModal({ isOpen, docId, onClose, onApply }: Inte
   const [liteparseData, setLiteparseData] = useState<any>(null);
   const [selectedBoxes, setSelectedBoxes] = useState<RedactBox[]>([]);
 
+  // Drawing state
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [startPos, setStartPos] = useState({ x: 0, y: 0 });
+  const [currentPos, setCurrentPos] = useState({ x: 0, y: 0 });
+
   const renderTaskRef = useRef<pdfjsLib.RenderTask | null>(null);
   const pdfDocRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
 
@@ -197,6 +202,87 @@ export function InteractiveRedactModal({ isOpen, docId, onClose, onApply }: Inte
     });
   };
 
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (!overlayRef.current) return;
+    const rect = overlayRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    setStartPos({ x, y });
+    setCurrentPos({ x, y });
+    setIsDrawing(true);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDrawing || !overlayRef.current) return;
+    const rect = overlayRef.current.getBoundingClientRect();
+    const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+    const y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
+    setCurrentPos({ x, y });
+  };
+
+  const handleMouseUp = () => {
+    if (!isDrawing) return;
+    setIsDrawing(false);
+
+    const x = Math.min(startPos.x, currentPos.x);
+    const y = Math.min(startPos.y, currentPos.y);
+    const w = Math.abs(currentPos.x - startPos.x);
+    const h = Math.abs(currentPos.y - startPos.y);
+
+    if (w > 10 && h > 10) {
+      extractAndSnapRegion(x, y, w, h);
+    }
+  };
+
+  const extractAndSnapRegion = (x: number, y: number, w: number, h: number) => {
+    if (!liteparseData || overlayScale <= 0) return;
+
+    // Map overlay coordinates back to LiteParse PDF coordinates
+    const lpX = x / overlayScale;
+    const lpY = y / overlayScale;
+    const lpW = w / overlayScale;
+    const lpH = h / overlayScale;
+
+    const lpRight = lpX + lpW;
+    const lpBottom = lpY + lpH;
+
+    const pageIdx = currentPage - 1;
+    const items = liteparseData.pages[pageIdx]?.textItems || [];
+
+    // Filter items that intersect the drawn box
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const intersectingItems = items.filter((item: any) => {
+      const itemRight = item.x + item.width;
+      const itemBottom = item.y + item.height;
+      return !(lpRight < item.x || lpX > itemRight || lpBottom < item.y || lpY > itemBottom);
+    });
+
+    if (intersectingItems.length > 0) {
+        // Instead of creating one giant composite box that can't be toggled,
+        // we add all intersecting individual items to the selected list.
+        // This ensures they render and behave exactly like single-clicked items,
+        // allowing the user to unselect them easily if they made a mistake.
+        setSelectedBoxes(prev => {
+           const next = [...prev];
+           for (const item of intersectingItems) {
+               // Only add if not already selected
+               const exists = next.findIndex(b => b.pageNum === pageIdx && b.x === item.x && b.y === item.y);
+               if (exists === -1) {
+                   next.push({
+                       pageNum: pageIdx,
+                       x: item.x,
+                       y: item.y,
+                       width: item.width,
+                       height: item.height,
+                       text: item.text
+                   });
+               }
+           }
+           return next;
+        });
+    }
+  };
+
   const handleApply = () => {
     if (selectedBoxes.length > 0) {
       onApply(selectedBoxes);
@@ -275,7 +361,11 @@ export function InteractiveRedactModal({ isOpen, docId, onClose, onApply }: Inte
                   <canvas ref={canvasRef} className="block pointer-events-none" />
                   <div
                      ref={overlayRef}
-                     className="absolute top-0 left-0"
+                     className="absolute top-0 left-0 w-full h-full cursor-crosshair z-30"
+                     onMouseDown={handleMouseDown}
+                     onMouseMove={handleMouseMove}
+                     onMouseUp={handleMouseUp}
+                     onMouseLeave={handleMouseUp}
                   >
                      {/* Overlay Interactive LiteParse Boxes */}
                      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
@@ -283,8 +373,11 @@ export function InteractiveRedactModal({ isOpen, docId, onClose, onApply }: Inte
                         const isSelected = selectedBoxes.some(b => b.pageNum === pageIdx && b.x === item.x && b.y === item.y);
                         return (
                            <div
-                             key={idx}
-                             onClick={() => toggleBox(item, pageIdx)}
+                             key={`item-${idx}`}
+                             onClick={(e) => {
+                               e.stopPropagation();
+                               toggleBox(item, pageIdx);
+                             }}
                              className={`absolute cursor-pointer rounded-sm border ${
                                isSelected
                                  ? 'bg-black border-black text-transparent opacity-80'
@@ -300,6 +393,20 @@ export function InteractiveRedactModal({ isOpen, docId, onClose, onApply }: Inte
                            />
                         );
                      })}
+
+                     {/* Drawing Selection overlay */}
+                     {isDrawing && (
+                        <div
+                          className="absolute border-2 border-red-500 bg-red-500/20"
+                          style={{
+                            left: Math.min(startPos.x, currentPos.x),
+                            top: Math.min(startPos.y, currentPos.y),
+                            width: Math.abs(currentPos.x - startPos.x),
+                            height: Math.abs(currentPos.y - startPos.y)
+                          }}
+                        />
+                     )}
+
                   </div>
                </div>
             )}
