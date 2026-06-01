@@ -36,6 +36,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
 
   const [extractedText, setExtractedText] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [marginThresholdPercent, setMarginThresholdPercent] = useState(12);
 
   const renderTaskRef = useRef<pdfjsLib.RenderTask | null>(null);
   const pdfDocRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
@@ -54,7 +55,9 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
     const loadPdfAndLiteparse = async () => {
       try {
         const arrayBuffer = await doc.file.arrayBuffer();
-        const bytes = new Uint8Array(arrayBuffer);
+
+        const engine = await getConfiguredLiteParse({ outputFormat: "json" });
+        const result = await engine.parse(new Uint8Array(arrayBuffer.slice(0)));
 
         const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
         const pdf = await loadingTask.promise;
@@ -66,9 +69,6 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
 
         pdfDocRef.current = pdf;
         setTotalPages(pdf.numPages);
-
-        const engine = await getConfiguredLiteParse({ outputFormat: "json" });
-        const result = await engine.parse(bytes);
 
         if (isMounted) {
           setLiteparseData(result);
@@ -183,7 +183,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
     }
   };
 
-  const extractRegion = (x: number, y: number, w: number, h: number) => {
+  const extractRegion = (x: number, y: number, w: number, h: number, customThreshold?: number) => {
     if (!liteparseData || overlayScale <= 0) return;
 
     // Convert overlay pixels to LiteParse units (which are native PDF points usually)
@@ -195,11 +195,22 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
     const pageIdx = currentPage - 1;
     const items = liteparseData.pages[pageIdx]?.textItems || [];
 
+    // Calculate page boundaries for header/footer filtering based on user threshold
+    const pageHeight = liteparseData.pages[pageIdx]?.height || 0;
+    const thresholdFraction = (customThreshold !== undefined ? customThreshold : marginThresholdPercent) / 100;
+    const headerThreshold = pageHeight * thresholdFraction;
+    const footerThreshold = pageHeight * (1 - thresholdFraction);
+
     // Filter items that intersect the drawn box
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const intersectingItems = items.filter((item: any) => {
       const itemRight = item.x + item.width;
       const itemBottom = item.y + item.height;
+      const isHeader = pageHeight > 0 && item.y < headerThreshold;
+      const isFooter = pageHeight > 0 && item.y > footerThreshold;
+
+      if (isHeader || isFooter) return false; // Omit headers and footers
+
       return !(lpRight < item.x || lpX > itemRight || lpBottom < item.y || lpY > itemBottom);
     });
 
@@ -321,8 +332,26 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
 
         {/* Right Side: Extraction Result */}
         <div className="w-1/3 bg-gray-50 flex flex-col border-l border-gray-200">
-          <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-white">
+          <div className="p-4 border-b border-gray-200 flex flex-col gap-2 bg-white">
              <h3 className="font-bold text-gray-800">Formatting Preserved Copy</h3>
+             <div className="flex items-center gap-2">
+               <label className="text-xs font-medium text-gray-600 whitespace-nowrap">Header/Footer Omission Margin:</label>
+               <input
+                 type="range"
+                 min="0"
+                 max="30"
+                 value={marginThresholdPercent}
+                 onChange={(e) => {
+                   const val = parseInt(e.target.value);
+                   setMarginThresholdPercent(val);
+                   if (selectionBox) {
+                     extractRegion(selectionBox.x, selectionBox.y, selectionBox.w, selectionBox.h, val);
+                   }
+                 }}
+                 className="flex-1 accent-indigo-600"
+               />
+               <span className="text-xs text-gray-500 font-mono w-6 text-right">{marginThresholdPercent}%</span>
+             </div>
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 bg-white">
