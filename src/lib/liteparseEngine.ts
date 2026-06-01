@@ -731,3 +731,170 @@ export const diffHighlightPdfLiteparse = async (
 
   return await pdfDoc.save();
 };
+
+export const formatParagraphFromItems = (textItems: any[]): string => {
+  if (!textItems || textItems.length === 0) return "";
+
+  const rowTolerance = 5; // pixels
+  const rows: { items: typeof textItems, y: number }[] = [];
+
+  for (const item of textItems) {
+    let foundRow = false;
+    for (const row of rows) {
+      if (Math.abs(row.y - item.y) < rowTolerance) {
+        row.items.push(item);
+        foundRow = true;
+        break;
+      }
+    }
+    if (!foundRow) {
+      rows.push({ items: [item], y: item.y });
+    }
+  }
+
+  // Sort rows by Y coordinate (top to bottom)
+  rows.sort((a, b) => a.y - b.y);
+
+  let finalString = "";
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    // Sort items in row by X coordinate (left to right)
+    row.items.sort((a, b) => a.x - b.x);
+
+    let rowString = "";
+    for (let j = 0; j < row.items.length; j++) {
+       rowString += row.items[j].text;
+       if (j < row.items.length - 1) {
+          // If there's a significant X gap, preserve it as a space
+          if (row.items[j+1].x - (row.items[j].x + row.items[j].width) > 3) {
+             rowString += " ";
+          }
+       }
+    }
+
+    finalString += rowString;
+
+    // Check if we need to add a space or a newline after this row
+    if (i < rows.length - 1) {
+      const currentRowBottom = row.y + Math.max(...row.items.map(it => it.height));
+      const nextRowTop = rows[i+1].y;
+
+      // If the gap between this line and the next is larger than a standard line height,
+      // treat it as a new paragraph (newline). Otherwise, it's just a word wrap (space).
+      const averageHeight = row.items.reduce((acc, it) => acc + it.height, 0) / row.items.length;
+
+      if ((nextRowTop - currentRowBottom) > (averageHeight * 0.5)) {
+         finalString += "\n\n";
+      } else {
+         // Prevent double spacing if the row already ended with a space or hyphen
+         if (!finalString.endsWith(" ") && !finalString.endsWith("-")) {
+           finalString += " ";
+         } else if (finalString.endsWith("-")) {
+           // Remove hyphenation
+           finalString = finalString.slice(0, -1);
+         }
+      }
+    }
+  }
+
+  return finalString.trim();
+};
+
+export const autoRedactLayoutLiteparse = async (
+  bytes: Uint8Array,
+  layoutTypes: ('header' | 'footer' | 'largest-text')[]
+): Promise<Uint8Array> => {
+  const engine = await getConfiguredLiteParse({ outputFormat: "json" });
+  const result = await engine.parse(bytes);
+
+  if (!result || !result.pages) return bytes;
+
+  const { PDFDocument, rgb } = await import('pdf-lib');
+  const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const pages = pdfDoc.getPages();
+
+  for (let i = 0; i < result.pages.length; i++) {
+    const page = result.pages[i];
+    if (!page.textItems || page.textItems.length === 0) continue;
+    const pdfPage = pages[i];
+    const { height } = pdfPage.getSize();
+
+    const boxesToRedact: {x: number, y: number, width: number, height: number}[] = [];
+
+    // Find layout bounds (we approximate top 10% and bottom 10% as headers/footers)
+    const headerThreshold = height * 0.12;
+    const footerThreshold = height * 0.88;
+
+    // For largest text (often titles)
+    let maxFontSize = 0;
+    if (layoutTypes.includes('largest-text')) {
+      for (const item of page.textItems) {
+        if (item.fontSize > maxFontSize) maxFontSize = item.fontSize;
+      }
+    }
+
+    for (const item of page.textItems) {
+      // PDF-Lib Y is bottom-up, LiteParse Y is usually top-down.
+      // Let's rely on LiteParse's Y which typically starts 0 at top.
+      const isHeader = item.y < headerThreshold;
+      const isFooter = item.y > footerThreshold;
+      const isLargest = layoutTypes.includes('largest-text') && (item.fontSize >= maxFontSize - 1);
+
+      if ((layoutTypes.includes('header') && isHeader) ||
+          (layoutTypes.includes('footer') && isFooter) ||
+          (layoutTypes.includes('largest-text') && isLargest)) {
+
+         boxesToRedact.push({
+           x: item.x,
+           y: item.y,
+           width: item.width,
+           height: item.height
+         });
+      }
+    }
+
+    // Merge intersecting or adjacent boxes on the same line to make clean redactions
+    const mergedBoxes: typeof boxesToRedact = [];
+    boxesToRedact.sort((a, b) => a.y - b.y);
+
+    for (const box of boxesToRedact) {
+      let merged = false;
+      for (const mBox of mergedBoxes) {
+        // If on same line and close horizontally
+        if (Math.abs(mBox.y - box.y) < 10) {
+           if (box.x <= mBox.x + mBox.width + 10 && box.x + box.width >= mBox.x - 10) {
+             const newX = Math.min(mBox.x, box.x);
+             const newY = Math.min(mBox.y, box.y);
+             const newRight = Math.max(mBox.x + mBox.width, box.x + box.width);
+             const newBottom = Math.max(mBox.y + mBox.height, box.y + box.height);
+
+             mBox.x = newX;
+             mBox.y = newY;
+             mBox.width = newRight - newX;
+             mBox.height = newBottom - newY;
+             merged = true;
+             break;
+           }
+        }
+      }
+      if (!merged) {
+        mergedBoxes.push({ ...box });
+      }
+    }
+
+    for (const box of mergedBoxes) {
+      // Map LiteParse top-down to pdf-lib bottom-up
+      const pdfLibY = height - box.y - box.height;
+      pdfPage.drawRectangle({
+        x: box.x - 2, // Slight padding
+        y: pdfLibY - 2,
+        width: box.width + 4,
+        height: box.height + 4,
+        color: rgb(0, 0, 0),
+      });
+    }
+  }
+
+  return await pdfDoc.save();
+};

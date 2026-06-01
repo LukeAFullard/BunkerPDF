@@ -62,8 +62,10 @@ interface DocumentCardProps {
   ) => void;
   onScanPii?: (doc: PDFDocument) => void;
   onInteractiveRedact?: (doc: PDFDocument) => void;
+  onAutoRedactLayout?: (doc: PDFDocument) => void;
   onInteractiveEdit?: (doc: PDFDocument) => void;
   onInteractiveTable?: (doc: PDFDocument) => void;
+  onInteractiveCopy?: (doc: PDFDocument) => void;
   onInteractiveKnowledgeGraph?: (doc: PDFDocument) => void;
   onSmartForm?: (doc: PDFDocument) => void;
 }
@@ -110,8 +112,10 @@ export function DocumentCard({
   convertPdfToDocx,
   exportPdfToDark,
   onInteractiveRedact,
+  onAutoRedactLayout,
   onInteractiveEdit,
   onInteractiveTable,
+  onInteractiveCopy,
   onInteractiveKnowledgeGraph,
   onSmartForm,
 }: DocumentCardProps) {
@@ -907,8 +911,10 @@ items={[
             { label: "Edit Metadata (~2s)", onClick: handleViewMetadataLocal },
             { label: "Sanitize & Send (~Instant)", onClick: () => onSanitize?.(doc) },
             { label: "Point & Click Redact (~Instant)", onClick: () => onInteractiveRedact?.(doc) },
+            { label: "Auto-Redact Headers/Footers (~Instant)", onClick: () => onAutoRedactLayout?.(doc) },
             { label: "Hover to Edit (~Instant)", onClick: () => onInteractiveEdit?.(doc) },
             { label: "Magic Box Table (~Instant)", onClick: () => onInteractiveTable?.(doc) },
+            { label: "Magic Copy (~Instant)", onClick: () => onInteractiveCopy?.(doc) },
             { label: "Knowledge Graph (~Instant)", onClick: () => onInteractiveKnowledgeGraph?.(doc) },
             { label: "Smart Form Generation (~Instant)", onClick: () => onSmartForm?.(doc) },
             { label: "Flatten Forms (~1s)", onClick: () => onFlatten?.(doc) },
