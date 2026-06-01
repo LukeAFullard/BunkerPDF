@@ -61,7 +61,8 @@ LiteParse's most significant advantage over previous methods is its ability to o
 By leveraging LiteParse's instant JSON spatial output, we have successfully built highly interactive, native-feeling features that provide significant "wow-factor" and user value, with most text-based opportunities now fully realized.
 
 ### 1. "Magic Copy" Formatting Preserver
-*   **Idea**: Standard PDF copy-pasting often breaks line breaks (splitting sentences arbitrarily). We could introduce an "Intelligent Selection Mode" where dragging over text leverages LiteParse's line-grouping heuristics to copy perfectly flowed paragraphs, automatically omitting headers, footers, or margin artifacts.
+*   **Status**: **Implemented**.
+*   **Idea**: Standard PDF copy-pasting often breaks line breaks (splitting sentences arbitrarily). We could introduce an "Intelligent Selection Mode" where dragging over text leverages LiteParse's line-grouping heuristics to copy perfectly flowed paragraphs, automatically omitting headers, footers, or margin artifacts. The header/footer omission margin is user-defined via an interactive UI slider.
 
 ### 2. Auto-Redact by Layout Type
 *   **Idea**: Instead of searching for specific sensitive words, users could specify structural elements to remove, such as "Redact all Headers" or "Redact the Footer on every page." By utilizing LiteParse's spatial awareness (e.g., text consistently at the top/bottom margins, or text matching the maximum font size), the application can automate structural redactions perfectly.
