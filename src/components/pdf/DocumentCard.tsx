@@ -63,6 +63,7 @@ interface DocumentCardProps {
   onScanPii?: (doc: PDFDocument) => void;
   onInteractiveRedact?: (doc: PDFDocument) => void;
   onInteractiveEdit?: (doc: PDFDocument) => void;
+  onInteractiveTable?: (doc: PDFDocument) => void;
 }
 
 export function DocumentCard({
@@ -108,6 +109,7 @@ export function DocumentCard({
   exportPdfToDark,
   onInteractiveRedact,
   onInteractiveEdit,
+  onInteractiveTable,
 }: DocumentCardProps) {
   const isMobile = useMobile();
   const { activeTool, setActiveTool } = useUIStore();
@@ -902,6 +904,7 @@ items={[
             { label: "Sanitize & Send (~Instant)", onClick: () => onSanitize?.(doc) },
             { label: "Point & Click Redact (~Instant)", onClick: () => onInteractiveRedact?.(doc) },
             { label: "Hover to Edit (~Instant)", onClick: () => onInteractiveEdit?.(doc) },
+            { label: "Magic Box Table (~Instant)", onClick: () => onInteractiveTable?.(doc) },
             { label: "Flatten Forms (~1s)", onClick: () => onFlatten?.(doc) },
             { variant: "separator" },
             (!isMobile ? { label: "Audit Redactions (~5s)", onClick: () => onAudit?.(doc) } : null),

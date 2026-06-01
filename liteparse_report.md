@@ -33,6 +33,9 @@ When LiteParse is selected, it powers several key extraction and editing functio
 9. **WYSIWYG "Hover to Edit" (In-Place PDF Editing)**:
    Expanding on the point-and-click concept, a user can hover over a paragraph, click it, and it transforms into a live text input box. They edit the text and the PDF updates seamlessly in place, overriding the old text with precision coordinate masking.
 
+10. **"Magic Box" Selection (Visual Table & Column Extraction)**:
+    Instead of extracting an entire document to a spreadsheet or text file, the user clicks and drags a rectangle over a specific table or column directly on the PDF preview. The application filters LiteParse's JSON output for intersecting text items and instantly generates a perfectly formatted CSV or Markdown table for the selected area.
+
 ## What else could be ported
 
 Currently, a few actions still exclusively rely on `pyodideWorker.ts` or separate WebWorkers. Based on LiteParse's JSON output, the following feature could optionally be ported next to run on LiteParse:
@@ -51,11 +54,7 @@ LiteParse's most significant advantage over previous methods is its ability to o
 
 By leveraging LiteParse's instant JSON spatial output, we can build highly interactive, native-feeling features that provide significant "wow-factor" and user value:
 
-### 1. "Magic Box" Selection (Visual Table & Column Extraction)
-*   **The Experience:** Instead of extracting an entire document to a spreadsheet or text file, the user clicks and drags a rectangle over a specific table or column directly on the PDF preview. The application instantly pops up a perfectly formatted CSV or Markdown table.
-*   **How LiteParse Enables It:** We can instantly filter LiteParse's JSON output for any text items whose coordinates intersect with the user's drawn box. The grid layout algorithm is then applied *only* to that specific bounded area, drastically improving accuracy for complex, mixed-layout pages.
-
-### 2. Interactive Knowledge Graph (Clickable Entities)
+### 1. Interactive Knowledge Graph (Clickable Entities)
 *   **The Experience:** The PII/NER worker (which finds Names, Companies, Emails) runs in the background. Instead of simply listing extracted entities in a sidebar, the application uses LiteParse to find exactly where those words live on the page and draws interactive highlights over them. Users can click an email to copy it, or click a name to redact every instance of it instantly.
 *   **How LiteParse Enables It:** Natively and rapidly matching regular expressions or NER output to exact physical page coordinates directly in JavaScript.
 

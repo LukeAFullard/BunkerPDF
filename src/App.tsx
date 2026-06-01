@@ -30,6 +30,7 @@ import { SingleDocumentReorder } from "./components/pdf/reorder/SingleDocumentRe
 import { InteractiveHighlightModal } from "./components/pdf/InteractiveHighlightModal";
 import { InteractiveRedactModal, type RedactBox } from "./components/pdf/InteractiveRedactModal";
 import { InteractiveEditModal, type EditBox } from "./components/pdf/InteractiveEditModal";
+import { InteractiveTableModal } from "./components/pdf/InteractiveTableModal";
 import { VisualWatermarkModal } from "./components/pdf/VisualWatermarkModal";
 import { getSmartOutputName } from "./lib/utils";
 import { ocrPdf } from "./lib/ocrEngine";
@@ -505,6 +506,11 @@ function App() {
   }>({ isOpen: false, docId: null });
 
   const [interactiveEditState, setInteractiveEditState] = useState<{
+    isOpen: boolean;
+    docId: string | null;
+  }>({ isOpen: false, docId: null });
+
+  const [interactiveTableState, setInteractiveTableState] = useState<{
     isOpen: boolean;
     docId: string | null;
   }>({ isOpen: false, docId: null });
@@ -2775,6 +2781,10 @@ function App() {
     setInteractiveEditState({ isOpen: true, docId: doc.id });
   };
 
+  const handleInteractiveTable = (doc: PDFDocument) => {
+    setInteractiveTableState({ isOpen: true, docId: doc.id });
+  };
+
   const diffHighlightPdf = (bytes: Uint8Array, highlights: string[], color: [number, number, number]): Promise<Uint8Array> => {
     const method = useUIStore.getState().extractionMethod;
     if (method === 'liteparse') {
@@ -3226,6 +3236,11 @@ function App() {
         onClose={() => setInteractiveEditState({ isOpen: false, docId: null })}
         onApply={executeInteractiveEdit}
       />
+      <InteractiveTableModal
+        isOpen={interactiveTableState.isOpen}
+        docId={interactiveTableState.docId}
+        onClose={() => setInteractiveTableState({ isOpen: false, docId: null })}
+      />
       <VisualWatermarkModal
         isOpen={visualWatermarkState.isOpen}
         docId={visualWatermarkState.docId}
@@ -3477,6 +3492,7 @@ function App() {
                       onOcr={handleOcr}
                       onInteractiveRedact={handleInteractiveRedact}
                       onInteractiveEdit={handleInteractiveEdit}
+                      onInteractiveTable={handleInteractiveTable}
                       extractText={extractText}
                       extractEntities={extractEntities}
                       extractTables={extractTables}
