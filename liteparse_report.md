@@ -59,3 +59,19 @@ LiteParse focuses purely on spatial **text extraction**. Tasks like image extrac
 LiteParse's most significant advantage over previous methods is its ability to output **precise `[x, y, width, height]` spatial data for every single text element, natively and instantly within the browser's JavaScript environment**. Previously, obtaining accurate coordinates required spinning up a heavy Pyodide (WebAssembly Python) worker running `PyMuPDF`, which was too slow for real-time UI interactivity.
 
 By leveraging LiteParse's instant JSON spatial output, we have successfully built highly interactive, native-feeling features that provide significant "wow-factor" and user value, with most text-based opportunities now fully realized.
+
+### 1. "Magic Copy" Formatting Preserver
+*   **Idea**: Standard PDF copy-pasting often breaks line breaks (splitting sentences arbitrarily). We could introduce an "Intelligent Selection Mode" where dragging over text leverages LiteParse's line-grouping heuristics to copy perfectly flowed paragraphs, automatically omitting headers, footers, or margin artifacts.
+
+### 2. Auto-Redact by Layout Type
+*   **Idea**: Instead of searching for specific sensitive words, users could specify structural elements to remove, such as "Redact all Headers" or "Redact the Footer on every page." By utilizing LiteParse's spatial awareness (e.g., text consistently at the top/bottom margins, or text matching the maximum font size), the application can automate structural redactions perfectly.
+
+### 3. Click-to-Translate
+*   **Idea**: Building on the WYSIWYG editor's underlying mechanics, a user could click a specific sentence or paragraph they don't understand. A tooltip instantly pops up with the translation, leaving the rest of the document visually untouched.
+
+### 4. Interactive Document Reflow (Mobile View)
+*   **Idea**: Reading A4 PDFs on mobile devices requires excessive panning. We could use LiteParse to extract all text blocks in semantic order and render them as native, responsive HTML. Users could click a "Mobile View" toggle to instantly convert the static PDF into a readable, vertically scrolling webpage.
+
+### 5. Smart Crop Warning
+*   **Idea**: When a user selects an area to crop on a single page or across multiple pages, the application can use LiteParse's spatial output to detect if any text blocks intersect with the crop boundaries. If a text bounding box spans across the crop line, the UI can immediately display a warning that text will be cut off.
+*   **Limitation Note**: Because LiteParse focuses purely on *text*, it cannot natively detect if an *image* or graphical chart will be cut off by the crop line. It can, however, accurately warn about textual content and tabular text grids being severed.
