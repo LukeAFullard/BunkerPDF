@@ -54,7 +54,9 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
     const loadPdfAndLiteparse = async () => {
       try {
         const arrayBuffer = await doc.file.arrayBuffer();
-        const bytes = new Uint8Array(arrayBuffer);
+
+        const engine = await getConfiguredLiteParse({ outputFormat: "json" });
+        const result = await engine.parse(new Uint8Array(arrayBuffer.slice(0)));
 
         const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
         const pdf = await loadingTask.promise;
@@ -66,9 +68,6 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
 
         pdfDocRef.current = pdf;
         setTotalPages(pdf.numPages);
-
-        const engine = await getConfiguredLiteParse({ outputFormat: "json" });
-        const result = await engine.parse(bytes);
 
         if (isMounted) {
           setLiteparseData(result);
@@ -195,11 +194,22 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
     const pageIdx = currentPage - 1;
     const items = liteparseData.pages[pageIdx]?.textItems || [];
 
+    // Calculate page boundaries for header/footer filtering
+    // Assuming standard top/bottom 10% as headers/footers
+    const pageHeight = liteparseData.pages[pageIdx]?.height || 0;
+    const headerThreshold = pageHeight * 0.12;
+    const footerThreshold = pageHeight * 0.88;
+
     // Filter items that intersect the drawn box
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const intersectingItems = items.filter((item: any) => {
       const itemRight = item.x + item.width;
       const itemBottom = item.y + item.height;
+      const isHeader = pageHeight > 0 && item.y < headerThreshold;
+      const isFooter = pageHeight > 0 && item.y > footerThreshold;
+
+      if (isHeader || isFooter) return false; // Omit headers and footers
+
       return !(lpRight < item.x || lpX > itemRight || lpBottom < item.y || lpY > itemBottom);
     });
 
