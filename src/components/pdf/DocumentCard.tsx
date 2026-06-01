@@ -68,6 +68,7 @@ interface DocumentCardProps {
   onInteractiveCopy?: (doc: PDFDocument) => void;
   onInteractiveKnowledgeGraph?: (doc: PDFDocument) => void;
   onSmartForm?: (doc: PDFDocument) => void;
+  onSmartCrop?: (doc: PDFDocument) => void;
 }
 
 export function DocumentCard({
@@ -118,6 +119,7 @@ export function DocumentCard({
   onInteractiveCopy,
   onInteractiveKnowledgeGraph,
   onSmartForm,
+  onSmartCrop,
 }: DocumentCardProps) {
   const isMobile = useMobile();
   const { activeTool, setActiveTool } = useUIStore();
@@ -885,7 +887,7 @@ items={[
             { label: "Rotate 90° (~Instant)", onClick: () => onRotate?.(doc) },
             { variant: "separator" },
             { label: "Add Watermark (~1s)", onClick: () => onWatermark?.(doc) },
-            { label: "Highlight Text (~2s)", onClick: () => onHighlight?.(doc) },
+            { label: "Smart Highlight Text (~Instant)", onClick: () => onHighlight?.(doc) },
             { label: "Sign Document (~2s)", onClick: () => onSign?.(doc) },
             { label: "Edit Text (Beta) (~3s)", onClick: () => setIsParagraphEditModalOpen(true) },
             { variant: "separator" },
@@ -917,6 +919,7 @@ items={[
             { label: "Magic Copy (~Instant)", onClick: () => onInteractiveCopy?.(doc) },
             { label: "Knowledge Graph (~Instant)", onClick: () => onInteractiveKnowledgeGraph?.(doc) },
             { label: "Smart Form Generation (~Instant)", onClick: () => onSmartForm?.(doc) },
+            { label: "Smart Crop Warning (~Instant)", onClick: () => onSmartCrop?.(doc) },
             { label: "Flatten Forms (~1s)", onClick: () => onFlatten?.(doc) },
             { variant: "separator" },
             (!isMobile ? { label: "Audit Redactions (~5s)", onClick: () => onAudit?.(doc) } : null),

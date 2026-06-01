@@ -75,3 +75,12 @@ By leveraging LiteParse's instant JSON spatial output, we have successfully buil
 ### 5. Smart Crop Warning
 *   **Idea**: When a user selects an area to crop on a single page or across multiple pages, the application can use LiteParse's spatial output to detect if any text blocks intersect with the crop boundaries. If a text bounding box spans across the crop line, the UI can immediately display a warning that text will be cut off.
 *   **Limitation Note**: Because LiteParse focuses purely on *text*, it cannot natively detect if an *image* or graphical chart will be cut off by the crop line. It can, however, accurately warn about textual content and tabular text grids being severed.
+
+### 6. Smart Highlighting/Annotation
+*   **Idea**: Similar to the redaction tool, allow users to point-and-click to permanently highlight or underline text blocks natively based on LiteParse bounds, rather than just extracting text.
+
+### 7. Interactive Auto-Linker
+*   **Idea**: Scan the document for plain text URLs, emails, or references (like "See Figure 1"), find their bounding boxes with LiteParse, and inject clickable native PDF hyperlink annotations over them.
+
+### 8. Custom Regex Click-to-Redact
+*   **Idea**: Expand the Knowledge Graph feature so users can input a custom regex (e.g., social security numbers or custom ID formats). LiteParse would find all occurrences visually and let the user click to redact them.

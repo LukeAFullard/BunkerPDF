@@ -27,13 +27,16 @@ import {
 import { EngineStatusPill } from "./components/ui/EngineStatusPill";
 import { CrossDocumentReorder } from "./components/pdf/reorder/CrossDocumentReorder";
 import { SingleDocumentReorder } from "./components/pdf/reorder/SingleDocumentReorder";
-import { InteractiveHighlightModal } from "./components/pdf/InteractiveHighlightModal";
+import { InteractiveSmartHighlightModal, type HighlightBox } from "./components/pdf/InteractiveSmartHighlightModal";
+import { highlightBoxesLiteparse } from "./lib/liteparseEngine";
 import { InteractiveRedactModal, type RedactBox } from "./components/pdf/InteractiveRedactModal";
 import { InteractiveEditModal, type EditBox } from "./components/pdf/InteractiveEditModal";
 import { InteractiveTableModal } from "./components/pdf/InteractiveTableModal";
 import { InteractiveCopyModal } from "./components/pdf/InteractiveCopyModal";
 import { InteractiveKnowledgeGraphModal } from "./components/pdf/InteractiveKnowledgeGraphModal";
 import { SmartFormGenerationModal } from "./components/pdf/SmartFormGenerationModal";
+import { SmartCropModal } from "./components/pdf/SmartCropModal";
+
 import { VisualWatermarkModal } from "./components/pdf/VisualWatermarkModal";
 import { getSmartOutputName } from "./lib/utils";
 import { ocrPdf } from "./lib/ocrEngine";
@@ -499,6 +502,10 @@ function App() {
   }>({ isOpen: false, doc: null });
 
   const [interactiveHighlightState, setInteractiveHighlightState] = useState<{
+    isOpen: boolean;
+    docId: string | null;
+  }>({ isOpen: false, docId: null });
+  const [smartCropState, setSmartCropState] = useState<{
     isOpen: boolean;
     docId: string | null;
   }>({ isOpen: false, docId: null });
@@ -1161,23 +1168,6 @@ function App() {
     });
   };
 
-  const highlightPdf = (
-    bytes: Uint8Array,
-    highlights: string[],
-  ): Promise<Uint8Array> => {
-    return new Promise((resolve, reject) => {
-      if (!pyodideWorkerRef.current)
-        return reject(new Error("Pyodide worker not ready"));
-      const jobId = crypto.randomUUID();
-      pyodideResolvers.current.set(jobId, { resolve, reject });
-      pyodideWorkerRef.current.postMessage({
-        type: "HIGHLIGHT_DOCUMENT",
-        jobId,
-        pdfBytes: bytes,
-        highlights,
-      } satisfies PyodideWorkerMessage);
-    });
-  };
 
   const extractAnnotations = (bytes: Uint8Array): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -2827,6 +2817,25 @@ function App() {
     setInteractiveKnowledgeGraphState({ isOpen: true, docId: doc.id });
   };
 
+  const handleSmartCrop = (doc: PDFDocument) => {
+    setSmartCropState({ isOpen: true, docId: doc.id });
+  };
+
+  const executeSmartCrop = async (bytes: Uint8Array) => {
+    const docId = smartCropState.docId;
+    if (!docId) return;
+    setSmartCropState({ isOpen: false, docId: null });
+    const doc = documents.find(d => d.id === docId);
+    if (!doc) return;
+
+    try {
+      const newFile = new File([new Uint8Array(bytes)], getSmartOutputName(doc.name, 'cropped'), { type: "application/pdf" });
+      await useFileStore.getState().updateDocumentFile(docId, newFile);
+      addLog("Action", `Smart Cropped ${doc.name}`);
+    } catch (error) {
+      console.error(error);
+    }
+  };
   const handleSmartForm = (doc: PDFDocument) => {
     setSmartFormState({ isOpen: true, docId: doc.id });
   };
@@ -2925,7 +2934,7 @@ function App() {
     });
   };
 
-  const executeHighlight = async (texts: string[]) => {
+  const executeHighlight = async (boxes: HighlightBox[]) => {
     const docId = interactiveHighlightState.docId;
     if (!docId) return;
     setInteractiveHighlightState({ isOpen: false, docId: null });
@@ -2933,35 +2942,23 @@ function App() {
     if (!doc) return;
 
     let isCancelled = false;
-    startProcessing("Highlighting text...", true, () => {
+    startProcessing("Smart highlighting text...", true, () => {
       isCancelled = true;
       stopProcessing();
     });
 
     try {
-      const arrayBuffer = await doc.file.arrayBuffer();
-      const pdfBytes = new Uint8Array(arrayBuffer);
-      const highlightedBytes = await highlightPdf(pdfBytes, texts);
-      if (isCancelled) return;
+      const bytes = await doc.file.arrayBuffer();
+      const newBytes = await highlightBoxesLiteparse(new Uint8Array(bytes), boxes);
 
-      const standardBuffer = new Uint8Array(highlightedBytes.length);
-      standardBuffer.set(highlightedBytes);
-      const newFile = new File([standardBuffer], doc.name, {
-        type: "application/pdf",
-      });
-      await updateDocumentFile(doc.id, newFile, undefined, {
-        type: 'other',
-        params: { description: `Highlighted texts: ${texts.join(", ")}` }
-      });
-      addLog("Highlight", `Highlighted text`, doc.name);
-    } catch (e) {
       if (isCancelled) return;
-      console.error(e);
-      setErrorState({
-        isOpen: true,
-        title: "Highlight Error",
-        message: "An error occurred while highlighting text.",
-      });
+      const newFile = new File([new Blob([newBytes.buffer as ArrayBuffer])], getSmartOutputName(doc.name, 'highlighted'), { type: "application/pdf" });
+      await useFileStore.getState().updateDocumentFile(docId, newFile);
+      addLog("Action", `Smart Highlighted ${doc.name}`);
+    } catch (error: any) {
+      if (isCancelled) return;
+      console.error(error);
+      setErrorState({ isOpen: true, title: "Highlight Error", message: error.message });
     } finally {
       if (!isCancelled) stopProcessing();
     }
@@ -3279,7 +3276,7 @@ function App() {
         thumbnailCache={thumbnailCache}
         setThumbnailCache={setThumbnailCache}
       />
-      <InteractiveHighlightModal
+      <InteractiveSmartHighlightModal
         isOpen={interactiveHighlightState.isOpen}
         docId={interactiveHighlightState.docId}
         onClose={() => setInteractiveHighlightState({ isOpen: false, docId: null })}
@@ -3331,6 +3328,12 @@ function App() {
              }
           }
         }}
+      />
+      <SmartCropModal
+        isOpen={smartCropState.isOpen}
+        docId={smartCropState.docId}
+        onClose={() => setSmartCropState({ isOpen: false, docId: null })}
+        onApply={executeSmartCrop}
       />
       <SmartFormGenerationModal
         isOpen={smartFormState.isOpen}
@@ -3594,6 +3597,7 @@ function App() {
                       onInteractiveCopy={handleInteractiveCopy}
                       onInteractiveKnowledgeGraph={handleInteractiveKnowledgeGraph}
                       onSmartForm={handleSmartForm}
+                      onSmartCrop={handleSmartCrop}
                       extractText={extractText}
                       extractEntities={extractEntities}
                       extractTables={extractTables}
