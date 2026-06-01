@@ -901,22 +901,27 @@ export const autoRedactLayoutLiteparse = async (
 
 export const cropPdfLiteparse = async (
   bytes: Uint8Array,
-  pageNum: number,
+  pageNum: number | 'all',
   cropBox: { x: number; y: number; width: number; height: number }
 ): Promise<Uint8Array> => {
   const { PDFDocument } = await import('pdf-lib');
   const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
   const pages = pdfDoc.getPages();
 
-  if (pageNum < 0 || pageNum >= pages.length) return bytes;
-  const pdfPage = pages[pageNum];
-  const { height } = pdfPage.getSize();
+  const applyCrop = (pdfPage: any) => {
+    const { height } = pdfPage.getSize();
+    const pdfLibY = height - cropBox.y - cropBox.height;
+    pdfPage.setCropBox(cropBox.x, pdfLibY, cropBox.width, cropBox.height);
+  };
 
-  // LiteParse coordinates are usually top-left, but pdf-lib uses bottom-left.
-  const pdfLibY = height - cropBox.y - cropBox.height;
-
-  pdfPage.setCropBox(cropBox.x, pdfLibY, cropBox.width, cropBox.height);
-  // pdfPage.setMediaBox(cropBox.x, pdfLibY, cropBox.width, cropBox.height);
+  if (pageNum === 'all') {
+    for (const page of pages) {
+      applyCrop(page);
+    }
+  } else {
+    if (pageNum < 0 || pageNum >= pages.length) return bytes;
+    applyCrop(pages[pageNum]);
+  }
 
   return await pdfDoc.save();
 };

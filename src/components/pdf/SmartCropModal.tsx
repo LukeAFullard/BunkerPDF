@@ -35,6 +35,7 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
   const [warningMessage, setWarningMessage] = useState<string | null>(null);
 
   const [cropBox, setCropBox] = useState<{ x: number, y: number, width: number, height: number } | null>(null);
+  const [applyAllPages, setApplyAllPages] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<{ x: number, y: number } | null>(null);
 
@@ -133,17 +134,16 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
     }
   };
 
-  const checkIntersections = (box: { x: number, y: number, width: number, height: number }) => {
+  const checkIntersections = (box: { x: number, y: number, width: number, height: number }, checkAll: boolean) => {
     if (!textItems || textItems.length < currentPage) return;
-    const pageItems = textItems[currentPage - 1].textItems;
-    if (!pageItems || !pageDimensions) return;
+    if (!pageDimensions) return;
 
     // Map drawn box (which is in screen coords) to LiteParse coords
     // LiteParse coords are roughly unscaled pdf space.
-    // Let's find scale factors.
-    const liteParsePage = textItems[currentPage - 1];
-    const scaleX = liteParsePage.width / pageDimensions.width;
-    const scaleY = liteParsePage.height / pageDimensions.height;
+    // Let's find scale factors based on current page viewing
+    const liteParsePageRef = textItems[currentPage - 1];
+    const scaleX = liteParsePageRef.width / pageDimensions.width;
+    const scaleY = liteParsePageRef.height / pageDimensions.height;
 
     const lpBox = {
       x: box.x * scaleX,
@@ -155,41 +155,52 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
     let intersects = false;
     let cutCount = 0;
 
-    for (const item of pageItems) {
-      // Check if item intersects the boundary of the crop box
-      // If the item is completely inside, it's fine. If completely outside, fine (it gets cropped out).
-      // But if it straddles the boundary, that's a problem.
+    const pagesToCheck = checkAll ? textItems : [textItems[currentPage - 1]];
 
-      const itemLeft = item.x;
-      const itemRight = item.x + item.width;
-      const itemTop = item.y;
-      const itemBottom = item.y + item.height;
+    for (const page of pagesToCheck) {
+      if (!page || !page.textItems) continue;
+      for (const item of page.textItems) {
+        // Check if item intersects the boundary of the crop box
+        // If the item is completely inside, it's fine. If completely outside, fine (it gets cropped out).
+        // But if it straddles the boundary, that's a problem.
 
-      const boxLeft = lpBox.x;
-      const boxRight = lpBox.x + lpBox.width;
-      const boxTop = lpBox.y;
-      const boxBottom = lpBox.y + lpBox.height;
+        const itemLeft = item.x;
+        const itemRight = item.x + item.width;
+        const itemTop = item.y;
+        const itemBottom = item.y + item.height;
 
-      // Check horizontal boundary crossing
-      const crossesLeft = itemLeft < boxLeft && itemRight > boxLeft && itemBottom > boxTop && itemTop < boxBottom;
-      const crossesRight = itemLeft < boxRight && itemRight > boxRight && itemBottom > boxTop && itemTop < boxBottom;
+        const boxLeft = lpBox.x;
+        const boxRight = lpBox.x + lpBox.width;
+        const boxTop = lpBox.y;
+        const boxBottom = lpBox.y + lpBox.height;
 
-      // Check vertical boundary crossing
-      const crossesTop = itemTop < boxTop && itemBottom > boxTop && itemRight > boxLeft && itemLeft < boxRight;
-      const crossesBottom = itemTop < boxBottom && itemBottom > boxBottom && itemRight > boxLeft && itemLeft < boxRight;
+        // Check horizontal boundary crossing
+        const crossesLeft = itemLeft < boxLeft && itemRight > boxLeft && itemBottom > boxTop && itemTop < boxBottom;
+        const crossesRight = itemLeft < boxRight && itemRight > boxRight && itemBottom > boxTop && itemTop < boxBottom;
 
-      if (crossesLeft || crossesRight || crossesTop || crossesBottom) {
-        intersects = true;
-        cutCount++;
+        // Check vertical boundary crossing
+        const crossesTop = itemTop < boxTop && itemBottom > boxTop && itemRight > boxLeft && itemLeft < boxRight;
+        const crossesBottom = itemTop < boxBottom && itemBottom > boxBottom && itemRight > boxLeft && itemLeft < boxRight;
+
+        if (crossesLeft || crossesRight || crossesTop || crossesBottom) {
+          intersects = true;
+          cutCount++;
+        }
       }
     }
 
     if (intersects) {
-      setWarningMessage(`Warning: The crop area cuts through ${cutCount} text element(s).`);
+      setWarningMessage(`Warning: The crop area cuts through ${cutCount} text element(s)${checkAll ? ' across all pages' : ''}.`);
     } else {
       setWarningMessage(null);
     }
   };
+
+  useEffect(() => {
+    if (cropBox && cropBox.width > 10 && cropBox.height > 10) {
+      checkIntersections(cropBox, applyAllPages);
+    }
+  }, [applyAllPages]);
 
   const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
     const container = containerRef.current;
@@ -228,7 +239,7 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
 
   const handleMouseUp = () => {
     if (isDragging && cropBox && cropBox.width > 10 && cropBox.height > 10) {
-      checkIntersections(cropBox);
+      checkIntersections(cropBox, applyAllPages);
     } else if (cropBox && (cropBox.width <= 10 || cropBox.height <= 10)) {
       setCropBox(null);
       setWarningMessage(null);
@@ -252,7 +263,11 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
         height: cropBox.height * scaleY
       };
 
-      const newBytes = await cropPdfLiteparse(new Uint8Array(bytes), currentPage - 1, lpBox);
+      const newBytes = await cropPdfLiteparse(
+        new Uint8Array(bytes),
+        applyAllPages ? 'all' : currentPage - 1,
+        lpBox
+      );
       onApply(newBytes);
     } catch (err: any) {
       setError(err.message || "Failed to crop PDF");
@@ -355,7 +370,16 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
               </div>
             )}
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-3 items-center">
+            <label className="flex items-center gap-2 mr-4 text-sm font-medium text-gray-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={applyAllPages}
+                onChange={(e) => setApplyAllPages(e.target.checked)}
+                className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4"
+              />
+              Apply to all pages
+            </label>
             <button
               onClick={onClose}
               className="px-4 py-2 text-gray-600 hover:bg-gray-100 font-medium rounded-lg transition-colors"
