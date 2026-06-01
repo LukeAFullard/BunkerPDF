@@ -96,7 +96,7 @@ By leveraging LiteParse's instant JSON spatial output, we have successfully buil
 
 Based on LiteParse's capabilities as a spatial grid projection tool, here are several additional ideas that could make the user experience excellent:
 
-1. **"Snap-to-Grid" Redaction Validation**: When a user manually draws a redaction box, use LiteParse's underlying grid output to suggest snapping the redaction box exactly to the boundaries of the text words it partially overlaps. This ensures cleaner redactions without cutting letters in half.
+1. **"Snap-to-Grid" Redaction Validation**: (**Implemented**) When a user manually draws a redaction box, use LiteParse's underlying grid output to automatically snap the redaction box exactly to the boundaries of the text words it partially overlaps. This ensures cleaner redactions without cutting letters in half.
 
 2. **Smart Table Re-flow / "Excel-ify" on Hover**: Since LiteParse already calculates `maxFontSize` and groups things heuristically, when a user hovers over a tabular structure in the PDF viewer, an overlay could appear allowing them to interact with it as a mini-spreadsheet directly in the browser (e.g. copying an entire column instantly or calculating the sum of a column).
 
