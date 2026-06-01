@@ -48,15 +48,14 @@ Currently, a few actions still exclusively rely on `pyodideWorker.ts` or separat
 ### Note on limitations:
 LiteParse focuses purely on spatial **text extraction**. Tasks like image extraction (`EXTRACT_IMAGES`), encryption/unlocking, bookmark (TOC) editing, metadata manipulation, or DOCX conversions are outside its scope and must continue utilizing PyMuPDF or `pdf-lib`.
 
+11. **Interactive Knowledge Graph (Clickable Entities)**:
+    The PII/NER worker (which finds Names, Companies, Emails) runs in the background. The application uses LiteParse to find exactly where those words live on the page and draws interactive highlights over them. Users can click an entity to copy it, or click to instantly redact it via precise coordinate masking.
+
+12. **Smart Form Generation**:
+    LiteParse's "Grid Projection" algorithm excels at identifying anchors and horizontal gaps (e.g., labels ending in colons like "Name:", or continuous underscores). The UI automatically highlights these empty spaces and allows users to click them, instantly injecting native, fillable PDF text field annotations at those exact coordinates using `pdf-lib`.
+
 ## High-Impact Interactive Feature Opportunities
 
 LiteParse's most significant advantage over previous methods is its ability to output **precise `[x, y, width, height]` spatial data for every single text element, natively and instantly within the browser's JavaScript environment**. Previously, obtaining accurate coordinates required spinning up a heavy Pyodide (WebAssembly Python) worker running `PyMuPDF`, which was too slow for real-time UI interactivity.
 
-By leveraging LiteParse's instant JSON spatial output, we can build highly interactive, native-feeling features that provide significant "wow-factor" and user value:
-
-### 1. Interactive Knowledge Graph (Clickable Entities)
-*   **The Experience:** The PII/NER worker (which finds Names, Companies, Emails) runs in the background. Instead of simply listing extracted entities in a sidebar, the application uses LiteParse to find exactly where those words live on the page and draws interactive highlights over them. Users can click an email to copy it, or click a name to redact every instance of it instantly.
-*   **How LiteParse Enables It:** Natively and rapidly matching regular expressions or NER output to exact physical page coordinates directly in JavaScript.
-
-### 5. Smart Form Generation
-*   **The Experience:** LiteParse's "Grid Projection" algorithm excels at identifying anchors and horizontal gaps (e.g., "Name: ____________"). The UI could automatically highlight these empty spaces and allow users to click them, instantly injecting native, fillable PDF text field annotations at those exact coordinates.
+By leveraging LiteParse's instant JSON spatial output, we have successfully built highly interactive, native-feeling features that provide significant "wow-factor" and user value, with most text-based opportunities now fully realized.

@@ -31,6 +31,8 @@ import { InteractiveHighlightModal } from "./components/pdf/InteractiveHighlight
 import { InteractiveRedactModal, type RedactBox } from "./components/pdf/InteractiveRedactModal";
 import { InteractiveEditModal, type EditBox } from "./components/pdf/InteractiveEditModal";
 import { InteractiveTableModal } from "./components/pdf/InteractiveTableModal";
+import { InteractiveKnowledgeGraphModal } from "./components/pdf/InteractiveKnowledgeGraphModal";
+import { SmartFormGenerationModal } from "./components/pdf/SmartFormGenerationModal";
 import { VisualWatermarkModal } from "./components/pdf/VisualWatermarkModal";
 import { getSmartOutputName } from "./lib/utils";
 import { ocrPdf } from "./lib/ocrEngine";
@@ -496,6 +498,14 @@ function App() {
   }>({ isOpen: false, doc: null });
 
   const [interactiveHighlightState, setInteractiveHighlightState] = useState<{
+    isOpen: boolean;
+    docId: string | null;
+  }>({ isOpen: false, docId: null });
+  const [smartFormState, setSmartFormState] = useState<{
+    isOpen: boolean;
+    docId: string | null;
+  }>({ isOpen: false, docId: null });
+  const [interactiveKnowledgeGraphState, setInteractiveKnowledgeGraphState] = useState<{
     isOpen: boolean;
     docId: string | null;
   }>({ isOpen: false, docId: null });
@@ -2785,6 +2795,29 @@ function App() {
     setInteractiveTableState({ isOpen: true, docId: doc.id });
   };
 
+  const handleInteractiveKnowledgeGraph = (doc: PDFDocument) => {
+    setInteractiveKnowledgeGraphState({ isOpen: true, docId: doc.id });
+  };
+
+  const handleSmartForm = (doc: PDFDocument) => {
+    setSmartFormState({ isOpen: true, docId: doc.id });
+  };
+
+  const executeSmartForm = async (bytes: Uint8Array) => {
+    const docId = smartFormState.docId;
+    if (!docId) return;
+    setSmartFormState({ isOpen: false, docId: null });
+    const doc = documents.find(d => d.id === docId);
+    if (!doc) return;
+
+    try {
+      const newFile = new File([new Uint8Array(bytes)], doc.name, { type: "application/pdf" });
+      await useFileStore.getState().updateDocumentFile(docId, newFile);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
   const diffHighlightPdf = (bytes: Uint8Array, highlights: string[], color: [number, number, number]): Promise<Uint8Array> => {
     const method = useUIStore.getState().extractionMethod;
     if (method === 'liteparse') {
@@ -3241,6 +3274,37 @@ function App() {
         docId={interactiveTableState.docId}
         onClose={() => setInteractiveTableState({ isOpen: false, docId: null })}
       />
+      <InteractiveKnowledgeGraphModal
+        isOpen={interactiveKnowledgeGraphState.isOpen}
+        docId={interactiveKnowledgeGraphState.docId}
+        onClose={() => setInteractiveKnowledgeGraphState({ isOpen: false, docId: null })}
+        onRedact={async (boxes) => {
+          const docId = interactiveKnowledgeGraphState.docId;
+          setInteractiveKnowledgeGraphState({ isOpen: false, docId: null });
+          if (docId) {
+             const doc = documents.find(d => d.id === docId);
+             if (!doc) return;
+             try {
+               const arrayBuffer = await doc.file.arrayBuffer();
+               const bytes = new Uint8Array(arrayBuffer);
+               const redactBoxesLiteparse = (await import("./lib/liteparseEngine")).redactBoxesLiteparse;
+               const newBytes = await redactBoxesLiteparse(bytes, boxes);
+
+               const newFile = new File([new Uint8Array(newBytes)], doc.name, { type: "application/pdf" });
+               await useFileStore.getState().updateDocumentFile(doc.id, newFile);
+               // toast is not imported in this file and currently unused except here. Reverting to console messages.
+             } catch (error) {
+               console.error(error);
+             }
+          }
+        }}
+      />
+      <SmartFormGenerationModal
+        isOpen={smartFormState.isOpen}
+        docId={smartFormState.docId}
+        onClose={() => setSmartFormState({ isOpen: false, docId: null })}
+        onApply={executeSmartForm}
+      />
       <VisualWatermarkModal
         isOpen={visualWatermarkState.isOpen}
         docId={visualWatermarkState.docId}
@@ -3493,6 +3557,8 @@ function App() {
                       onInteractiveRedact={handleInteractiveRedact}
                       onInteractiveEdit={handleInteractiveEdit}
                       onInteractiveTable={handleInteractiveTable}
+                      onInteractiveKnowledgeGraph={handleInteractiveKnowledgeGraph}
+                      onSmartForm={handleSmartForm}
                       extractText={extractText}
                       extractEntities={extractEntities}
                       extractTables={extractTables}
