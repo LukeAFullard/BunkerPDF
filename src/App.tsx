@@ -31,6 +31,7 @@ import { InteractiveHighlightModal } from "./components/pdf/InteractiveHighlight
 import { InteractiveRedactModal, type RedactBox } from "./components/pdf/InteractiveRedactModal";
 import { InteractiveEditModal, type EditBox } from "./components/pdf/InteractiveEditModal";
 import { InteractiveTableModal } from "./components/pdf/InteractiveTableModal";
+import { InteractiveCopyModal } from "./components/pdf/InteractiveCopyModal";
 import { InteractiveKnowledgeGraphModal } from "./components/pdf/InteractiveKnowledgeGraphModal";
 import { SmartFormGenerationModal } from "./components/pdf/SmartFormGenerationModal";
 import { VisualWatermarkModal } from "./components/pdf/VisualWatermarkModal";
@@ -59,7 +60,7 @@ import type {
 import { ImageReorderRail, type ImageItem } from "./components/ui/ImageReorderRail";
 import { convertImagesToPdf } from "./lib/engineA";
 import { SettingsDropdown } from "./components/ui/SettingsDropdown";
-import { extractTextLiteparse, extractAllPagesTextLiteparse, extractMarkdownLiteparse, extractHtmlLiteparse, editParagraphLiteparse, extractTablesLiteparse, redactDocumentLiteparse, redactBoxesLiteparse, editBoxesLiteparse, diffMergedHighlightPdfLiteparse, diffHighlightPdfLiteparse } from "./lib/liteparseEngine";
+import { extractTextLiteparse, extractAllPagesTextLiteparse, extractMarkdownLiteparse, extractHtmlLiteparse, editParagraphLiteparse, extractTablesLiteparse, redactDocumentLiteparse, redactBoxesLiteparse, editBoxesLiteparse, diffMergedHighlightPdfLiteparse, diffHighlightPdfLiteparse, autoRedactLayoutLiteparse } from "./lib/liteparseEngine";
 
 function App() {
   const documents = useFileStore((state) => state.documents);
@@ -1250,6 +1251,27 @@ function App() {
         bookmarks,
       });
     });
+  };
+
+  const autoRedactLayout = async (doc: PDFDocument) => {
+    try {
+      if (useUIStore.getState().extractionMethod !== 'liteparse') {
+        useUIStore.getState().setExtractionMethod('liteparse');
+      }
+      addLog("Action", `Starting layout-based redaction (headers/footers) on ${doc.name}`);
+      const bytes = await doc.file.arrayBuffer();
+      const newBytes = await autoRedactLayoutLiteparse(new Uint8Array(bytes), ['header', 'footer']);
+
+      const newFileName = getSmartOutputName(doc.name, 'layout_redacted');
+      // Explicit cast to avoid TypeScript complaining about SharedArrayBuffer
+      const blob = new Blob([newBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
+      const newFile = new File([blob], newFileName, { type: 'application/pdf' });
+
+      updateDocumentFile(doc.id, newFile, doc.pageCount);
+      addLog("Action", `Successfully redacted headers and footers from ${doc.name}`);
+    } catch (error: any) {
+      addLog("Action", `Failed to redact layout: ${error.message}`);
+    }
   };
 
   const redactPdf = (
@@ -2795,6 +2817,12 @@ function App() {
     setInteractiveTableState({ isOpen: true, docId: doc.id });
   };
 
+  const [interactiveCopyState, setInteractiveCopyState] = useState<{isOpen: boolean, docId: string | null}>({isOpen: false, docId: null});
+
+  const handleInteractiveCopy = (doc: PDFDocument) => {
+    setInteractiveCopyState({ isOpen: true, docId: doc.id });
+  };
+
   const handleInteractiveKnowledgeGraph = (doc: PDFDocument) => {
     setInteractiveKnowledgeGraphState({ isOpen: true, docId: doc.id });
   };
@@ -3274,6 +3302,11 @@ function App() {
         docId={interactiveTableState.docId}
         onClose={() => setInteractiveTableState({ isOpen: false, docId: null })}
       />
+      <InteractiveCopyModal
+        isOpen={interactiveCopyState.isOpen}
+        docId={interactiveCopyState.docId}
+        onClose={() => setInteractiveCopyState({ isOpen: false, docId: null })}
+      />
       <InteractiveKnowledgeGraphModal
         isOpen={interactiveKnowledgeGraphState.isOpen}
         docId={interactiveKnowledgeGraphState.docId}
@@ -3555,8 +3588,10 @@ function App() {
                       onReadAloud={handleReadAloud}
                       onOcr={handleOcr}
                       onInteractiveRedact={handleInteractiveRedact}
+                      onAutoRedactLayout={autoRedactLayout}
                       onInteractiveEdit={handleInteractiveEdit}
                       onInteractiveTable={handleInteractiveTable}
+                      onInteractiveCopy={handleInteractiveCopy}
                       onInteractiveKnowledgeGraph={handleInteractiveKnowledgeGraph}
                       onSmartForm={handleSmartForm}
                       extractText={extractText}
