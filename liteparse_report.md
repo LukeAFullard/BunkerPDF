@@ -68,20 +68,40 @@ By leveraging LiteParse's instant JSON spatial output, we have successfully buil
 *   **Idea**: Standard PDF copy-pasting often breaks line breaks (splitting sentences arbitrarily). We could introduce an "Intelligent Selection Mode" where dragging over text leverages LiteParse's line-grouping heuristics to copy perfectly flowed paragraphs, automatically omitting headers, footers, or margin artifacts. The header/footer omission margin is user-defined via an interactive UI slider.
 
 ### 2. Auto-Redact by Layout Type
+*   **Status**: **Implemented**.
 *   **Idea**: Instead of searching for specific sensitive words, users could specify structural elements to remove, such as "Redact all Headers" or "Redact the Footer on every page." By utilizing LiteParse's spatial awareness (e.g., text consistently at the top/bottom margins, or text matching the maximum font size), the application can automate structural redactions perfectly.
 
 ### 3. Click-to-Translate
+*   **Status**: **Not Implemented**.
 *   **Idea**: Building on the WYSIWYG editor's underlying mechanics, a user could click a specific sentence or paragraph they don't understand. A tooltip instantly pops up with the translation, leaving the rest of the document visually untouched.
 
 ### 4. Interactive Document Reflow (Mobile View)
+*   **Status**: **Not Implemented**.
 *   **Idea**: Reading A4 PDFs on mobile devices requires excessive panning. We could use LiteParse to extract all text blocks in semantic order and render them as native, responsive HTML. Users could click a "Mobile View" toggle to instantly convert the static PDF into a readable, vertically scrolling webpage.
 
 ### 5. Smart Crop Warning
+*   **Status**: **Implemented**.
 *   **Idea**: When a user selects an area to crop on a single page or across multiple pages, the application can use LiteParse's spatial output to detect if any text blocks intersect with the crop boundaries. If a text bounding box spans across the crop line, the UI can immediately display a warning that text will be cut off.
 *   **Limitation Note**: Because LiteParse focuses purely on *text*, it cannot natively detect if an *image* or graphical chart will be cut off by the crop line. It can, however, accurately warn about textual content and tabular text grids being severed.
 
 ### 6. Interactive Auto-Linker
+*   **Status**: **Not Implemented**.
 *   **Idea**: Scan the document for plain text URLs, emails, or references (like "See Figure 1"), find their bounding boxes with LiteParse, and inject clickable native PDF hyperlink annotations over them.
 
 ### 7. Custom Regex Click-to-Redact
+*   **Status**: **Implemented**.
 *   **Idea**: Expand the Knowledge Graph feature so users can input a custom regex (e.g., social security numbers or custom ID formats). LiteParse would find all occurrences visually and let the user click to redact them.
+
+## New Feature Opportunities
+
+Based on LiteParse's capabilities as a spatial grid projection tool, here are several additional ideas that could make the user experience excellent:
+
+1. **"Snap-to-Grid" Redaction Validation**: When a user manually draws a redaction box, use LiteParse's underlying grid output to suggest snapping the redaction box exactly to the boundaries of the text words it partially overlaps. This ensures cleaner redactions without cutting letters in half.
+
+2. **Smart Table Re-flow / "Excel-ify" on Hover**: Since LiteParse already calculates `maxFontSize` and groups things heuristically, when a user hovers over a tabular structure in the PDF viewer, an overlay could appear allowing them to interact with it as a mini-spreadsheet directly in the browser (e.g. copying an entire column instantly or calculating the sum of a column).
+
+3. **In-browser Syntax Highlighting for Code Blocks**: If LiteParse identifies a monospace block of text (by recognizing font changes or consistent indentation on the left margin through its Left Anchors), we could overlay a transparent syntax-highlighted block, making code snippets in PDFs much easier to read and copy properly.
+
+4. **"Read Aloud" with Word-by-Word Synchronized Highlighting**: Since the browser's Web Speech API (`window.speechSynthesis`) provides utterance boundary events, we can use LiteParse's spatial `x/y` coordinates for every single word to highlight exactly which word is currently being spoken, similar to an audiobook or karaoke interface.
+
+5. **Visual Margin / Gutter Analysis Tool**: Expose LiteParse's Left, Right, and Center "Anchors" visually. Users could toggle a "Layout Mode" where they see the grid lines LiteParse has detected. They could click an anchor line (e.g., a left margin) and instantly select or extract all text aligned to that specific margin.

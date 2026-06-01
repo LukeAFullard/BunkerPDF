@@ -37,6 +37,7 @@ export function InteractiveKnowledgeGraphModal({ isOpen, docId, onClose, onRedac
   const [liteparseData, setLiteparseData] = useState<any>(null);
   const [extractedEntities, setExtractedEntities] = useState<string[]>([]);
   const [copied, setCopied] = useState<string | null>(null);
+  const [customRegex, setCustomRegex] = useState<string>('');
 
   const renderTaskRef = useRef<pdfjsLib.RenderTask | null>(null);
   const pdfDocRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
@@ -225,12 +226,30 @@ export function InteractiveKnowledgeGraphModal({ isOpen, docId, onClose, onRedac
   // Map entities to boxes
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const entityBoxes: any[] = [];
-  if (currentLpPage?.textItems && extractedEntities.length > 0) {
+  let calculatedRegexError: string | null = null;
+
+  if (currentLpPage?.textItems) {
+    let regex: RegExp | null = null;
+    if (customRegex) {
+      try {
+        // Do not use 'g' flag, as stateful regex with .test in a loop causes skips
+        regex = new RegExp(customRegex, 'i');
+      } catch (e) {
+        calculatedRegexError = "Invalid regex";
+      }
+    }
+
     for (const item of currentLpPage.textItems) {
-      for (const entity of extractedEntities) {
-        if (item.text.includes(entity) || entity.includes(item.text)) {
-           entityBoxes.push({ ...item, entity });
-           break;
+      if (regex) {
+         if (regex.test(item.text)) {
+             entityBoxes.push({ ...item, entity: 'Regex Match' });
+         }
+      } else if (extractedEntities.length > 0) {
+        for (const entity of extractedEntities) {
+          if (item.text.includes(entity) || entity.includes(item.text)) {
+            entityBoxes.push({ ...item, entity });
+            break;
+          }
         }
       }
     }
@@ -334,33 +353,57 @@ export function InteractiveKnowledgeGraphModal({ isOpen, docId, onClose, onRedac
 
         {/* Right Side: Entities Panel */}
         <div className="w-1/3 bg-gray-50 flex flex-col border-l border-gray-200">
-          <div className="p-6 flex-1 overflow-y-auto">
-            <h3 className="text-lg font-bold text-gray-800 mb-2">Detected Entities</h3>
+          <div className="p-6 flex-1 flex flex-col">
+            <h3 className="text-lg font-bold text-gray-800 mb-2">Interactive Redaction</h3>
             <p className="text-sm text-gray-600 mb-6">
-              Entities found in this document. Interact with them on the left canvas.
+              Interact with the highlighted boxes on the left canvas. Use the input below to provide a custom regex or clear it to see automatically detected entities.
             </p>
 
-            {extractedEntities.length === 0 ? (
-              <div className="text-center py-12 px-4 border-2 border-dashed border-gray-300 rounded-xl bg-white flex flex-col items-center">
-                <AlertCircle className="w-8 h-8 text-gray-400 mx-auto mb-3" />
-                <p className="text-sm text-gray-500">{isLoading ? 'Scanning document...' : 'No entities detected.'}</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {extractedEntities.map((entity, idx) => (
-                  <div key={idx} className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-800 truncate">{entity}</span>
-                    <button
-                      onClick={() => handleCopy(entity)}
-                      className="p-1.5 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
-                      title="Copy Entity"
-                    >
-                      {copied === entity ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+            <div className="mb-6">
+              <label htmlFor="custom-regex" className="block text-sm font-medium text-gray-700 mb-1">
+                Custom Regex (Optional)
+              </label>
+              <input
+                id="custom-regex"
+                type="text"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                placeholder="\d{3}-\d{2}-\d{4} (SSN)"
+                value={customRegex}
+                onChange={(e) => setCustomRegex(e.target.value)}
+              />
+              {calculatedRegexError && <p className="mt-1 text-sm text-red-600">{calculatedRegexError}</p>}
+            </div>
+
+            <h3 className="text-md font-bold text-gray-800 mb-2">Detected Entities</h3>
+            <div className="flex-1 overflow-y-auto">
+              {customRegex ? (
+                 <div className="text-center py-6 px-4 border-2 border-dashed border-indigo-200 rounded-xl bg-indigo-50 flex flex-col items-center">
+                   <Network className="w-8 h-8 text-indigo-400 mx-auto mb-3" />
+                   <p className="text-sm text-indigo-700 font-medium">Custom Regex Mode Active</p>
+                   <p className="text-xs text-indigo-500 mt-1">Showing regex matches instead of NER entities.</p>
+                 </div>
+              ) : extractedEntities.length === 0 ? (
+                <div className="text-center py-12 px-4 border-2 border-dashed border-gray-300 rounded-xl bg-white flex flex-col items-center">
+                  <AlertCircle className="w-8 h-8 text-gray-400 mx-auto mb-3" />
+                  <p className="text-sm text-gray-500">{isLoading ? 'Scanning document...' : 'No entities detected.'}</p>
+                </div>
+              ) : (
+                <div className="space-y-2 pb-6">
+                  {extractedEntities.map((entity, idx) => (
+                    <div key={idx} className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm flex items-center justify-between">
+                      <span className="text-sm font-medium text-gray-800 truncate">{entity}</span>
+                      <button
+                        onClick={() => handleCopy(entity)}
+                        className="p-1.5 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                        title="Copy Entity"
+                      >
+                        {copied === entity ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
