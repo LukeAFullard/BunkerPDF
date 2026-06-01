@@ -1,0 +1,1 @@
+async function e(e){return new Promise((t,n)=>{let r=new Blob([e],{type:`application/pdf`}),i=new FileReader;i.onload=()=>{let e=i.result.split(`,`)[1];t(e)},i.onerror=n,i.readAsDataURL(r)})}function t(e){let t=atob(e),n=t.length,r=new Uint8Array(n);for(let e=0;e<n;e++)r[e]=t.charCodeAt(e);return r.buffer}export{e as arrayBufferToBase64,t as base64ToArrayBuffer};
