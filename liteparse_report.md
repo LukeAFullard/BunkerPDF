@@ -36,6 +36,12 @@ When LiteParse is selected, it powers several key extraction and editing functio
 10. **"Magic Box" Selection (Visual Table & Column Extraction)**:
     Instead of extracting an entire document to a spreadsheet or text file, the user clicks and drags a rectangle over a specific table or column directly on the PDF preview. The application filters LiteParse's JSON output for intersecting text items and instantly generates a perfectly formatted CSV or Markdown table for the selected area.
 
+11. **Interactive Knowledge Graph (Clickable Entities)**:
+    The PII/NER worker (which finds Names, Companies, Emails) runs in the background. The application uses LiteParse to find exactly where those words live on the page and draws interactive highlights over them. Users can click an entity to copy it, or click to instantly redact it via precise coordinate masking.
+
+12. **Smart Form Generation**:
+    LiteParse's "Grid Projection" algorithm excels at identifying anchors and horizontal gaps (e.g., labels ending in colons like "Name:", or continuous underscores). The UI automatically highlights these empty spaces and allows users to click them, instantly injecting native, fillable PDF text field annotations at those exact coordinates using `pdf-lib`.
+
 ## What else could be ported
 
 Currently, a few actions still exclusively rely on `pyodideWorker.ts` or separate WebWorkers. Based on LiteParse's JSON output, the following feature could optionally be ported next to run on LiteParse:
@@ -47,12 +53,6 @@ Currently, a few actions still exclusively rely on `pyodideWorker.ts` or separat
 
 ### Note on limitations:
 LiteParse focuses purely on spatial **text extraction**. Tasks like image extraction (`EXTRACT_IMAGES`), encryption/unlocking, bookmark (TOC) editing, metadata manipulation, or DOCX conversions are outside its scope and must continue utilizing PyMuPDF or `pdf-lib`.
-
-11. **Interactive Knowledge Graph (Clickable Entities)**:
-    The PII/NER worker (which finds Names, Companies, Emails) runs in the background. The application uses LiteParse to find exactly where those words live on the page and draws interactive highlights over them. Users can click an entity to copy it, or click to instantly redact it via precise coordinate masking.
-
-12. **Smart Form Generation**:
-    LiteParse's "Grid Projection" algorithm excels at identifying anchors and horizontal gaps (e.g., labels ending in colons like "Name:", or continuous underscores). The UI automatically highlights these empty spaces and allows users to click them, instantly injecting native, fillable PDF text field annotations at those exact coordinates using `pdf-lib`.
 
 ## High-Impact Interactive Feature Opportunities
 
