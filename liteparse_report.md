@@ -92,16 +92,18 @@ By leveraging LiteParse's instant JSON spatial output, we have successfully buil
 *   **Status**: **Implemented**.
 *   **Idea**: Expand the Knowledge Graph feature so users can input a custom regex (e.g., social security numbers or custom ID formats). LiteParse would find all occurrences visually and let the user click to redact them.
 
+### 8. "Snap-to-Grid" Redaction Validation
+*   **Status**: **Implemented**.
+*   **Idea**: When a user manually draws a redaction box, use LiteParse's underlying grid output to automatically snap the redaction box exactly to the boundaries of the text words it partially overlaps. This ensures cleaner redactions without cutting letters in half.
+
 ## New Feature Opportunities
 
 Based on LiteParse's capabilities as a spatial grid projection tool, here are several additional ideas that could make the user experience excellent:
 
-1. **"Snap-to-Grid" Redaction Validation**: (**Implemented**) When a user manually draws a redaction box, use LiteParse's underlying grid output to automatically snap the redaction box exactly to the boundaries of the text words it partially overlaps. This ensures cleaner redactions without cutting letters in half.
+1. **Smart Table Re-flow / "Excel-ify" on Hover**: Since LiteParse already calculates `maxFontSize` and groups things heuristically, when a user hovers over a tabular structure in the PDF viewer, an overlay could appear allowing them to interact with it as a mini-spreadsheet directly in the browser (e.g. copying an entire column instantly or calculating the sum of a column).
 
-2. **Smart Table Re-flow / "Excel-ify" on Hover**: Since LiteParse already calculates `maxFontSize` and groups things heuristically, when a user hovers over a tabular structure in the PDF viewer, an overlay could appear allowing them to interact with it as a mini-spreadsheet directly in the browser (e.g. copying an entire column instantly or calculating the sum of a column).
+2. **In-browser Syntax Highlighting for Code Blocks**: If LiteParse identifies a monospace block of text (by recognizing font changes or consistent indentation on the left margin through its Left Anchors), we could overlay a transparent syntax-highlighted block, making code snippets in PDFs much easier to read and copy properly.
 
-3. **In-browser Syntax Highlighting for Code Blocks**: If LiteParse identifies a monospace block of text (by recognizing font changes or consistent indentation on the left margin through its Left Anchors), we could overlay a transparent syntax-highlighted block, making code snippets in PDFs much easier to read and copy properly.
+3. **"Read Aloud" with Word-by-Word Synchronized Highlighting**: Since the browser's Web Speech API (`window.speechSynthesis`) provides utterance boundary events, we can use LiteParse's spatial `x/y` coordinates for every single word to highlight exactly which word is currently being spoken, similar to an audiobook or karaoke interface.
 
-4. **"Read Aloud" with Word-by-Word Synchronized Highlighting**: Since the browser's Web Speech API (`window.speechSynthesis`) provides utterance boundary events, we can use LiteParse's spatial `x/y` coordinates for every single word to highlight exactly which word is currently being spoken, similar to an audiobook or karaoke interface.
-
-5. **Visual Margin / Gutter Analysis Tool**: Expose LiteParse's Left, Right, and Center "Anchors" visually. Users could toggle a "Layout Mode" where they see the grid lines LiteParse has detected. They could click an anchor line (e.g., a left margin) and instantly select or extract all text aligned to that specific margin.
+4. **Visual Margin / Gutter Analysis Tool**: Expose LiteParse's Left, Right, and Center "Anchors" visually. Users could toggle a "Layout Mode" where they see the grid lines LiteParse has detected. They could click an anchor line (e.g., a left margin) and instantly select or extract all text aligned to that specific margin.
