@@ -898,3 +898,54 @@ export const autoRedactLayoutLiteparse = async (
 
   return await pdfDoc.save();
 };
+
+export const cropPdfLiteparse = async (
+  bytes: Uint8Array,
+  pageNum: number,
+  cropBox: { x: number; y: number; width: number; height: number }
+): Promise<Uint8Array> => {
+  const { PDFDocument } = await import('pdf-lib');
+  const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const pages = pdfDoc.getPages();
+
+  if (pageNum < 0 || pageNum >= pages.length) return bytes;
+  const pdfPage = pages[pageNum];
+  const { height } = pdfPage.getSize();
+
+  // LiteParse coordinates are usually top-left, but pdf-lib uses bottom-left.
+  const pdfLibY = height - cropBox.y - cropBox.height;
+
+  pdfPage.setCropBox(cropBox.x, pdfLibY, cropBox.width, cropBox.height);
+  // pdfPage.setMediaBox(cropBox.x, pdfLibY, cropBox.width, cropBox.height);
+
+  return await pdfDoc.save();
+};
+
+export const highlightBoxesLiteparse = async (
+  bytes: Uint8Array,
+  boxesToHighlight: { pageNum: number; x: number; y: number; width: number; height: number; color: [number, number, number] }[]
+): Promise<Uint8Array> => {
+  const { PDFDocument, rgb } = await import('pdf-lib');
+  const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const pages = pdfDoc.getPages();
+
+  for (const box of boxesToHighlight) {
+    if (box.pageNum < 0 || box.pageNum >= pages.length) continue;
+    const pdfPage = pages[box.pageNum];
+    const { height } = pdfPage.getSize();
+
+    // LiteParse coordinates are usually top-left, but pdf-lib uses bottom-left.
+    const pdfLibY = height - box.y - box.height;
+
+    pdfPage.drawRectangle({
+      x: box.x,
+      y: pdfLibY,
+      width: box.width,
+      height: box.height,
+      color: rgb(box.color[0], box.color[1], box.color[2]),
+      opacity: 0.5,
+    });
+  }
+
+  return await pdfDoc.save();
+};
