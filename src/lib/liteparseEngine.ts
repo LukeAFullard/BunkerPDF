@@ -954,3 +954,47 @@ export const highlightBoxesLiteparse = async (
 
   return await pdfDoc.save();
 };
+
+export const autoLinkBoxesLiteparse = async (
+  bytes: Uint8Array,
+  linkBoxes: { pageNum: number, x: number, y: number, width: number, height: number, url: string }[]
+): Promise<Uint8Array> => {
+  const { PDFDocument, PDFString, PDFName } = await import('pdf-lib');
+  const pdfDoc = await PDFDocument.load(bytes);
+  const pages = pdfDoc.getPages();
+
+  for (const box of linkBoxes) {
+    if (box.pageNum >= pages.length) continue;
+    const page = pages[box.pageNum];
+    const { height } = page.getSize();
+
+    // Create link annotation
+    const linkAnnotation = pdfDoc.context.obj({
+      Type: 'Annot',
+      Subtype: 'Link',
+      Rect: [
+        box.x,
+        height - box.y - box.height, // PDF coordinate origin is bottom-left
+        box.x + box.width,
+        height - box.y
+      ],
+      Border: [0, 0, 0], // Invisible border
+      A: {
+        Type: 'Action',
+        S: 'URI',
+        URI: PDFString.of(box.url),
+      },
+    });
+
+    // Add it to the page
+    let annots = page.node.Annots();
+    if (!annots) {
+      annots = pdfDoc.context.obj([]);
+      page.node.set(PDFName.of('Annots'), annots);
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (annots as any).push(pdfDoc.context.register(linkAnnotation));
+  }
+
+  return await pdfDoc.save();
+};

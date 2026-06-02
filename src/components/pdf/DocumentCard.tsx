@@ -67,6 +67,7 @@ interface DocumentCardProps {
   onInteractiveTable?: (doc: PDFDocument) => void;
   onInteractiveCopy?: (doc: PDFDocument) => void;
   onInteractiveKnowledgeGraph?: (doc: PDFDocument) => void;
+  onInteractiveAutoLinker?: (doc: PDFDocument) => void;
   onSmartForm?: (doc: PDFDocument) => void;
   onSmartCrop?: (doc: PDFDocument) => void;
 }
@@ -118,6 +119,7 @@ export function DocumentCard({
   onInteractiveTable,
   onInteractiveCopy,
   onInteractiveKnowledgeGraph,
+  onInteractiveAutoLinker,
   onSmartForm,
   onSmartCrop,
 }: DocumentCardProps) {
@@ -918,6 +920,7 @@ items={[
             { label: "Magic Box Table (~Instant)", onClick: () => onInteractiveTable?.(doc) },
             { label: "Magic Copy (~Instant)", onClick: () => onInteractiveCopy?.(doc) },
             { label: "Knowledge Graph (~Instant)", onClick: () => onInteractiveKnowledgeGraph?.(doc) },
+            { label: "Auto-Linker (~Instant)", onClick: () => onInteractiveAutoLinker?.(doc) },
             { label: "Smart Form Generation (~Instant)", onClick: () => onSmartForm?.(doc) },
             { label: "Smart Crop Warning (~Instant)", onClick: () => onSmartCrop?.(doc) },
             { label: "Flatten Forms (~1s)", onClick: () => onFlatten?.(doc) },

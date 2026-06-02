@@ -34,6 +34,8 @@ import { InteractiveEditModal, type EditBox } from "./components/pdf/Interactive
 import { InteractiveTableModal } from "./components/pdf/InteractiveTableModal";
 import { InteractiveCopyModal } from "./components/pdf/InteractiveCopyModal";
 import { InteractiveKnowledgeGraphModal } from "./components/pdf/InteractiveKnowledgeGraphModal";
+import { InteractiveAutoLinkerModal } from "./components/pdf/InteractiveAutoLinkerModal";
+import { autoLinkBoxesLiteparse } from "./lib/liteparseEngine";
 import { SmartFormGenerationModal } from "./components/pdf/SmartFormGenerationModal";
 import { SmartCropModal } from "./components/pdf/SmartCropModal";
 
@@ -502,6 +504,11 @@ function App() {
   }>({ isOpen: false, doc: null });
 
   const [interactiveHighlightState, setInteractiveHighlightState] = useState<{
+    isOpen: boolean;
+    docId: string | null;
+  }>({ isOpen: false, docId: null });
+
+  const [interactiveAutoLinkerState, setInteractiveAutoLinkerState] = useState<{
     isOpen: boolean;
     docId: string | null;
   }>({ isOpen: false, docId: null });
@@ -2817,6 +2824,10 @@ function App() {
     setInteractiveKnowledgeGraphState({ isOpen: true, docId: doc.id });
   };
 
+  const handleInteractiveAutoLinker = (doc: PDFDocument) => {
+    setInteractiveAutoLinkerState({ isOpen: true, docId: doc.id });
+  };
+
   const handleSmartCrop = (doc: PDFDocument) => {
     setSmartCropState({ isOpen: true, docId: doc.id });
   };
@@ -3304,6 +3315,35 @@ function App() {
         docId={interactiveCopyState.docId}
         onClose={() => setInteractiveCopyState({ isOpen: false, docId: null })}
       />
+      <InteractiveAutoLinkerModal
+        isOpen={interactiveAutoLinkerState.isOpen}
+        docId={interactiveAutoLinkerState.docId}
+        onClose={() => setInteractiveAutoLinkerState({ isOpen: false, docId: null })}
+        onApplyLinks={async (links) => {
+          const docId = interactiveAutoLinkerState.docId;
+          setInteractiveAutoLinkerState({ isOpen: false, docId: null });
+          if (docId) {
+             const doc = documents.find(d => d.id === docId);
+             if (!doc) return;
+             try {
+               const arrayBuffer = await doc.file.arrayBuffer();
+               const bytes = new Uint8Array(arrayBuffer);
+
+               const resultBytes = await autoLinkBoxesLiteparse(bytes, links);
+
+               const standardBuffer = new Uint8Array(resultBytes.length);
+               standardBuffer.set(resultBytes);
+               const newFile = new File([standardBuffer], `linked_${doc.name}`, { type: 'application/pdf' });
+
+               await useFileStore.getState().updateDocumentFile(docId, newFile);
+               addLog("Action", `Applied ${links.length} links to ${doc.name}`, doc.name);
+             } catch (err) {
+               console.error("Error applying links", err);
+               setErrorState({ isOpen: true, title: "Auto-Linker Error", message: err instanceof Error ? err.message : String(err) });
+             }
+          }
+        }}
+      />
       <InteractiveKnowledgeGraphModal
         isOpen={interactiveKnowledgeGraphState.isOpen}
         docId={interactiveKnowledgeGraphState.docId}
@@ -3596,6 +3636,7 @@ function App() {
                       onInteractiveTable={handleInteractiveTable}
                       onInteractiveCopy={handleInteractiveCopy}
                       onInteractiveKnowledgeGraph={handleInteractiveKnowledgeGraph}
+                      onInteractiveAutoLinker={handleInteractiveAutoLinker}
                       onSmartForm={handleSmartForm}
                       onSmartCrop={handleSmartCrop}
                       extractText={extractText}
