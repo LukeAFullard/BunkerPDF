@@ -998,3 +998,59 @@ export const autoLinkBoxesLiteparse = async (
 
   return await pdfDoc.save();
 };
+
+export const normalizeFontsLiteparse = async (
+  bytes: Uint8Array,
+  edits: { pageNum: number; x: number; y: number; width: number; height: number; newText: string }[],
+  targetFontSize: number
+): Promise<Uint8Array> => {
+  const { PDFDocument, rgb, StandardFonts } = await import('pdf-lib');
+  const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+
+  const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+  const editsByPage = edits.reduce((acc, edit) => {
+    if (!acc[edit.pageNum]) acc[edit.pageNum] = [];
+    acc[edit.pageNum].push(edit);
+    return acc;
+  }, {} as Record<number, typeof edits>);
+
+  for (const [pageNumStr, pageEdits] of Object.entries(editsByPage)) {
+    const pageNum = parseInt(pageNumStr);
+    const pages = pdfDoc.getPages();
+
+    // Check if pageNum is within valid range (1-indexed)
+    if (pageNum < 1 || pageNum > pages.length) {
+      console.warn(`Skipping edits for invalid page number: ${pageNum}`);
+      continue;
+    }
+
+    const page = pages[pageNum - 1];
+    const { height } = page.getSize();
+
+    for (const edit of pageEdits) {
+      // pdf-lib uses bottom-left origin, liteparse uses top-left origin
+      const pdfLibY = height - edit.y - edit.height;
+
+      // Draw white rectangle to mask old text
+      page.drawRectangle({
+        x: edit.x,
+        y: pdfLibY,
+        width: edit.width,
+        height: edit.height,
+        color: rgb(1, 1, 1),
+      });
+
+      // Draw new text over the mask with the normalized font size
+      page.drawText(edit.newText, {
+        x: edit.x,
+        y: pdfLibY + (edit.height - targetFontSize) / 2 + 2, // Approximate centering
+        size: targetFontSize,
+        font: helveticaFont,
+        color: rgb(0, 0, 0),
+      });
+    }
+  }
+
+  return await pdfDoc.save();
+};

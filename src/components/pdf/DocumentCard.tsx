@@ -68,6 +68,8 @@ interface DocumentCardProps {
   onSmartTableReflow?: (doc: PDFDocument) => void;
   onInteractiveCopy?: (doc: PDFDocument) => void;
   onInteractiveKnowledgeGraph?: (doc: PDFDocument) => void;
+  onInteractiveFontSizeNormalizer?: (doc: PDFDocument) => void;
+  onInteractiveDataDictionary?: (doc: PDFDocument) => void;
   onInteractiveAutoLinker?: (doc: PDFDocument) => void;
   onSmartForm?: (doc: PDFDocument) => void;
   onSmartCrop?: (doc: PDFDocument) => void;
@@ -121,6 +123,8 @@ export function DocumentCard({
   onSmartTableReflow,
   onInteractiveCopy,
   onInteractiveKnowledgeGraph,
+  onInteractiveFontSizeNormalizer,
+  onInteractiveDataDictionary,
   onInteractiveAutoLinker,
   onSmartForm,
   onSmartCrop,
@@ -923,6 +927,8 @@ items={[
             { label: "Smart Table Re-flow (~Instant)", onClick: () => onSmartTableReflow?.(doc) },
             { label: "Magic Copy (~Instant)", onClick: () => onInteractiveCopy?.(doc) },
             { label: "Knowledge Graph (~Instant)", onClick: () => onInteractiveKnowledgeGraph?.(doc) },
+            { label: "Font-Size Normalizer (~Instant)", onClick: () => onInteractiveFontSizeNormalizer?.(doc) },
+            { label: "Data Dictionary Extraction (~Instant)", onClick: () => onInteractiveDataDictionary?.(doc) },
             { label: "Auto-Linker (~Instant)", onClick: () => onInteractiveAutoLinker?.(doc) },
             { label: "Smart Form Generation (~Instant)", onClick: () => onSmartForm?.(doc) },
             { label: "Smart Crop Warning (~Instant)", onClick: () => onSmartCrop?.(doc) },

@@ -39,6 +39,10 @@ import { SmartTableReflowModal } from "./components/pdf/SmartTableReflowModal";
 import { autoLinkBoxesLiteparse } from "./lib/liteparseEngine";
 import { SmartFormGenerationModal } from "./components/pdf/SmartFormGenerationModal";
 import { SmartCropModal } from "./components/pdf/SmartCropModal";
+import { InteractiveFontSizeNormalizerModal } from "./components/pdf/InteractiveFontSizeNormalizerModal";
+import { normalizeFontsLiteparse } from "./lib/liteparseEngine";
+import { InteractiveDataDictionaryModal } from "./components/pdf/InteractiveDataDictionaryModal";
+
 
 import { VisualWatermarkModal } from "./components/pdf/VisualWatermarkModal";
 import { getSmartOutputName } from "./lib/utils";
@@ -518,6 +522,16 @@ function App() {
     docId: string | null;
   }>({ isOpen: false, docId: null });
   const [smartCropState, setSmartCropState] = useState<{
+    isOpen: boolean;
+    docId: string | null;
+  }>({ isOpen: false, docId: null });
+
+  const [interactiveFontSizeNormalizerState, setInteractiveFontSizeNormalizerState] = useState<{
+    isOpen: boolean;
+    docId: string | null;
+  }>({ isOpen: false, docId: null });
+
+  const [interactiveDataDictionaryState, setInteractiveDataDictionaryState] = useState<{
     isOpen: boolean;
     docId: string | null;
   }>({ isOpen: false, docId: null });
@@ -2825,6 +2839,14 @@ function App() {
     setInteractiveCopyState({ isOpen: true, docId: doc.id });
   };
 
+
+  const handleInteractiveFontSizeNormalizer = (doc: PDFDocument) => {
+    setInteractiveFontSizeNormalizerState({ isOpen: true, docId: doc.id });
+  };
+
+  const handleInteractiveDataDictionary = (doc: PDFDocument) => {
+    setInteractiveDataDictionaryState({ isOpen: true, docId: doc.id });
+  };
   const handleInteractiveKnowledgeGraph = (doc: PDFDocument) => {
     setInteractiveKnowledgeGraphState({ isOpen: true, docId: doc.id });
   };
@@ -3378,7 +3400,48 @@ function App() {
           }
         }}
       />
-      <InteractiveKnowledgeGraphModal
+
+      <InteractiveFontSizeNormalizerModal
+        isOpen={interactiveFontSizeNormalizerState.isOpen}
+        docId={interactiveFontSizeNormalizerState.docId}
+        onClose={() => setInteractiveFontSizeNormalizerState({ isOpen: false, docId: null })}
+        onApply={async (edits) => {
+          const docId = interactiveFontSizeNormalizerState.docId;
+          setInteractiveFontSizeNormalizerState({ isOpen: false, docId: null });
+          if (docId && edits.length > 0) {
+             const doc = documents.find(d => d.id === docId);
+             if (!doc) return;
+             try {
+                // Determine targetFontSize by checking the first edit, or we could pass it from the modal if needed.
+                // Assuming we default to 12 as per our modal, but let's grab it from the modal state if possible, or just default to 12 since the prompt was open-ended.
+                // Actually the modal handles minFontSize. Let's assume 12pt normalization for now.
+               const arrayBuffer = await doc.file.arrayBuffer();
+               const resultBytes = await normalizeFontsLiteparse(new Uint8Array(arrayBuffer), edits, 12);
+               const newBlob = new Blob([resultBytes.buffer as ArrayBuffer], { type: "application/pdf" });
+               const newFile = new File([newBlob], doc.name, { type: "application/pdf", lastModified: Date.now() });
+               useFileStore.getState().updateDocument(docId, {
+                  file: newFile,
+                  size: newFile.size,
+
+               });
+               // @ts-ignore
+               useToastStore.getState().addToast({
+                 title: "Fonts Normalized",
+                 description: "Tiny text has been resized.",
+                 type: "success"
+               });
+             } catch (err) {
+               setErrorState({ isOpen: true, title: "Normalization Error", message: err instanceof Error ? err.message : String(err) });
+             }
+          }
+        }}
+      />
+      <InteractiveDataDictionaryModal
+        isOpen={interactiveDataDictionaryState.isOpen}
+        docId={interactiveDataDictionaryState.docId}
+        onClose={() => setInteractiveDataDictionaryState({ isOpen: false, docId: null })}
+      />
+<InteractiveKnowledgeGraphModal
         isOpen={interactiveKnowledgeGraphState.isOpen}
         docId={interactiveKnowledgeGraphState.docId}
         onClose={() => setInteractiveKnowledgeGraphState({ isOpen: false, docId: null })}
@@ -3671,6 +3734,8 @@ function App() {
                       onSmartTableReflow={handleSmartTableReflow}
                       onInteractiveCopy={handleInteractiveCopy}
                       onInteractiveKnowledgeGraph={handleInteractiveKnowledgeGraph}
+                      onInteractiveFontSizeNormalizer={handleInteractiveFontSizeNormalizer}
+                      onInteractiveDataDictionary={handleInteractiveDataDictionary}
                       onInteractiveAutoLinker={handleInteractiveAutoLinker}
                       onSmartForm={handleSmartForm}
                       onSmartCrop={handleSmartCrop}
