@@ -3,8 +3,12 @@ import { useUIStore } from '../store/uiStore';
 import { createWorker } from 'tesseract.js';
 import type { Worker } from 'tesseract.js';
 
-let engineInstance: LiteParse | null = null;
-let initPromise: Promise<LiteParse> | null = null;
+let initPromise: Promise<void> | null = null;
+let hasInit = false;
+
+let cachedEngineJson: LiteParse | null = null;
+let cachedEngineText: LiteParse | null = null;
+let lastOcrEnabled: boolean | null = null;
 
 let tesseractWorker: Worker | null = null;
 
@@ -18,6 +22,16 @@ const getTesseractWorker = async () => {
 export const getConfiguredLiteParse = async (options: { outputFormat?: 'json' | 'text' } = {}): Promise<LiteParse> => {
   await initLiteParse();
   const ocrEnabled = useUIStore.getState().liteparseOcrEnabled;
+  const format = options.outputFormat || 'json';
+
+  if (lastOcrEnabled !== null && lastOcrEnabled !== ocrEnabled) {
+    if (cachedEngineJson) { cachedEngineJson.free(); cachedEngineJson = null; }
+    if (cachedEngineText) { cachedEngineText.free(); cachedEngineText = null; }
+  }
+  lastOcrEnabled = ocrEnabled;
+
+  if (format === 'json' && cachedEngineJson) return cachedEngineJson;
+  if (format === 'text' && cachedEngineText) return cachedEngineText;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let ocrEngineConfig: any = undefined;
@@ -25,55 +39,47 @@ export const getConfiguredLiteParse = async (options: { outputFormat?: 'json' | 
   if (ocrEnabled) {
     ocrEngineConfig = {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      recognize: async (imageData: Uint8Array, width: number, height: number, _language: string) => {
+      recognize: async (imageData: Uint8Array, _width: number, _height: number, _language: string) => {
         const worker = await getTesseractWorker();
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          // Explicitly cast to ImageDataArray compatible type to satisfy TS
-          const clampedArray = new Uint8ClampedArray(imageData.buffer, imageData.byteOffset, imageData.byteLength) as unknown as Uint8ClampedArray<ArrayBuffer>;
-          const imgData = new ImageData(clampedArray, width, height);
-          ctx.putImageData(imgData, 0, 0);
-          const dataUrl = canvas.toDataURL('image/png');
+        const blob = new Blob([imageData.slice()], { type: 'image/png' });
+        const dataUrl = URL.createObjectURL(blob);
+        try {
           const result = await worker.recognize(dataUrl, {}, { pdf: false });
-          // Cleanup
-          canvas.width = 0;
-          canvas.height = 0;
-          canvas.remove();
-
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           return (result.data as any).words?.map((w: any) => ({
             text: w.text,
             bbox: [w.bbox.x0, w.bbox.y0, w.bbox.x1, w.bbox.y1],
             confidence: w.confidence / 100
           })) || [];
+        } finally {
+          URL.revokeObjectURL(dataUrl);
         }
-        return [];
       }
     };
   }
 
-  return new LiteParse({
-    outputFormat: options.outputFormat || 'json',
+  const engine = new LiteParse({
+    outputFormat: format,
     ocrEnabled: ocrEnabled,
     ...(ocrEngineConfig ? { ocrEngine: ocrEngineConfig } : {})
   });
+
+  if (format === 'json') cachedEngineJson = engine;
+  if (format === 'text') cachedEngineText = engine;
+
+  return engine;
 };
 
-export const initLiteParse = async (): Promise<LiteParse> => {
-  if (engineInstance) return engineInstance;
+export const initLiteParse = async (): Promise<void> => {
+  if (hasInit) return;
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
     try {
       await init();
-      const engine = new LiteParse({});
-      engineInstance = engine;
-      return engine;
+      hasInit = true;
     } catch (error) {
-      console.error("Failed to initialize LiteParse:", error);
+      console.error("Failed to initialize LiteParse WASM:", error);
       throw error;
     } finally {
       initPromise = null;
