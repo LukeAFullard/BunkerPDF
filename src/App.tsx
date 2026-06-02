@@ -35,6 +35,7 @@ import { InteractiveTableModal } from "./components/pdf/InteractiveTableModal";
 import { InteractiveCopyModal } from "./components/pdf/InteractiveCopyModal";
 import { InteractiveKnowledgeGraphModal } from "./components/pdf/InteractiveKnowledgeGraphModal";
 import { InteractiveAutoLinkerModal } from "./components/pdf/InteractiveAutoLinkerModal";
+import { SmartTableReflowModal } from "./components/pdf/SmartTableReflowModal";
 import { autoLinkBoxesLiteparse } from "./lib/liteparseEngine";
 import { SmartFormGenerationModal } from "./components/pdf/SmartFormGenerationModal";
 import { SmartCropModal } from "./components/pdf/SmartCropModal";
@@ -504,6 +505,10 @@ function App() {
   }>({ isOpen: false, doc: null });
 
   const [interactiveHighlightState, setInteractiveHighlightState] = useState<{
+    isOpen: boolean;
+    docId: string | null;
+  }>({ isOpen: false, docId: null });
+  const [smartTableReflowState, setSmartTableReflowState] = useState<{
     isOpen: boolean;
     docId: string | null;
   }>({ isOpen: false, docId: null });
@@ -2828,6 +2833,10 @@ function App() {
     setInteractiveAutoLinkerState({ isOpen: true, docId: doc.id });
   };
 
+  const handleSmartTableReflow = (doc: PDFDocument) => {
+    setSmartTableReflowState({ isOpen: true, docId: doc.id });
+  };
+
   const handleSmartCrop = (doc: PDFDocument) => {
     setSmartCropState({ isOpen: true, docId: doc.id });
   };
@@ -3315,6 +3324,31 @@ function App() {
         docId={interactiveCopyState.docId}
         onClose={() => setInteractiveCopyState({ isOpen: false, docId: null })}
       />
+      <SmartTableReflowModal
+        isOpen={smartTableReflowState.isOpen}
+        docId={smartTableReflowState.docId}
+        onClose={() => setSmartTableReflowState({ isOpen: false, docId: null })}
+        onApplyEdits={async (edits) => {
+          const docId = smartTableReflowState.docId;
+          setSmartTableReflowState({ isOpen: false, docId: null });
+          if (docId) {
+             const doc = documents.find(d => d.id === docId);
+             if (!doc) return;
+             try {
+               const arrayBuffer = await doc.file.arrayBuffer();
+               const bytes = new Uint8Array(arrayBuffer);
+               const editBoxesLiteparse = (await import("./lib/liteparseEngine")).editBoxesLiteparse;
+               const newBytes = await editBoxesLiteparse(bytes, edits);
+
+               const newFile = new File([new Uint8Array(newBytes)], doc.name, { type: "application/pdf" });
+               await useFileStore.getState().updateDocumentFile(doc.id, newFile);
+               addLog("Manual Action", `Applied ${edits.length} inline edits via Smart Table`, doc.name);
+             } catch (error) {
+               console.error(error);
+             }
+          }
+        }}
+      />
       <InteractiveAutoLinkerModal
         isOpen={interactiveAutoLinkerState.isOpen}
         docId={interactiveAutoLinkerState.docId}
@@ -3634,6 +3668,7 @@ function App() {
                       onAutoRedactLayout={autoRedactLayout}
                       onInteractiveEdit={handleInteractiveEdit}
                       onInteractiveTable={handleInteractiveTable}
+                      onSmartTableReflow={handleSmartTableReflow}
                       onInteractiveCopy={handleInteractiveCopy}
                       onInteractiveKnowledgeGraph={handleInteractiveKnowledgeGraph}
                       onInteractiveAutoLinker={handleInteractiveAutoLinker}

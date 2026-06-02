@@ -65,6 +65,7 @@ interface DocumentCardProps {
   onAutoRedactLayout?: (doc: PDFDocument) => void;
   onInteractiveEdit?: (doc: PDFDocument) => void;
   onInteractiveTable?: (doc: PDFDocument) => void;
+  onSmartTableReflow?: (doc: PDFDocument) => void;
   onInteractiveCopy?: (doc: PDFDocument) => void;
   onInteractiveKnowledgeGraph?: (doc: PDFDocument) => void;
   onInteractiveAutoLinker?: (doc: PDFDocument) => void;
@@ -117,6 +118,7 @@ export function DocumentCard({
   onAutoRedactLayout,
   onInteractiveEdit,
   onInteractiveTable,
+  onSmartTableReflow,
   onInteractiveCopy,
   onInteractiveKnowledgeGraph,
   onInteractiveAutoLinker,
@@ -918,6 +920,7 @@ items={[
             { label: "Auto-Redact Headers/Footers (~Instant)", onClick: () => onAutoRedactLayout?.(doc) },
             { label: "Hover to Edit (~Instant)", onClick: () => onInteractiveEdit?.(doc) },
             { label: "Magic Box Table (~Instant)", onClick: () => onInteractiveTable?.(doc) },
+            { label: "Smart Table Re-flow (~Instant)", onClick: () => onSmartTableReflow?.(doc) },
             { label: "Magic Copy (~Instant)", onClick: () => onInteractiveCopy?.(doc) },
             { label: "Knowledge Graph (~Instant)", onClick: () => onInteractiveKnowledgeGraph?.(doc) },
             { label: "Auto-Linker (~Instant)", onClick: () => onInteractiveAutoLinker?.(doc) },
