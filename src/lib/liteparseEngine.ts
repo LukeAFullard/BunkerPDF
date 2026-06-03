@@ -59,13 +59,20 @@ export const initLiteParse = async (): Promise<void> => {
   return initPromise;
 };
 
+import { useProcessingStore } from '../store/processingStore';
+
 const preprocessWithOcr = async (bytes: Uint8Array): Promise<Uint8Array> => {
   const ocrEnabled = useUIStore.getState().liteparseOcrEnabled;
   if (!ocrEnabled) return bytes;
 
   console.log("Pre-processing PDF with Tesseract OCR before passing to LiteParse...");
   const file = new File([bytes.buffer as ArrayBuffer], "temp-ocr.pdf", { type: "application/pdf" });
-  const processedFile = await ocrPdf(file);
+
+  // Use the processing store to update the UI progress bar during the synchronous LiteParse workflow
+  const processedFile = await ocrPdf(file, undefined, (stage) => {
+     useProcessingStore.getState().updateStage(stage);
+  });
+
   return new Uint8Array(await processedFile.arrayBuffer());
 };
 

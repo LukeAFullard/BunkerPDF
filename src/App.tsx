@@ -2572,7 +2572,11 @@ function App() {
         try {
           const newFile = await ocrPdf(doc.file, pagesToProcess, (stage) => {
             if (!isCancelled) useProcessingStore.getState().updateStage(stage);
-          }, abortController.signal);
+          }, abortController.signal, async (intermediateFile) => {
+            if (!isCancelled) {
+               await updateDocumentFile(doc.id, intermediateFile);
+            }
+          });
 
           if (isCancelled) return;
 
