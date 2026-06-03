@@ -7,7 +7,7 @@ import { twMerge } from 'tailwind-merge';
 export function SettingsDropdown() {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const { extractionMethod, setExtractionMethod, liteparseOcrEnabled, setLiteparseOcrEnabled, isDarkMode } = useUIStore();
+  const { extractionMethod, setExtractionMethod, isDarkMode } = useUIStore();
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -66,24 +66,6 @@ export function SettingsDropdown() {
                 : 'Better layout preservation for complex documents.'}
             </p>
 
-            {extractionMethod === 'liteparse' && (
-              <div className="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700">
-                <label className="flex items-start gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={liteparseOcrEnabled}
-                    onChange={(e) => setLiteparseOcrEnabled(e.target.checked)}
-                    className="mt-1 shrink-0 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <div>
-                    <span className="block text-sm font-medium">Enable In-Browser OCR</span>
-                    <span className="block text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      Automatically process scanned pages or images within PDFs using local OCR during extraction.
-                    </span>
-                  </div>
-                </label>
-              </div>
-            )}
           </div>
         </div>
       )}
