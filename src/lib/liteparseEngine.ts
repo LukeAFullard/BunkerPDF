@@ -1,7 +1,5 @@
 import init, { LiteParse } from "@llamaindex/liteparse-wasm";
 import { useUIStore } from '../store/uiStore';
-import { createWorker } from 'tesseract.js';
-import type { Worker } from 'tesseract.js';
 
 let initPromise: Promise<void> | null = null;
 let hasInit = false;
@@ -10,14 +8,6 @@ let cachedEngineJson: LiteParse | null = null;
 let cachedEngineText: LiteParse | null = null;
 let lastOcrEnabled: boolean | null = null;
 
-let tesseractWorker: Worker | null = null;
-
-const getTesseractWorker = async () => {
-  if (!tesseractWorker) {
-    tesseractWorker = await createWorker('eng');
-  }
-  return tesseractWorker;
-};
 
 export const getConfiguredLiteParse = async (options: { outputFormat?: 'json' | 'text' } = {}): Promise<LiteParse> => {
   await initLiteParse();
@@ -33,35 +23,15 @@ export const getConfiguredLiteParse = async (options: { outputFormat?: 'json' | 
   if (format === 'json' && cachedEngineJson) return cachedEngineJson;
   if (format === 'text' && cachedEngineText) return cachedEngineText;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let ocrEngineConfig: any = undefined;
-
+  // OCR via WASM is currently disabled due to upstream panics in @llamaindex/liteparse-wasm
+  // regarding the missing Tokio 1.x runtime when `ocrEnabled: true` is passed.
   if (ocrEnabled) {
-    ocrEngineConfig = {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      recognize: async (imageData: Uint8Array, _width: number, _height: number, _language: string) => {
-        const worker = await getTesseractWorker();
-        const blob = new Blob([imageData.slice()], { type: 'image/png' });
-        const dataUrl = URL.createObjectURL(blob);
-        try {
-          const result = await worker.recognize(dataUrl, {}, { pdf: false });
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          return (result.data as any).words?.map((w: any) => ({
-            text: w.text,
-            bbox: [w.bbox.x0, w.bbox.y0, w.bbox.x1, w.bbox.y1],
-            confidence: w.confidence / 100
-          })) || [];
-        } finally {
-          URL.revokeObjectURL(dataUrl);
-        }
-      }
-    };
+    console.warn("LiteParse OCR is currently disabled due to upstream WASM panic (Tokio runtime).");
   }
 
   const engine = new LiteParse({
     outputFormat: format,
-    ocrEnabled: ocrEnabled,
-    ...(ocrEngineConfig ? { ocrEngine: ocrEngineConfig } : {})
+    ocrEnabled: false,
   });
 
   if (format === 'json') cachedEngineJson = engine;
