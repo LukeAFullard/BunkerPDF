@@ -1,5 +1,6 @@
 import init, { LiteParse } from "@llamaindex/liteparse-wasm";
 import { useUIStore } from '../store/uiStore';
+import { ocrPdf } from './ocrEngine';
 
 let initPromise: Promise<void> | null = null;
 let hasInit = false;
@@ -23,11 +24,10 @@ export const getConfiguredLiteParse = async (options: { outputFormat?: 'json' | 
   if (format === 'json' && cachedEngineJson) return cachedEngineJson;
   if (format === 'text' && cachedEngineText) return cachedEngineText;
 
-  // OCR via WASM is currently disabled due to upstream panics in @llamaindex/liteparse-wasm
+  // OCR via WASM natively in LiteParse is currently broken due to upstream panics in @llamaindex/liteparse-wasm
   // regarding the missing Tokio 1.x runtime when `ocrEnabled: true` is passed.
-  if (ocrEnabled) {
-    console.warn("LiteParse OCR is currently disabled due to upstream WASM panic (Tokio runtime).");
-  }
+  // Instead, we handle OCR via a pre-processing step using the existing `ocrPdf` function
+  // before passing the bytes to LiteParse. Therefore, we always initialize LiteParse with `ocrEnabled: false`.
 
   const engine = new LiteParse({
     outputFormat: format,
@@ -59,16 +59,28 @@ export const initLiteParse = async (): Promise<void> => {
   return initPromise;
 };
 
+const preprocessWithOcr = async (bytes: Uint8Array): Promise<Uint8Array> => {
+  const ocrEnabled = useUIStore.getState().liteparseOcrEnabled;
+  if (!ocrEnabled) return bytes;
+
+  console.log("Pre-processing PDF with Tesseract OCR before passing to LiteParse...");
+  const file = new File([bytes.buffer as ArrayBuffer], "temp-ocr.pdf", { type: "application/pdf" });
+  const processedFile = await ocrPdf(file);
+  return new Uint8Array(await processedFile.arrayBuffer());
+};
+
 export const extractTextLiteparse = async (bytes: Uint8Array): Promise<string> => {
+  const processedBytes = await preprocessWithOcr(bytes);
   const engine = await getConfiguredLiteParse({ outputFormat: "text" });
-  const result = await engine.parse(bytes);
+  const result = await engine.parse(processedBytes);
   return result.text || "";
 };
 
 export const extractAllPagesTextLiteparse = async (bytes: Uint8Array): Promise<string[]> => {
+  const processedBytes = await preprocessWithOcr(bytes);
   // We need per-page strings, so we use JSON output which contains an array of pages.
   const engine = await getConfiguredLiteParse({ outputFormat: "json" });
-  const result = await engine.parse(bytes);
+  const result = await engine.parse(processedBytes);
 
   if (!result || !result.pages) return [];
 
@@ -77,9 +89,10 @@ export const extractAllPagesTextLiteparse = async (bytes: Uint8Array): Promise<s
 };
 
 export const extractMarkdownLiteparse = async (bytes: Uint8Array): Promise<string> => {
+  const processedBytes = await preprocessWithOcr(bytes);
   // Use LiteParse's JSON output for spatial/layout data.
   const engine = await getConfiguredLiteParse({ outputFormat: "json" });
-  const result = await engine.parse(bytes);
+  const result = await engine.parse(processedBytes);
 
   if (!result || !result.pages) return "";
 
@@ -146,8 +159,9 @@ export const extractMarkdownLiteparse = async (bytes: Uint8Array): Promise<strin
 };
 
 export const extractHtmlLiteparse = async (bytes: Uint8Array): Promise<string> => {
+  const processedBytes = await preprocessWithOcr(bytes);
   const engine = await getConfiguredLiteParse({ outputFormat: "json" });
-  const result = await engine.parse(bytes);
+  const result = await engine.parse(processedBytes);
 
   if (!result || !result.pages) return "";
 
@@ -375,8 +389,9 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
 };
 
 export const extractTablesLiteparse = async (bytes: Uint8Array, format: 'csv' | 'markdown' | 'latex'): Promise<string> => {
+  const processedBytes = await preprocessWithOcr(bytes);
   const engine = await getConfiguredLiteParse({ outputFormat: "json" });
-  const result = await engine.parse(bytes);
+  const result = await engine.parse(processedBytes);
 
   if (!result || !result.pages) return "";
 
