@@ -7,9 +7,15 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url,
 ).toString();
 
-export async function ocrPdf(file: File, pagesToProcess?: number[], updateStage?: (stage: string) => void, abortSignal?: AbortSignal): Promise<File> {
+export async function ocrPdf(
+  file: File,
+  pagesToProcess?: number[],
+  updateStage?: (stage: string) => void,
+  abortSignal?: AbortSignal,
+  onProgressiveUpdate?: (file: File) => void
+): Promise<File> {
   const arrayBuffer = await file.arrayBuffer();
-  const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+  const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer.slice(0) });
   const pdf = await loadingTask.promise;
   const numPages = pdf.numPages;
   const pages = pagesToProcess && pagesToProcess.length > 0 ? pagesToProcess.filter(p => p > 0 && p <= numPages) : Array.from({length: numPages}, (_, i) => i + 1);
@@ -23,7 +29,7 @@ export async function ocrPdf(file: File, pagesToProcess?: number[], updateStage?
     }
 
     const { PDFDocument } = await import('pdf-lib');
-    const mergedPdf = await PDFDocument.create();
+    const mergedPdf = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
 
     for (const i of pages) {
       if (abortSignal?.aborted) {
@@ -63,8 +69,20 @@ export async function ocrPdf(file: File, pagesToProcess?: number[], updateStage?
 
       if (result.data.pdf) {
         const pdfDoc = await PDFDocument.load(new Uint8Array(result.data.pdf));
-        const copiedPages = await mergedPdf.copyPages(pdfDoc, pdfDoc.getPageIndices());
-        copiedPages.forEach((page) => mergedPdf.addPage(page));
+        // Tesseract output is usually a single page PDF
+        const [copiedPage] = await mergedPdf.copyPages(pdfDoc, [0]);
+
+        const pageIndex = i - 1;
+        mergedPdf.removePage(pageIndex);
+        mergedPdf.insertPage(pageIndex, copiedPage);
+
+        if (onProgressiveUpdate) {
+          const intermediateBytes = await mergedPdf.save();
+          const standardBuffer = new Uint8Array(intermediateBytes.length);
+          standardBuffer.set(intermediateBytes);
+          const intermediateFile = new File([standardBuffer], file.name, { type: 'application/pdf' });
+          onProgressiveUpdate(intermediateFile);
+        }
       }
     }
 
