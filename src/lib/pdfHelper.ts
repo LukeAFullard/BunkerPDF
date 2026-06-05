@@ -3,8 +3,8 @@ import * as pdfjsLib from 'pdfjs-dist';
 export const loadPdfDocument = (data: ArrayBuffer | Uint8Array) => {
   return pdfjsLib.getDocument({
     data,
-    cMapUrl: `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/cmaps/`,
+    cMapUrl: `${import.meta.env.BASE_URL}pdfjs-dist/cmaps/`,
     cMapPacked: true,
-    standardFontDataUrl: `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/standard_fonts/`,
+    standardFontDataUrl: `${import.meta.env.BASE_URL}pdfjs-dist/standard_fonts/`,
   });
 };
