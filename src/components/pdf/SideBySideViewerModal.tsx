@@ -1,13 +1,10 @@
+import { loadPdfDocument } from "../../lib/pdfHelper";
 import { useState, useEffect, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { X, Lock, Unlock } from 'lucide-react';
 import { useFileStore } from '../../store/fileStore';
 import { cleanupPdfResources } from '../../lib/pdfCleanup';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.mjs',
-  import.meta.url
-).toString();
 
 interface SideBySideViewerModalProps {
   onClose: () => void;
@@ -170,7 +167,7 @@ function PDFDocumentView({ file, scale }: { file: File; scale: number }) {
     const loadPdf = async () => {
       try {
         const arrayBuffer = await file.arrayBuffer();
-        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+        const loadingTask = loadPdfDocument(arrayBuffer);
         pdf = await loadingTask.promise;
         if (isMounted) {
           setPdfDoc(pdf);

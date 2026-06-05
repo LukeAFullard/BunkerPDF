@@ -1,3 +1,4 @@
+import { loadPdfDocument } from "../../lib/pdfHelper";
 import { useState, useEffect, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import 'pdfjs-dist/web/pdf_viewer.css';
@@ -5,10 +6,6 @@ import { X, Highlighter, ZoomIn, ZoomOut, Loader2, Check } from 'lucide-react';
 import { useFileStore } from '../../store/fileStore';
 import { getConfiguredLiteParse } from '../../lib/liteparseEngine';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.mjs',
-  import.meta.url
-).toString();
 
 export interface HighlightBox {
   pageNum: number;
@@ -73,7 +70,7 @@ export function InteractiveSmartHighlightModal({ isOpen, docId, onClose, onApply
         setTextItems(result.pages);
       }
 
-      const loadingTask = pdfjsLib.getDocument({ data: bytes });
+      const loadingTask = loadPdfDocument(bytes);
       const pdf = await loadingTask.promise;
       setPdfDoc(pdf);
       setTotalPages(pdf.numPages);

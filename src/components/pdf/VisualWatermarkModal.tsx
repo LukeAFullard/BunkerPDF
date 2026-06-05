@@ -1,3 +1,4 @@
+import { loadPdfDocument } from "../../lib/pdfHelper";
 import { useState, useEffect, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { Check, Type, Move } from 'lucide-react';
@@ -36,7 +37,7 @@ export function VisualWatermarkModal({ isOpen, docId, onClose, onApply }: Visual
     const loadPdf = async () => {
       try {
         const arrayBuffer = await doc.file.arrayBuffer();
-        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+        const loadingTask = loadPdfDocument(arrayBuffer);
         const pdf = await loadingTask.promise;
 
         if (!isMounted) {

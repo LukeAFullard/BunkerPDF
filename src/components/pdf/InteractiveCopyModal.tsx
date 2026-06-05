@@ -1,3 +1,4 @@
+import { loadPdfDocument } from "../../lib/pdfHelper";
 import { useState, useEffect, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import 'pdfjs-dist/web/pdf_viewer.css';
@@ -6,11 +7,6 @@ import { useFileStore } from '../../store/fileStore';
 import { cleanupPdfResources } from '../../lib/pdfCleanup';
 import { getConfiguredLiteParse, formatParagraphFromItems } from '../../lib/liteparseEngine';
 import { createWorker } from 'tesseract.js';
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.mjs',
-  import.meta.url
-).toString();
 
 interface InteractiveCopyModalProps {
   isOpen: boolean;
@@ -70,7 +66,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
         const engine = await getConfiguredLiteParse({ outputFormat: "json" });
         const result = await engine.parse(new Uint8Array(arrayBuffer.slice(0)));
 
-        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+        const loadingTask = loadPdfDocument(arrayBuffer);
         const pdf = await loadingTask.promise;
 
         if (!isMounted) {

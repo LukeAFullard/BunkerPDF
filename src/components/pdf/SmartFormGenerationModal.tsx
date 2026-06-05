@@ -1,3 +1,4 @@
+import { loadPdfDocument } from "../../lib/pdfHelper";
 import { useState, useEffect, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import 'pdfjs-dist/web/pdf_viewer.css';
@@ -6,10 +7,6 @@ import { useFileStore } from '../../store/fileStore';
 import { cleanupPdfResources } from '../../lib/pdfCleanup';
 import { getConfiguredLiteParse } from '../../lib/liteparseEngine';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.mjs',
-  import.meta.url
-).toString();
 
 interface SmartFormGenerationModalProps {
   isOpen: boolean;
@@ -60,7 +57,7 @@ export function SmartFormGenerationModal({ isOpen, docId, onClose, onApply }: Sm
 
         if (isMounted) setOriginalBytes(bytes);
 
-        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+        const loadingTask = loadPdfDocument(arrayBuffer);
         const pdf = await loadingTask.promise;
 
         if (!isMounted) {

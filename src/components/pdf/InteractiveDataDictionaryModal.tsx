@@ -1,3 +1,4 @@
+import { loadPdfDocument } from "../../lib/pdfHelper";
 import { useState, useEffect, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import 'pdfjs-dist/web/pdf_viewer.css';
@@ -6,10 +7,6 @@ import { useFileStore } from '../../store/fileStore';
 import { cleanupPdfResources } from '../../lib/pdfCleanup';
 import { getConfiguredLiteParse } from '../../lib/liteparseEngine';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.mjs',
-  import.meta.url
-).toString();
 
 interface InteractiveDataDictionaryModalProps {
   isOpen: boolean;
@@ -100,7 +97,7 @@ export function InteractiveDataDictionaryModal({ isOpen, docId, onClose }: Inter
       setError(null);
       try {
         const arrayBuffer = await doc.file.arrayBuffer();
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer.slice(0) }).promise;
+        const pdf = await loadPdfDocument(arrayBuffer.slice(0)).promise;
 
         if (!isMounted) {
           pdf.destroy();

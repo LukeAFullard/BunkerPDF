@@ -1,3 +1,4 @@
+import { loadPdfDocument } from "../../../lib/pdfHelper";
 import { useState, useEffect } from 'react';
 import {
   DndContext,
@@ -21,7 +22,6 @@ import {
   sortableKeyboardCoordinates,
   rectSortingStrategy,
 } from '@dnd-kit/sortable';
-import * as pdfjsLib from 'pdfjs-dist';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import { X, Check, RotateCw, RotateCcw, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
 
@@ -94,7 +94,7 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
 
           if (!numPages) {
             const arrayBuffer = await doc.file.arrayBuffer();
-            const proxy = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            const proxy = await loadPdfDocument(arrayBuffer).promise;
             numPages = proxy.numPages;
             cleanupPdfResources(proxy);
           }

@@ -1,3 +1,4 @@
+import { loadPdfDocument } from "../../lib/pdfHelper";
 import { useState, useEffect, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import 'pdfjs-dist/web/pdf_viewer.css';
@@ -7,10 +8,6 @@ import { cleanupPdfResources } from '../../lib/pdfCleanup';
 import { getConfiguredLiteParse } from '../../lib/liteparseEngine';
 import type { NERWorkerMessage, NERWorkerResponse } from "../../workers/nerWorker";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.mjs',
-  import.meta.url
-).toString();
 
 interface InteractiveKnowledgeGraphModalProps {
   isOpen: boolean;
@@ -58,7 +55,7 @@ export function InteractiveKnowledgeGraphModal({ isOpen, docId, onClose, onRedac
         const arrayBuffer = await doc.file.arrayBuffer();
         const bytes = new Uint8Array(arrayBuffer);
 
-        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+        const loadingTask = loadPdfDocument(arrayBuffer);
         const pdf = await loadingTask.promise;
 
         if (!isMounted) {
