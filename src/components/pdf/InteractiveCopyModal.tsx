@@ -5,6 +5,7 @@ import { X, Type, ZoomIn, ZoomOut, Loader2, Copy, Check } from 'lucide-react';
 import { useFileStore } from '../../store/fileStore';
 import { cleanupPdfResources } from '../../lib/pdfCleanup';
 import { getConfiguredLiteParse, formatParagraphFromItems } from '../../lib/liteparseEngine';
+import { createWorker } from 'tesseract.js';
 
 interface InteractiveCopyModalProps {
   isOpen: boolean;
@@ -37,9 +38,14 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
   const [extractedText, setExtractedText] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [marginThresholdPercent, setMarginThresholdPercent] = useState(12);
+  const [isOcrRunning, setIsOcrRunning] = useState(false);
 
   const renderTaskRef = useRef<pdfjsLib.RenderTask | null>(null);
   const pdfDocRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const tesseractWorkerRef = useRef<any>(null);
+  const isInitializingWorkerRef = useRef<boolean>(false);
+  const ocrRunIdRef = useRef<number>(0);
 
   useEffect(() => {
     if (!isOpen || !doc) return;
@@ -94,6 +100,15 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, docId]);
 
+  useEffect(() => {
+    return () => {
+       if (tesseractWorkerRef.current) {
+          tesseractWorkerRef.current.terminate();
+          tesseractWorkerRef.current = null;
+       }
+    };
+  }, []);
+
   const renderPage = async (pageNum: number, pdf: pdfjsLib.PDFDocumentProxy) => {
     if (!canvasRef.current || !overlayRef.current) return;
     setIsLoading(true);
@@ -145,23 +160,40 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, zoomLevel]);
 
-  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
     const rect = overlayRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    let clientX, clientY;
+    if ('touches' in e) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+      // Note: preventDefault can't be called on passive touch listeners in React without a ref or touch-action: none. We will use touch-none in CSS.
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
     setStartPos({ x, y });
     setCurrentPos({ x, y });
     setIsDrawing(true);
     setSelectionBox(null);
   };
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
     if (!isDrawing) return;
     const rect = overlayRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    let clientX, clientY;
+    if ('touches' in e) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
     setCurrentPos({ x, y });
   };
 
@@ -219,6 +251,80 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
       setExtractedText(textStr);
     } else {
       setExtractedText(null);
+      // Run OCR on the highlighted area
+      runOcrOnRegion(x, y, w, h);
+    }
+  };
+
+  const runOcrOnRegion = async (x: number, y: number, w: number, h: number) => {
+    if (!canvasRef.current) return;
+    setIsOcrRunning(true);
+    setExtractedText(null);
+    const runId = ++ocrRunIdRef.current;
+
+    try {
+      // Create a temporary canvas to extract the specific region
+      const tempCanvas = document.createElement('canvas');
+      const tempCtx = tempCanvas.getContext('2d');
+      if (!tempCtx) throw new Error('Could not get 2d context for temporary canvas');
+
+      const scaleX = canvasRef.current.width / (canvasRef.current.clientWidth || 1);
+      const scaleY = canvasRef.current.height / (canvasRef.current.clientHeight || 1);
+
+      // Set canvas size to the native resolution of the selection region to preserve quality for OCR
+      tempCanvas.width = w * scaleX;
+      tempCanvas.height = h * scaleY;
+
+      // Draw the selected region from the main canvas onto the temp canvas
+      tempCtx.drawImage(
+        canvasRef.current,
+        x * scaleX, y * scaleY, w * scaleX, h * scaleY, // source (x, y, w, h)
+        0, 0, w * scaleX, h * scaleY  // destination (x, y, w, h)
+      );
+
+      // Get the image data URL
+      const dataUrl = tempCanvas.toDataURL('image/png');
+
+      // Initialize Tesseract worker if not cached
+      if (!tesseractWorkerRef.current && !isInitializingWorkerRef.current) {
+         isInitializingWorkerRef.current = true;
+         try {
+            const worker = await createWorker('eng');
+            // Check if unmounted during initialization
+            if (!document.body.contains(canvasRef.current)) {
+                worker.terminate();
+            } else {
+                tesseractWorkerRef.current = worker;
+            }
+         } finally {
+            isInitializingWorkerRef.current = false;
+         }
+      }
+
+      // Wait for initialization if another call triggered it
+      while (isInitializingWorkerRef.current) {
+         await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      if (!tesseractWorkerRef.current) {
+          throw new Error('Failed to initialize Tesseract worker');
+      }
+
+      const result = await tesseractWorkerRef.current.recognize(dataUrl);
+
+      // Only process result if this is the most recent run and component is mounted
+      if (runId === ocrRunIdRef.current && canvasRef.current) {
+        if (result.data && result.data.text) {
+          setExtractedText(result.data.text.trim());
+        }
+      }
+    } catch (err) {
+      console.error("OCR failed for the region:", err);
+      // We can fail silently or show an error
+    } finally {
+      if (runId === ocrRunIdRef.current) {
+         setIsOcrRunning(false);
+      }
     }
   };
 
@@ -285,11 +391,15 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
                   {/* Drawing Overlay */}
                   <div
                     ref={overlayRef}
-                    className="absolute top-0 left-0 w-full h-full cursor-crosshair z-30"
+                    className="absolute top-0 left-0 w-full h-full cursor-crosshair z-30 touch-none"
                     onMouseDown={handleMouseDown}
                     onMouseMove={handleMouseMove}
                     onMouseUp={handleMouseUp}
                     onMouseLeave={handleMouseUp}
+                    onTouchStart={handleMouseDown}
+                    onTouchMove={handleMouseMove}
+                    onTouchEnd={() => handleMouseUp()}
+                    onTouchCancel={() => handleMouseUp()}
                   >
                     {isDrawing && (
                       <div
@@ -359,6 +469,11 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
               <div className="text-center py-12 px-4 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 h-full flex flex-col justify-center">
                 <Type className="w-8 h-8 text-gray-400 mx-auto mb-3" />
                 <p className="text-sm text-gray-500">Draw a box around a paragraph to copy it perfectly flowed, avoiding broken lines.</p>
+              </div>
+            ) : isOcrRunning ? (
+              <div className="text-center py-12 px-4 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 h-full flex flex-col justify-center items-center">
+                 <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mb-3" />
+                 <p className="text-sm text-gray-500">No text detected. Running OCR on selected region...</p>
               </div>
             ) : !extractedText ? (
                <div className="text-center py-12 px-4 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 h-full flex flex-col justify-center text-gray-500 text-sm">
