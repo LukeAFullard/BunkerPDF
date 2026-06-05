@@ -1,3 +1,4 @@
+import { loadPdfDocument } from "../../lib/pdfHelper";
 import { useState, useEffect, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import 'pdfjs-dist/web/pdf_viewer.css';
@@ -7,10 +8,6 @@ import { cleanupPdfResources } from '../../lib/pdfCleanup';
 import { getConfiguredLiteParse } from '../../lib/liteparseEngine';
 
 // We must specify the worker source for pdfjs-dist.
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.mjs',
-  import.meta.url
-).toString();
 
 export interface RedactBox {
   pageNum: number;
@@ -69,7 +66,7 @@ export function InteractiveRedactModal({ isOpen, docId, onClose, onApply }: Inte
         const bytes = new Uint8Array(arrayBuffer);
 
         // 1. Load PDF.js for visual rendering
-        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+        const loadingTask = loadPdfDocument(arrayBuffer);
         const pdf = await loadingTask.promise;
 
         if (!isMounted) {

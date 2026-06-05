@@ -1,3 +1,4 @@
+import { loadPdfDocument } from "../../lib/pdfHelper";
 import { useEffect, useRef, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { useUIStore } from '../../store/uiStore';
@@ -5,10 +6,6 @@ import { cleanupPdfResources } from '../../lib/pdfCleanup';
 
 // We must specify the worker source for pdfjs-dist.
 // Using the Vite worker pattern or pointing to the local minified worker.
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.mjs',
-  import.meta.url
-).toString();
 
 interface PDFThumbnailProps {
   file: File;
@@ -29,7 +26,7 @@ export function PDFThumbnail({ file, width = 200, className }: PDFThumbnailProps
     const renderThumbnail = async () => {
       try {
         const arrayBuffer = await file.arrayBuffer();
-        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+        const loadingTask = loadPdfDocument(arrayBuffer);
         const pdf = await loadingTask.promise;
         pdfDocRef.current = pdf;
 

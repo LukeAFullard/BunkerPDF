@@ -1,4 +1,4 @@
-import * as pdfjsLib from 'pdfjs-dist';
+import { loadPdfDocument } from "./pdfHelper";
 
 export async function analyzeDocumentHealth(file: File): Promise<{
   needsOcr: boolean;
@@ -7,7 +7,7 @@ export async function analyzeDocumentHealth(file: File): Promise<{
 }> {
   try {
     const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const pdf = await loadPdfDocument(arrayBuffer).promise;
 
     let hasSelectableText = false;
     let hasForms = false;

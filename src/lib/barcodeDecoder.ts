@@ -1,10 +1,10 @@
+import { loadPdfDocument } from "./pdfHelper";
 import { BrowserMultiFormatReader, BinaryBitmap, HybridBinarizer, HTMLCanvasElementLuminanceSource } from '@zxing/library';
-import * as pdfjsLib from 'pdfjs-dist';
 import { cleanupPdfResources } from './pdfCleanup';
 
 export async function decodeBarcodesFromPdf(file: File): Promise<{text: string; page: number}[]> {
   const arrayBuffer = await file.arrayBuffer();
-  const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+  const loadingTask = loadPdfDocument(arrayBuffer);
   const pdf = await loadingTask.promise;
   const numPages = pdf.numPages;
   const reader = new BrowserMultiFormatReader();

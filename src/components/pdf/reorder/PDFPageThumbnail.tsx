@@ -1,3 +1,4 @@
+import { loadPdfDocument } from "../../../lib/pdfHelper";
 import { useEffect, useRef, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { useUIStore } from '../../../store/uiStore';
@@ -54,7 +55,7 @@ export function PDFPageThumbnail({ docId, pageNumber, width = 100, className = '
         if (!doc) return;
 
         const arrayBuffer = await doc.file.arrayBuffer();
-        pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        pdfDoc = await loadPdfDocument(arrayBuffer).promise;
 
         if (!isMounted) return;
 

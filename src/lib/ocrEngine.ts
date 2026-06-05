@@ -1,11 +1,7 @@
+import { loadPdfDocument } from "./pdfHelper";
 import { createWorker } from 'tesseract.js';
-import * as pdfjsLib from 'pdfjs-dist';
 
-// We must specify the worker source for pdfjs-dist.
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.mjs',
-  import.meta.url,
-).toString();
+
 
 export async function ocrPdf(
   file: File,
@@ -15,7 +11,7 @@ export async function ocrPdf(
   onProgressiveUpdate?: (file: File) => void
 ): Promise<File> {
   const arrayBuffer = await file.arrayBuffer();
-  const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer.slice(0) });
+  const loadingTask = loadPdfDocument(arrayBuffer.slice(0));
   const pdf = await loadingTask.promise;
   const numPages = pdf.numPages;
   const pages = pagesToProcess && pagesToProcess.length > 0 ? pagesToProcess.filter(p => p > 0 && p <= numPages) : Array.from({length: numPages}, (_, i) => i + 1);
