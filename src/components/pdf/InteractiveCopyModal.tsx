@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import 'pdfjs-dist/web/pdf_viewer.css';
-import { X, Type, ZoomIn, ZoomOut, Loader2, Copy, Check } from 'lucide-react';
+import { X, Type, ZoomIn, ZoomOut, Loader2, Copy, Check, Image as ImageIcon } from 'lucide-react';
 import { useFileStore } from '../../store/fileStore';
 import { cleanupPdfResources } from '../../lib/pdfCleanup';
 import { getConfiguredLiteParse, formatParagraphFromItems } from '../../lib/liteparseEngine';
@@ -42,6 +42,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
 
   const [extractedText, setExtractedText] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copiedImage, setCopiedImage] = useState(false);
   const [marginThresholdPercent, setMarginThresholdPercent] = useState(12);
   const [isOcrRunning, setIsOcrRunning] = useState(false);
 
@@ -341,6 +342,45 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
     }
   };
 
+  const handleCopyImage = async () => {
+    if (!selectionBox || !canvasRef.current) return;
+    try {
+      const tempCanvas = document.createElement('canvas');
+      const tempCtx = tempCanvas.getContext('2d');
+      if (!tempCtx) throw new Error('Could not get 2d context for temporary canvas');
+
+      const scaleX = canvasRef.current.width / (canvasRef.current.clientWidth || 1);
+      const scaleY = canvasRef.current.height / (canvasRef.current.clientHeight || 1);
+
+      tempCanvas.width = selectionBox.w * scaleX;
+      tempCanvas.height = selectionBox.h * scaleY;
+
+      tempCtx.drawImage(
+        canvasRef.current,
+        selectionBox.x * scaleX, selectionBox.y * scaleY, selectionBox.w * scaleX, selectionBox.h * scaleY,
+        0, 0, selectionBox.w * scaleX, selectionBox.h * scaleY
+      );
+
+      tempCanvas.toBlob(async (blob) => {
+        if (blob) {
+          try {
+            await navigator.clipboard.write([
+              new ClipboardItem({
+                'image/png': blob
+              })
+            ]);
+            setCopiedImage(true);
+            setTimeout(() => setCopiedImage(false), 2000);
+          } catch (err) {
+            console.error('Failed to copy image to clipboard:', err);
+          }
+        }
+      }, 'image/png');
+    } catch (err) {
+      console.error('Error copying image:', err);
+    }
+  };
+
   if (!isOpen || !doc) return null;
 
   return (
@@ -495,10 +535,18 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
              <button
                onClick={handleCopy}
                disabled={!extractedText}
-               className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors shadow-sm"
+               className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors shadow-sm text-sm"
              >
-               {copied ? <Check className="w-5 h-5 text-green-300" /> : <Copy className="w-5 h-5" />}
-               {copied ? 'Copied to Clipboard!' : 'Copy to Clipboard'}
+               {copied ? <Check className="w-4 h-4 text-green-300" /> : <Copy className="w-4 h-4" />}
+               {copied ? 'Text Copied!' : 'Copy Text'}
+             </button>
+             <button
+               onClick={handleCopyImage}
+               disabled={!selectionBox}
+               className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-gray-600 text-white rounded-xl font-medium hover:bg-gray-700 disabled:opacity-50 transition-colors shadow-sm text-sm"
+             >
+               {copiedImage ? <Check className="w-4 h-4 text-green-300" /> : <ImageIcon className="w-4 h-4" />}
+               {copiedImage ? 'Image Copied!' : 'Copy Image'}
              </button>
           </div>
         </div>
