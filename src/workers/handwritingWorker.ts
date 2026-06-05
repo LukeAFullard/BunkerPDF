@@ -13,7 +13,7 @@ self.onmessage = async (e: MessageEvent) => {
   if (action === 'INIT') {
     try {
       if (!visionPipeline) {
-        visionPipeline = await pipeline('image-to-text', 'Xenova/trocr-small-handwritten', {
+        visionPipeline = await pipeline('image-to-text', 'Xenova/trocr-base-handwritten', {
           device: 'webgpu', // Will fallback to CPU/WASM if WebGPU is not available
         });
       }
