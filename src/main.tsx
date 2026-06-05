@@ -5,7 +5,7 @@ import App from './App.tsx'
 import * as pdfjsLib from 'pdfjs-dist';
 
 // Set up PDF.js worker globally
-pdfjsLib.GlobalWorkerOptions.workerSrc = `${import.meta.env.BASE_URL}pdfjs-dist/build/pdf.worker.min.mjs`;
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
