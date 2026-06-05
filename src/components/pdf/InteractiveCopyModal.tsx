@@ -7,6 +7,11 @@ import { cleanupPdfResources } from '../../lib/pdfCleanup';
 import { getConfiguredLiteParse, formatParagraphFromItems } from '../../lib/liteparseEngine';
 import { createWorker } from 'tesseract.js';
 
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.mjs',
+  import.meta.url
+).toString();
+
 interface InteractiveCopyModalProps {
   isOpen: boolean;
   docId: string | null;
