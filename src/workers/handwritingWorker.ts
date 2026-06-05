@@ -14,7 +14,7 @@ self.onmessage = async (e: MessageEvent) => {
     try {
       if (!visionPipeline) {
         visionPipeline = await pipeline('image-to-text', 'Xenova/trocr-base-handwritten', {
-          device: 'webgpu', // Will fallback to CPU/WASM if WebGPU is not available
+          dtype: 'q8', device: 'webgpu', // Will fallback to CPU/WASM if WebGPU is not available
         });
       }
       self.postMessage({ type: 'INIT_SUCCESS' });
