@@ -184,6 +184,8 @@ function App() {
   const addLog = useAuditStore(state => state.addLog);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
   const [isDiffModalOpen, setIsDiffModalOpen] = useState(false);
+  const [diffInitialDoc1Id, setDiffInitialDoc1Id] = useState<string | undefined>();
+  const [diffInitialDoc2Id, setDiffInitialDoc2Id] = useState<string | undefined>();
   const [isSideBySideModalOpen, setIsSideBySideModalOpen] = useState(false);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
 
@@ -3242,8 +3244,8 @@ function App() {
         isOpen={isAuditModalOpen}
         onClose={() => setIsAuditModalOpen(false)}
       />
-      {isDiffModalOpen && <DiffModal onClose={() => setIsDiffModalOpen(false)} extractText={extractText} diffHighlightPdf={diffHighlightPdf} diffMergedHighlightPdf={diffMergedHighlightPdf} />}
-      {isSideBySideModalOpen && <SideBySideViewerModal onClose={() => setIsSideBySideModalOpen(false)} />}
+      {isDiffModalOpen && <DiffModal onClose={() => { setIsDiffModalOpen(false); setDiffInitialDoc1Id(undefined); setDiffInitialDoc2Id(undefined); }} extractText={extractText} diffHighlightPdf={diffHighlightPdf} diffMergedHighlightPdf={diffMergedHighlightPdf} initialDoc1Id={diffInitialDoc1Id} initialDoc2Id={diffInitialDoc2Id} />}
+      {isSideBySideModalOpen && <SideBySideViewerModal onClose={() => setIsSideBySideModalOpen(false)} onOpenCompare={(doc1Id, doc2Id) => { setIsSideBySideModalOpen(false); setDiffInitialDoc1Id(doc1Id); setDiffInitialDoc2Id(doc2Id); setIsDiffModalOpen(true); }} />}
       <ProcessingModal />
       <FeedbackPrompt />
       <PWAInstallPrompt />

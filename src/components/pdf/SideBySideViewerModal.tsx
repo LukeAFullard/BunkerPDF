@@ -8,14 +8,17 @@ import { cleanupPdfResources } from '../../lib/pdfCleanup';
 
 interface SideBySideViewerModalProps {
   onClose: () => void;
+  onOpenCompare?: (doc1Id: string, doc2Id: string) => void;
 }
 
-export function SideBySideViewerModal({ onClose }: SideBySideViewerModalProps) {
+export function SideBySideViewerModal({ onClose, onOpenCompare }: SideBySideViewerModalProps) {
   const documents = useFileStore(state => state.documents);
   const [doc1Id, setDoc1Id] = useState<string>(documents.length >= 1 ? documents[0].id : '');
   const [doc2Id, setDoc2Id] = useState<string>(documents.length >= 2 ? documents[1].id : (documents.length === 1 ? documents[0].id : ''));
   const [isLocked, setIsLocked] = useState(false);
-  const [scale, setScale] = useState(1.0);
+  const [scale1, setScale1] = useState(1.0);
+  const [scale2, setScale2] = useState(1.0);
+  const [isZoomLocked, setIsZoomLocked] = useState(true);
 
   const pane1Ref = useRef<HTMLDivElement>(null);
   const pane2Ref = useRef<HTMLDivElement>(null);
@@ -83,12 +86,46 @@ export function SideBySideViewerModal({ onClose }: SideBySideViewerModalProps) {
               {isLocked ? <Lock size={16} /> : <Unlock size={16} />}
               {isLocked ? 'Scrolling Locked' : 'Lock Scrolling'}
             </button>
+
             <div className="flex items-center gap-2 ml-4">
-              <span className="text-sm text-gray-500">Zoom:</span>
-              <button onClick={() => setScale(s => Math.max(0.5, s - 0.25))} className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded">-</button>
-              <span className="text-sm w-12 text-center">{Math.round(scale * 100)}%</span>
-              <button onClick={() => setScale(s => Math.min(3.0, s + 0.25))} className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded">+</button>
+              <span className="text-sm text-gray-500">Zoom 1:</span>
+              <button onClick={() => { setScale1(s => Math.max(0.5, s - 0.25)); if (isZoomLocked) setScale2(s => Math.max(0.5, s - 0.25)); }} className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded">-</button>
+              <span className="text-sm w-12 text-center">{Math.round(scale1 * 100)}%</span>
+              <button onClick={() => { setScale1(s => Math.min(3.0, s + 0.25)); if (isZoomLocked) setScale2(s => Math.min(3.0, s + 0.25)); }} className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded">+</button>
             </div>
+
+            <button
+              onClick={() => {
+                setIsZoomLocked(!isZoomLocked);
+                if (!isZoomLocked) {
+                  setScale2(scale1);
+                }
+              }}
+              className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                isZoomLocked
+                  ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                  : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+              }`}
+              title="Lock Zoom"
+            >
+              {isZoomLocked ? <Lock size={14} /> : <Unlock size={14} />}
+            </button>
+
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500">Zoom 2:</span>
+              <button onClick={() => { setScale2(s => Math.max(0.5, s - 0.25)); if (isZoomLocked) setScale1(s => Math.max(0.5, s - 0.25)); }} className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded">-</button>
+              <span className="text-sm w-12 text-center">{Math.round(scale2 * 100)}%</span>
+              <button onClick={() => { setScale2(s => Math.min(3.0, s + 0.25)); if (isZoomLocked) setScale1(s => Math.min(3.0, s + 0.25)); }} className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded">+</button>
+            </div>
+
+            {onOpenCompare && (
+              <button
+                onClick={() => onOpenCompare(doc1Id, doc2Id)}
+                className="ml-4 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                Compare Tool
+              </button>
+            )}
           </div>
           <button
             onClick={onClose}
@@ -119,8 +156,8 @@ export function SideBySideViewerModal({ onClose }: SideBySideViewerModalProps) {
               onScroll={handleScroll1}
               className="flex-1 overflow-auto p-4 custom-scrollbar"
             >
-              <div className="flex flex-col gap-6" style={{ alignItems: scale > 1 ? "flex-start" : "center", minWidth: "max-content" }}>
-                {doc1 && <PDFDocumentView file={doc1.file} scale={scale} />}
+              <div className="flex flex-col gap-6" style={{ alignItems: scale1 > 1 ? "flex-start" : "center", minWidth: "max-content" }}>
+                {doc1 && <PDFDocumentView file={doc1.file} scale={scale1} />}
               </div>
             </div>
           </div>
@@ -144,8 +181,8 @@ export function SideBySideViewerModal({ onClose }: SideBySideViewerModalProps) {
               onScroll={handleScroll2}
               className="flex-1 overflow-auto p-4 custom-scrollbar"
             >
-              <div className="flex flex-col gap-6" style={{ alignItems: scale > 1 ? "flex-start" : "center", minWidth: "max-content" }}>
-                {doc2 && <PDFDocumentView file={doc2.file} scale={scale} />}
+              <div className="flex flex-col gap-6" style={{ alignItems: scale2 > 1 ? "flex-start" : "center", minWidth: "max-content" }}>
+                {doc2 && <PDFDocumentView file={doc2.file} scale={scale2} />}
               </div>
             </div>
           </div>
