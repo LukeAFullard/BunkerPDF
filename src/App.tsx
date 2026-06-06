@@ -1327,7 +1327,7 @@ function App() {
     });
   };
 
-  const handleCrossReorderApply = async (newStructures: Record<string, { docId: string; originalPageNumber: number; rotation?: number }[]>) => {
+  const handleCrossReorderApply = async (newStructures: Record<string, { docId: string; originalPageNumber: number; rotation?: number }[]>, columnNames: Record<string, string>) => {
     setIsCrossReorderOpen(false);
     let isCancelled = false;
     startProcessing("Applying cross-document changes...", true, () => {
@@ -1342,6 +1342,8 @@ function App() {
       const newDocsBytes = await crossDocumentReorderPages(originalFiles, newStructures);
       if (isCancelled) return;
 
+      const newDocsToAdd: PDFDocument[] = [];
+
       // Update documents
       for (const [docId, bytes] of Object.entries(newDocsBytes)) {
         const standardBuffer = new Uint8Array(bytes.length);
@@ -1350,7 +1352,25 @@ function App() {
         if (doc) {
           const newFile = new File([standardBuffer], doc.name, { type: "application/pdf" });
           updateDocumentFile(docId, newFile, newStructures[docId].length);
+        } else {
+          // New split document
+          const name = columnNames[docId] || `Document (Split).pdf`;
+          const fileName = name.toLowerCase().endsWith('.pdf') ? name : `${name}.pdf`;
+          const newFile = new File([standardBuffer], fileName, { type: "application/pdf" });
+
+          newDocsToAdd.push({
+            id: docId,
+            name: fileName,
+            file: newFile,
+            size: newFile.size,
+            pageCount: newStructures[docId].length,
+            lastModified: Date.now(),
+          });
         }
+      }
+
+      if (newDocsToAdd.length > 0) {
+        addDocuments(newDocsToAdd);
       }
 
       // Handle removals if a document ends up with 0 pages

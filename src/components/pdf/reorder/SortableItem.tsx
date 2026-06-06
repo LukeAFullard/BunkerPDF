@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ArrowUpToLine, ArrowDownToLine, MoreVertical, Maximize2, RotateCw, RotateCcw, Trash2 } from 'lucide-react';
+import { ArrowUpToLine, ArrowDownToLine, MoreVertical, Maximize2, RotateCw, RotateCcw, Trash2, Scissors } from 'lucide-react';
 import { PDFPageThumbnail } from './PDFPageThumbnail';
 import { ContextMenu } from '../../ui/ContextMenu';
 import type { ContextMenuItem } from '../../ui/ContextMenu';
@@ -24,6 +24,7 @@ interface SortableItemProps {
   onRotate?: (degrees: number) => void;
   onDelete?: () => void;
   onExpand?: () => void;
+  onSplit?: () => void;
 }
 
 export function SortableItem({
@@ -44,6 +45,7 @@ export function SortableItem({
   onRotate,
   onDelete,
   onExpand,
+  onSplit,
 }: SortableItemProps) {
   const {
     attributes,
@@ -114,6 +116,11 @@ export function SortableItem({
       label: 'Rotate Left',
       icon: <RotateCcw size={16} />,
       onClick: onRotate ? () => onRotate(-90) : undefined
+    },
+    {
+      label: 'Split Document Here',
+      icon: <Scissors size={16} />,
+      onClick: onSplit
     },
     {
       label: 'Delete',

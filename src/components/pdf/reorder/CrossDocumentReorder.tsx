@@ -45,7 +45,7 @@ interface DocColumn {
 interface CrossDocumentReorderProps {
   isOpen: boolean;
   onClose: () => void;
-  onApply: (newStructures: Record<string, { docId: string; originalPageNumber: number; rotation?: number }[]>) => void;
+  onApply: (newStructures: Record<string, { docId: string; originalPageNumber: number; rotation?: number }[]>, columnNames: Record<string, string>) => void;
 }
 
 
@@ -456,14 +456,57 @@ const handleDeleteSelected = () => {
 
   const handleApply = () => {
     const result: Record<string, { docId: string; originalPageNumber: number; rotation?: number }[]> = {};
+    const columnNames: Record<string, string> = {};
     columns.forEach(col => {
       result[col.docId] = col.items.map(item => ({
         docId: item.docId,
         originalPageNumber: item.originalPageNumber,
         rotation: item.rotation
       }));
+      columnNames[col.docId] = col.name;
     });
-    onApply(result);
+    onApply(result, columnNames);
+  };
+
+  const handleSplit = (itemId: string, colId: string) => {
+    setColumns(prevColumns => {
+      const colIndex = prevColumns.findIndex(c => c.docId === colId);
+      if (colIndex === -1) return prevColumns;
+
+      const col = prevColumns[colIndex];
+      const itemIndex = col.items.findIndex(i => i.id === itemId);
+      if (itemIndex === -1 || itemIndex === col.items.length - 1) return prevColumns; // Can't split on last item
+
+      const newColumns = [...prevColumns];
+
+      const newDocId = `split-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const splitItems = col.items.slice(itemIndex + 1);
+      const remainingItems = col.items.slice(0, itemIndex + 1);
+
+      newColumns[colIndex] = {
+        ...col,
+        items: remainingItems
+      };
+
+      const match = col.name.match(/^(.*?)(\s+\(\d+\))?(\.pdf)?$/i);
+      const baseName = match ? match[1] : col.name;
+      const ext = match && match[3] ? match[3] : '';
+
+      let nextSuffix = 1;
+      let newName = '';
+      do {
+        newName = `${baseName} (${nextSuffix})${ext}`;
+        nextSuffix++;
+      } while (newColumns.some(c => c.name === newName));
+
+      newColumns.splice(colIndex + 1, 0, {
+        docId: newDocId,
+        name: newName,
+        items: splitItems
+      });
+
+      return newColumns;
+    });
   };
 
   if (!isOpen) return null;
@@ -613,6 +656,7 @@ const handleDeleteSelected = () => {
                             onRotate={(degrees) => handleRotateSingle(item.id, degrees)}
                             onDelete={() => handleDeleteSingle(item.id)}
                             onExpand={() => setPreviewItem(item)}
+                            onSplit={() => handleSplit(item.id, col.docId)}
                             isSelected={selectedIds.has(item.id)}
                             onSelectToggle={(e) => handleSelectToggle(e, item.id)}
                             thumbnailSize={120 * thumbnailScale}
