@@ -415,7 +415,7 @@ export const extractTablesLiteparse = async (bytes: Uint8Array, format: 'csv' | 
 
 export const editBoxesLiteparse = async (
   bytes: Uint8Array,
-  edits: { pageNum: number; x: number; y: number; width: number; height: number; newText: string }[]
+  edits: { pageNum: number; x: number; y: number; width: number; height: number; newText: string; fontSize?: number; lineHeight?: number }[]
 ): Promise<Uint8Array> => {
   const { PDFDocument, rgb, StandardFonts } = await import('pdf-lib');
   const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
@@ -439,15 +439,20 @@ export const editBoxesLiteparse = async (
       color: rgb(1, 1, 1),
     });
 
-    // Draw new text over it
-    // Approximate a decent font size based on height
-    const fontSize = Math.max(8, Math.min(edit.height * 0.8, 14));
+    // Approximate a decent font size based on height if not provided
+    let fontSize = edit.fontSize;
+    if (!fontSize) {
+      fontSize = Math.max(8, Math.min(edit.height * 0.8, 14));
+    }
+
     pdfPage.drawText(edit.newText, {
       x: edit.x,
-      y: pdfLibY + (edit.height - fontSize) / 2, // Vertically center text
+      y: pdfLibY + edit.height - fontSize, // Top align text for paragraphs
       size: fontSize,
       font,
       color: rgb(0, 0, 0),
+      maxWidth: edit.width + 4, // slight padding so it wraps properly if it reaches edge
+      lineHeight: edit.lineHeight || fontSize * 1.2,
     });
   }
 
