@@ -26,6 +26,10 @@ export default defineConfig({
         {
           src: 'node_modules/pdfjs-dist/standard_fonts/*',
           dest: 'pdfjs-dist/standard_fonts'
+        },
+        {
+          src: 'node_modules/pdfjs-dist/wasm/*.{wasm,js}',
+          dest: 'pdfjs-dist/wasm'
         }
       ]
     })
