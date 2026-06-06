@@ -37,7 +37,7 @@ export function VisualWatermarkModal({ isOpen, docId, onClose, onApply }: Visual
     const loadPdf = async () => {
       try {
         const arrayBuffer = await doc.file.arrayBuffer();
-        const loadingTask = loadPdfDocument(arrayBuffer);
+        const loadingTask = loadPdfDocument(arrayBuffer.slice(0));
         const pdf = await loadingTask.promise;
 
         if (!isMounted) {
