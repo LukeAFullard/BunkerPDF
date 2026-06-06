@@ -43,6 +43,7 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
   const renderTaskRef = useRef<any>(null);
   const [pdfDoc, setPdfDoc] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
   const [pageDimensions, setPageDimensions] = useState<{ width: number, height: number } | null>(null);
+  const [unscaledDimensions, setUnscaledDimensions] = useState<{ width: number, height: number } | null>(null);
 
   useEffect(() => {
     if (isOpen && doc) {
@@ -118,6 +119,7 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
 
       const viewportHeight = window.innerHeight * 0.6;
       const unscaledViewport = page.getViewport({ scale: 1.0 });
+      setUnscaledDimensions({ width: unscaledViewport.width, height: unscaledViewport.height });
       const baseScale = viewportHeight / unscaledViewport.height;
       const scale = baseScale * zoomLevel;
       const viewport = page.getViewport({ scale });
@@ -145,8 +147,9 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
 
       // Initialize crop lines to the edges of the page if they don't exist,
       // otherwise, rescale the cropBox to match the new viewport based on the saved pdfBox.
-      if (textItems && textItems.length >= pageNum) {
-        const liteParsePageRef = textItems[pageNum - 1];
+      if (true) {
+        // Fallback to unscaled viewport dimensions if textItems are missing (e.g. scanned doc)
+        const liteParsePageRef = (textItems && textItems.length >= pageNum) ? textItems[pageNum - 1] : { width: unscaledViewport.width, height: unscaledViewport.height };
 
         setPdfBox(currentPdfBox => {
           if (!currentPdfBox) {
@@ -309,8 +312,8 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
     const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
     const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
 
-    const currentX = Math.max(0, Math.min(clientX - rect.left, rect.width));
-    const currentY = Math.max(0, Math.min(clientY - rect.top, rect.height));
+    const currentX = Math.max(0, Math.min(clientX - rect.left, canvasRef.current ? canvasRef.current.clientWidth : rect.width));
+    const currentY = Math.max(0, Math.min(clientY - rect.top, canvasRef.current ? canvasRef.current.clientHeight : rect.height));
 
     const updatedCropBox = { ...cropBox };
 
@@ -347,9 +350,9 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
 
     // Enforce basic constraints
     if (field === 'left') newPdfBox.left = Math.min(newPdfBox.left, newPdfBox.right - 10);
-    if (field === 'right') newPdfBox.right = Math.max(newPdfBox.right, newPdfBox.left + 10);
+    if (field === 'right') newPdfBox.right = Math.min(Math.max(newPdfBox.right, newPdfBox.left + 10), pageWidth);
     if (field === 'top') newPdfBox.top = Math.min(newPdfBox.top, newPdfBox.bottom - 10);
-    if (field === 'bottom') newPdfBox.bottom = Math.max(newPdfBox.bottom, newPdfBox.top + 10);
+    if (field === 'bottom') newPdfBox.bottom = Math.min(Math.max(newPdfBox.bottom, newPdfBox.top + 10), pageHeight);
 
     setPdfBox(newPdfBox);
 
@@ -417,6 +420,10 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
 
   if (!isOpen || !doc) return null;
 
+  const liteParsePageRef = (textItems && textItems.length >= currentPage) ? textItems[currentPage - 1] : null;
+  const pageWidth = liteParsePageRef ? liteParsePageRef.width : (unscaledDimensions?.width || 0);
+  const pageHeight = liteParsePageRef ? liteParsePageRef.height : (unscaledDimensions?.height || 0);
+
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex justify-center items-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl flex flex-col h-[90vh] overflow-hidden">
@@ -456,8 +463,11 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
                 <label className="block text-xs font-medium text-gray-500 mb-1">Right Crop</label>
                 <input
                   type="number"
-                  value={pdfBox?.right ?? ''}
-                  onChange={(e) => handlePdfBoxChange('right', parseFloat(e.target.value) || 0)}
+                  value={pdfBox && pageWidth ? Math.max(0, Math.round(pageWidth - pdfBox.right)) : ''}
+                  onChange={(e) => {
+                    const margin = parseFloat(e.target.value) || 0;
+                    handlePdfBoxChange('right', pageWidth - margin);
+                  }}
                   disabled={!pdfBox}
                   className="w-full border rounded px-3 py-2 text-sm focus:ring-1 focus:ring-blue-500 outline-none disabled:bg-gray-50 disabled:text-gray-400"
                 />
@@ -476,8 +486,11 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
                 <label className="block text-xs font-medium text-gray-500 mb-1">Bottom Crop</label>
                 <input
                   type="number"
-                  value={pdfBox?.bottom ?? ''}
-                  onChange={(e) => handlePdfBoxChange('bottom', parseFloat(e.target.value) || 0)}
+                  value={pdfBox && pageHeight ? Math.max(0, Math.round(pageHeight - pdfBox.bottom)) : ''}
+                  onChange={(e) => {
+                    const margin = parseFloat(e.target.value) || 0;
+                    handlePdfBoxChange('bottom', pageHeight - margin);
+                  }}
                   disabled={!pdfBox}
                   className="w-full border rounded px-3 py-2 text-sm focus:ring-1 focus:ring-blue-500 outline-none disabled:bg-gray-50 disabled:text-gray-400"
                 />
@@ -511,7 +524,7 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
             ) : (
               <div
                 ref={containerRef}
-                className="relative shadow-lg cursor-crosshair touch-none"
+                className="relative shadow-lg cursor-crosshair touch-none inline-block"
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
