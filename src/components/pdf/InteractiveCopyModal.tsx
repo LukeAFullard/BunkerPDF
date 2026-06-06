@@ -40,8 +40,8 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
   const [copied, setCopied] = useState(false);
   const [copiedImage, setCopiedImage] = useState(false);
   const [marginThresholdPercent, setMarginThresholdPercent] = useState(12);
+  const [selectWholeLine, setSelectWholeLine] = useState(false);
   const [isOcrRunning, setIsOcrRunning] = useState(false);
-  const [isHandwritingOcrRunning, setIsHandwritingOcrRunning] = useState(false);
 
   const renderTaskRef = useRef<pdfjsLib.RenderTask | null>(null);
   const pdfDocRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
@@ -50,9 +50,6 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
   const isInitializingWorkerRef = useRef<boolean>(false);
   const ocrRunIdRef = useRef<number>(0);
 
-  const handwritingWorkerRef = useRef<Worker | null>(null);
-  const isInitializingHandwritingWorkerRef = useRef<boolean>(false);
-  const handwritingRunIdRef = useRef<number>(0);
 
   useEffect(() => {
     if (!isOpen || !doc) return;
@@ -113,10 +110,6 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
           tesseractWorkerRef.current.terminate();
           tesseractWorkerRef.current = null;
        }
-       if (handwritingWorkerRef.current) {
-          handwritingWorkerRef.current.terminate();
-          handwritingWorkerRef.current = null;
-       }
     };
   }, []);
 
@@ -130,20 +123,32 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
       }
 
       const page = await pdf.getPage(pageNum);
-      const viewport = page.getViewport({ scale: zoomLevel * 1.5 });
+
+      const viewportHeight = window.innerHeight * 0.6;
+      const unscaledViewport = page.getViewport({ scale: 1.0 });
+      const baseScale = viewportHeight / unscaledViewport.height;
+      const scale = baseScale * zoomLevel;
+      const viewport = page.getViewport({ scale });
 
       const canvas = canvasRef.current;
       const context = canvas.getContext('2d');
       if (!context) return;
 
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
+      const outputScale = window.devicePixelRatio || 1;
+      canvas.width = Math.floor(viewport.width * outputScale);
+      canvas.height = Math.floor(viewport.height * outputScale);
+      canvas.style.width = Math.floor(viewport.width) + "px";
+      canvas.style.height = Math.floor(viewport.height) + "px";
 
-      const unzoomedViewport = page.getViewport({ scale: 1.0 });
-      setOverlayScale(viewport.width / unzoomedViewport.width);
+      const transform = outputScale !== 1
+        ? [outputScale, 0, 0, outputScale, 0, 0]
+        : undefined;
+
+      setOverlayScale(scale);
 
       const renderContext = {
         canvasContext: context,
+        transform: transform,
         viewport: viewport,
       };
 
@@ -226,7 +231,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
     }
   };
 
-  const extractRegion = (x: number, y: number, w: number, h: number, customThreshold?: number) => {
+  const extractRegion = (x: number, y: number, w: number, h: number, customThreshold?: number, overrideWholeLine?: boolean) => {
     if (!liteparseData || overlayScale <= 0) return;
 
     // Convert overlay pixels to LiteParse units (which are native PDF points usually)
@@ -246,7 +251,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
 
     // Filter items that intersect the drawn box
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const intersectingItems = items.filter((item: any) => {
+    let intersectingItems = items.filter((item: any) => {
       const itemRight = item.x + item.width;
       const itemBottom = item.y + item.height;
       const isHeader = pageHeight > 0 && item.y < headerThreshold;
@@ -256,6 +261,24 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
 
       return !(lpRight < item.x || lpX > itemRight || lpBottom < item.y || lpY > itemBottom);
     });
+
+    const isWholeLine = overrideWholeLine !== undefined ? overrideWholeLine : selectWholeLine;
+
+    if (isWholeLine && intersectingItems.length > 0) {
+      const rowTolerance = 5;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const expandedItems = items.filter((item: any) => {
+         const isHeader = pageHeight > 0 && item.y < headerThreshold;
+         const isFooter = pageHeight > 0 && item.y > footerThreshold;
+         if (isHeader || isFooter) return false;
+
+         // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         return intersectingItems.some((intersectedItem: any) => {
+             return Math.abs(intersectedItem.y - item.y) < rowTolerance;
+         });
+      });
+      intersectingItems = expandedItems;
+    }
 
     if (intersectingItems.length > 0) {
       const textStr = formatParagraphFromItems(intersectingItems);
@@ -347,91 +370,6 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
     }
   };
 
-  const runHandwritingOcrOnRegion = async () => {
-    if (!canvasRef.current || !selectionBox) return;
-    setIsHandwritingOcrRunning(true);
-    setExtractedText(null);
-    const runId = ++handwritingRunIdRef.current;
-
-    try {
-      const tempCanvas = document.createElement('canvas');
-      const tempCtx = tempCanvas.getContext('2d');
-      if (!tempCtx) throw new Error('Could not get 2d context for temporary canvas');
-
-      const scaleX = canvasRef.current.width / (canvasRef.current.clientWidth || 1);
-      const scaleY = canvasRef.current.height / (canvasRef.current.clientHeight || 1);
-
-      tempCanvas.width = selectionBox.w * scaleX;
-      tempCanvas.height = selectionBox.h * scaleY;
-
-      tempCtx.drawImage(
-        canvasRef.current,
-        selectionBox.x * scaleX, selectionBox.y * scaleY, selectionBox.w * scaleX, selectionBox.h * scaleY,
-        0, 0, selectionBox.w * scaleX, selectionBox.h * scaleY
-      );
-
-      const dataUrl = tempCanvas.toDataURL('image/png');
-
-      // Initialize worker if needed
-      if (!handwritingWorkerRef.current && !isInitializingHandwritingWorkerRef.current) {
-        isInitializingHandwritingWorkerRef.current = true;
-        try {
-          const worker = new Worker(new URL('../../workers/handwritingWorker.ts', import.meta.url), {
-            type: 'module'
-          });
-
-          await new Promise<void>((resolve, reject) => {
-            worker.onmessage = (e) => {
-              if (e.data.type === 'INIT_SUCCESS') resolve();
-              else if (e.data.type === 'INIT_ERROR') reject(new Error(e.data.error));
-            };
-            worker.postMessage({ action: 'INIT' });
-          });
-
-          if (!document.body.contains(canvasRef.current)) {
-             worker.terminate();
-          } else {
-             handwritingWorkerRef.current = worker;
-          }
-        } finally {
-          isInitializingHandwritingWorkerRef.current = false;
-        }
-      }
-
-      while (isInitializingHandwritingWorkerRef.current) {
-         await new Promise(resolve => setTimeout(resolve, 100));
-      }
-
-      if (!handwritingWorkerRef.current) throw new Error('Failed to init handwriting worker');
-
-      const text = await new Promise<string>((resolve, reject) => {
-        const handler = (e: MessageEvent) => {
-          if (e.data.runId === runId) {
-            handwritingWorkerRef.current?.removeEventListener('message', handler);
-            if (e.data.type === 'RECOGNIZE_SUCCESS') resolve(e.data.text);
-            else if (e.data.type === 'RECOGNIZE_ERROR') reject(new Error(e.data.error));
-          }
-        };
-        handwritingWorkerRef.current!.addEventListener('message', handler);
-        handwritingWorkerRef.current!.postMessage({ action: 'RECOGNIZE_HANDWRITING', runId, imageUrl: dataUrl });
-      });
-
-      if (runId === handwritingRunIdRef.current && canvasRef.current) {
-        setExtractedText(text);
-      }
-
-    } catch (err) {
-      console.error("Handwriting OCR failed:", err);
-      if (runId === handwritingRunIdRef.current) {
-        setExtractedText("Failed to recognize handwriting. It might be too complex or the model failed to load.");
-      }
-    } finally {
-      if (runId === handwritingRunIdRef.current) {
-         setIsHandwritingOcrRunning(false);
-      }
-    }
-  };
-
   const handleCopyImage = async () => {
     if (!selectionBox || !canvasRef.current) return;
     try {
@@ -505,7 +443,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
             </div>
           </div>
 
-          <div className="flex-1 overflow-auto relative flex justify-center items-start p-8">
+          <div className={`flex-1 overflow-auto relative flex ${zoomLevel > 1.0 ? 'justify-start' : 'justify-center'} items-start p-8`}>
             {isLoading && (
               <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/50 backdrop-blur-sm">
                  <div className="flex flex-col items-center gap-3">
@@ -597,6 +535,24 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
                />
                <span className="text-xs text-gray-500 font-mono w-6 text-right">{marginThresholdPercent}%</span>
              </div>
+             <div className="flex items-center gap-2 mt-1">
+                <input
+                  type="checkbox"
+                  id="wholeLineToggle"
+                  checked={selectWholeLine}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setSelectWholeLine(checked);
+                    if (selectionBox) {
+                      extractRegion(selectionBox.x, selectionBox.y, selectionBox.w, selectionBox.h, marginThresholdPercent, checked);
+                    }
+                  }}
+                  className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                />
+                <label htmlFor="wholeLineToggle" className="text-xs font-medium text-gray-600 cursor-pointer">
+                  Select whole line(s) automatically
+                </label>
+             </div>
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 bg-white">
@@ -605,13 +561,11 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
                 <Type className="w-8 h-8 text-gray-400 mx-auto mb-3" />
                 <p className="text-sm text-gray-500">Draw a box around a paragraph to copy it perfectly flowed, avoiding broken lines.</p>
               </div>
-            ) : isOcrRunning || isHandwritingOcrRunning ? (
+            ) : isOcrRunning ? (
               <div className="text-center py-12 px-4 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 h-full flex flex-col justify-center items-center">
                  <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mb-3" />
                  <p className="text-sm text-gray-500">
-                    {isHandwritingOcrRunning
-                      ? "Running AI handwriting recognition (may take a moment)..."
-                      : "No text detected. Running OCR on selected region..."}
+                    No text detected. Running OCR on selected region...
                  </p>
               </div>
             ) : !extractedText ? (
@@ -629,7 +583,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
              <div className="flex gap-3">
                <button
                  onClick={handleCopy}
-                 disabled={!extractedText || isHandwritingOcrRunning}
+                 disabled={!extractedText }
                  className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors shadow-sm text-sm"
                >
                  {copied ? <Check className="w-4 h-4 text-green-300" /> : <Copy className="w-4 h-4" />}
@@ -637,21 +591,14 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
                </button>
                <button
                  onClick={handleCopyImage}
-                 disabled={!selectionBox || isHandwritingOcrRunning}
+                 disabled={!selectionBox }
                  className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-gray-600 text-white rounded-xl font-medium hover:bg-gray-700 disabled:opacity-50 transition-colors shadow-sm text-sm"
                >
                  {copiedImage ? <Check className="w-4 h-4 text-green-300" /> : <ImageIcon className="w-4 h-4" />}
                  {copiedImage ? 'Image Copied!' : 'Copy Image'}
                </button>
              </div>
-             <button
-               onClick={runHandwritingOcrOnRegion}
-               disabled={!selectionBox || isHandwritingOcrRunning}
-               className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-white border-2 border-indigo-100 text-indigo-700 rounded-xl font-medium hover:bg-indigo-50 hover:border-indigo-200 disabled:opacity-50 transition-colors shadow-sm text-xs"
-             >
-               {isHandwritingOcrRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Type className="w-4 h-4" />}
-               {isHandwritingOcrRunning ? 'Recognizing...' : 'AI Handwriting Recognition'}
-             </button>
+
           </div>
         </div>
 
