@@ -57,7 +57,7 @@ export function InteractiveTableModal({ isOpen, docId, onClose }: InteractiveTab
     const loadPdfAndLiteparse = async () => {
       try {
         const arrayBuffer = await doc.file.arrayBuffer();
-        const bytes = new Uint8Array(arrayBuffer);
+        const bytes = new Uint8Array(arrayBuffer.slice(0));
 
         const loadingTask = loadPdfDocument(arrayBuffer.slice(0));
         const pdf = await loadingTask.promise;

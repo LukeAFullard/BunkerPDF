@@ -53,7 +53,7 @@ export function SmartFormGenerationModal({ isOpen, docId, onClose, onApply }: Sm
     const loadPdfAndLiteparse = async () => {
       try {
         const arrayBuffer = await doc.file.arrayBuffer();
-        const bytes = new Uint8Array(arrayBuffer);
+        const bytes = new Uint8Array(arrayBuffer.slice(0));
 
         if (isMounted) setOriginalBytes(bytes);
 

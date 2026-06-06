@@ -4,7 +4,7 @@ import { cleanupPdfResources } from './pdfCleanup';
 
 export async function decodeBarcodesFromPdf(file: File): Promise<{text: string; page: number}[]> {
   const arrayBuffer = await file.arrayBuffer();
-  const loadingTask = loadPdfDocument(arrayBuffer);
+  const loadingTask = loadPdfDocument(arrayBuffer.slice(0));
   const pdf = await loadingTask.promise;
   const numPages = pdf.numPages;
   const reader = new BrowserMultiFormatReader();
