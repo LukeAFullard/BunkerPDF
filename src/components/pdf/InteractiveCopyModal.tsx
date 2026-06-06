@@ -252,14 +252,21 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
     // Filter items that intersect the drawn box
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let intersectingItems = items.filter((item: any) => {
-      const itemRight = item.x + item.width;
-      const itemBottom = item.y + item.height;
       const isHeader = pageHeight > 0 && item.y < headerThreshold;
       const isFooter = pageHeight > 0 && item.y > footerThreshold;
 
       if (isHeader || isFooter) return false; // Omit headers and footers
 
-      return !(lpRight < item.x || lpX > itemRight || lpBottom < item.y || lpY > itemBottom);
+      // Only include items whose center falls within the drawn box for precise copying
+      const itemCenterX = item.x + item.width / 2;
+      const itemCenterY = item.y + item.height / 2;
+
+      return (
+        itemCenterX >= lpX &&
+        itemCenterX <= lpRight &&
+        itemCenterY >= lpY &&
+        itemCenterY <= lpBottom
+      );
     });
 
     const isWholeLine = overrideWholeLine !== undefined ? overrideWholeLine : selectWholeLine;
