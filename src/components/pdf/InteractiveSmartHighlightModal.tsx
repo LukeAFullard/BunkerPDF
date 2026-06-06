@@ -65,12 +65,12 @@ export function InteractiveSmartHighlightModal({ isOpen, docId, onClose, onApply
       const bytes = await doc!.file.arrayBuffer();
 
       const engine = await getConfiguredLiteParse({ outputFormat: "json" });
-      const result = await engine.parse(new Uint8Array(bytes));
+      const result = await engine.parse(new Uint8Array(bytes.slice(0)));
       if (result && result.pages) {
         setTextItems(result.pages);
       }
 
-      const loadingTask = loadPdfDocument(bytes);
+      const loadingTask = loadPdfDocument(bytes.slice(0));
       const pdf = await loadingTask.promise;
       setPdfDoc(pdf);
       setTotalPages(pdf.numPages);

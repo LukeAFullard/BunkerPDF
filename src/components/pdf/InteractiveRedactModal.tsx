@@ -63,10 +63,10 @@ export function InteractiveRedactModal({ isOpen, docId, onClose, onApply }: Inte
     const loadPdfAndLiteparse = async () => {
       try {
         const arrayBuffer = await doc.file.arrayBuffer();
-        const bytes = new Uint8Array(arrayBuffer);
+        const bytes = new Uint8Array(arrayBuffer.slice(0));
 
         // 1. Load PDF.js for visual rendering
-        const loadingTask = loadPdfDocument(arrayBuffer);
+        const loadingTask = loadPdfDocument(arrayBuffer.slice(0));
         const pdf = await loadingTask.promise;
 
         if (!isMounted) {

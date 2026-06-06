@@ -94,7 +94,7 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
 
           if (!numPages) {
             const arrayBuffer = await doc.file.arrayBuffer();
-            const proxy = await loadPdfDocument(arrayBuffer).promise;
+            const proxy = await loadPdfDocument(arrayBuffer.slice(0)).promise;
             numPages = proxy.numPages;
             cleanupPdfResources(proxy);
           }

@@ -72,7 +72,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
         const engine = await getConfiguredLiteParse({ outputFormat: "json" });
         const result = await engine.parse(new Uint8Array(arrayBuffer.slice(0)));
 
-        const loadingTask = loadPdfDocument(arrayBuffer);
+        const loadingTask = loadPdfDocument(arrayBuffer.slice(0));
         const pdf = await loadingTask.promise;
 
         if (!isMounted) {

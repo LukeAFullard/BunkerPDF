@@ -7,7 +7,7 @@ export async function analyzeDocumentHealth(file: File): Promise<{
 }> {
   try {
     const arrayBuffer = await file.arrayBuffer();
-    const pdf = await loadPdfDocument(arrayBuffer).promise;
+    const pdf = await loadPdfDocument(arrayBuffer.slice(0)).promise;
 
     let hasSelectableText = false;
     let hasForms = false;

@@ -55,7 +55,7 @@ export function PDFPageThumbnail({ docId, pageNumber, width = 100, className = '
         if (!doc) return;
 
         const arrayBuffer = await doc.file.arrayBuffer();
-        pdfDoc = await loadPdfDocument(arrayBuffer).promise;
+        pdfDoc = await loadPdfDocument(arrayBuffer.slice(0)).promise;
 
         if (!isMounted) return;
 

@@ -167,7 +167,7 @@ function PDFDocumentView({ file, scale }: { file: File; scale: number }) {
     const loadPdf = async () => {
       try {
         const arrayBuffer = await file.arrayBuffer();
-        const loadingTask = loadPdfDocument(arrayBuffer);
+        const loadingTask = loadPdfDocument(arrayBuffer.slice(0));
         pdf = await loadingTask.promise;
         if (isMounted) {
           setPdfDoc(pdf);
