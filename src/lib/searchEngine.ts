@@ -2,43 +2,51 @@ import type { SearchWorkerMessage, SearchWorkerResponse } from '../workers/searc
 import { useEngineStore } from '../store/engineStore';
 
 let searchWorker: Worker | null = null;
+let initPromise: Promise<void> | null = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const searchResolvers = new Map<string, { resolve: (res: any) => void, reject: (err: Error) => void }>();
 
 export const initSearchEngine = async (): Promise<void> => {
-  if (searchWorker) return;
+  if (initPromise) return initPromise;
 
-  useEngineStore.getState().setAiStatus('loading');
-
-  searchWorker = new Worker(new URL('../workers/searchWorker.ts', import.meta.url), { type: 'module' });
-
-  searchWorker.onmessage = (e: MessageEvent<SearchWorkerResponse>) => {
-    const { type, jobId, embedding, error } = e.data;
-
-    if (type === 'READY') {
-      useEngineStore.getState().setAiStatus('ready');
-      if (jobId && searchResolvers.has(jobId)) {
-        searchResolvers.get(jobId)?.resolve(true);
-        searchResolvers.delete(jobId);
-      }
-    } else if (type === 'RESULT' && jobId) {
-      if (searchResolvers.has(jobId)) {
-        searchResolvers.get(jobId)?.resolve(embedding);
-        searchResolvers.delete(jobId);
-      }
-    } else if (type === 'ERROR' && jobId) {
-      if (searchResolvers.has(jobId)) {
-        searchResolvers.get(jobId)?.reject(new Error(error || 'Search Engine Error'));
-        searchResolvers.delete(jobId);
-      }
+  initPromise = new Promise((resolve, reject) => {
+    if (searchWorker) {
+      resolve();
+      return;
     }
-  };
 
-  return new Promise((resolve, reject) => {
+    useEngineStore.getState().setAiStatus('loading');
+
+    searchWorker = new Worker(new URL('../workers/searchWorker.ts', import.meta.url), { type: 'module' });
+
+    searchWorker.onmessage = (e: MessageEvent<SearchWorkerResponse>) => {
+      const { type, jobId, embedding, error } = e.data;
+
+      if (type === 'READY') {
+        useEngineStore.getState().setAiStatus('ready');
+        if (jobId && searchResolvers.has(jobId)) {
+          searchResolvers.get(jobId)?.resolve(true);
+          searchResolvers.delete(jobId);
+        }
+      } else if (type === 'RESULT' && jobId) {
+        if (searchResolvers.has(jobId)) {
+          searchResolvers.get(jobId)?.resolve(embedding);
+          searchResolvers.delete(jobId);
+        }
+      } else if (type === 'ERROR' && jobId) {
+        if (searchResolvers.has(jobId)) {
+          searchResolvers.get(jobId)?.reject(new Error(error || 'Search Engine Error'));
+          searchResolvers.delete(jobId);
+        }
+      }
+    };
+
     const jobId = crypto.randomUUID();
     searchResolvers.set(jobId, { resolve, reject });
     searchWorker?.postMessage({ type: 'INIT', jobId } satisfies SearchWorkerMessage);
   });
+
+  return initPromise;
 };
 
 export const generateEmbedding = async (text: string): Promise<number[]> => {
