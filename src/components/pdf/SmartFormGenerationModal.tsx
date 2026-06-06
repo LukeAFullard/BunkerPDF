@@ -57,7 +57,7 @@ export function SmartFormGenerationModal({ isOpen, docId, onClose, onApply }: Sm
 
         if (isMounted) setOriginalBytes(bytes);
 
-        const loadingTask = loadPdfDocument(arrayBuffer);
+        const loadingTask = loadPdfDocument(arrayBuffer.slice(0));
         const pdf = await loadingTask.promise;
 
         if (!isMounted) {

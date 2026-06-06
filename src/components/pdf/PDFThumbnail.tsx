@@ -26,7 +26,7 @@ export function PDFThumbnail({ file, width = 200, className }: PDFThumbnailProps
     const renderThumbnail = async () => {
       try {
         const arrayBuffer = await file.arrayBuffer();
-        const loadingTask = loadPdfDocument(arrayBuffer);
+        const loadingTask = loadPdfDocument(arrayBuffer.slice(0));
         const pdf = await loadingTask.promise;
         pdfDocRef.current = pdf;
 

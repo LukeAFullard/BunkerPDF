@@ -66,7 +66,7 @@ export function InteractiveRedactModal({ isOpen, docId, onClose, onApply }: Inte
         const bytes = new Uint8Array(arrayBuffer);
 
         // 1. Load PDF.js for visual rendering
-        const loadingTask = loadPdfDocument(arrayBuffer);
+        const loadingTask = loadPdfDocument(arrayBuffer.slice(0));
         const pdf = await loadingTask.promise;
 
         if (!isMounted) {
