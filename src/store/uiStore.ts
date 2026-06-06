@@ -34,7 +34,7 @@ export const useUIStore = create<UIState>()(
   feedbackPrompt: { isOpen: false, toolName: '' },
   showFeedbackPrompt: (toolName) => set({ feedbackPrompt: { isOpen: true, toolName } }),
   hideFeedbackPrompt: () => set({ feedbackPrompt: { isOpen: false, toolName: '' } }),
-  extractionMethod: 'pyodide',
+  extractionMethod: 'liteparse',
   setExtractionMethod: (method) => set({ extractionMethod: method }),
   liteparseOcrEnabled: false,
   setLiteparseOcrEnabled: (enabled) => set({ liteparseOcrEnabled: enabled }),

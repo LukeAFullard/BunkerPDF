@@ -31,13 +31,13 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
   const [textItems, setTextItems] = useState<any[]>([]);
   const [warningMessage, setWarningMessage] = useState<string | null>(null);
 
-  const [cropBox, setCropBox] = useState<{ x: number, y: number, width: number, height: number } | null>(null);
+  const [cropBox, setCropBox] = useState<{ left: number, top: number, right: number, bottom: number } | null>(null);
   // pdfBox stores the unscaled PDF coordinates (Points)
-  const [pdfBox, setPdfBox] = useState<{ x: number, y: number, width: number, height: number } | null>(null);
+  const [pdfBox, setPdfBox] = useState<{ left: number, top: number, right: number, bottom: number } | null>(null);
   const [applyPagesMode, setApplyPagesMode] = useState<'current' | 'all' | 'custom'>('current');
   const [customPageRange, setCustomPageRange] = useState<string>("");
   const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState<{ x: number, y: number } | null>(null);
+
   const [resizeHandle, setResizeHandle] = useState<string | null>(null);
 
   const renderTaskRef = useRef<any>(null);
@@ -86,6 +86,23 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
     }
   }, [pdfDoc, currentPage, zoomLevel]);
 
+  // Effect to recalculate cropBox from pdfBox when zoom changes
+  useEffect(() => {
+    if (pdfBox && pageDimensions && textItems && textItems.length >= currentPage) {
+      const liteParsePageRef = textItems[currentPage - 1];
+      if (liteParsePageRef) {
+        const scaleX = pageDimensions.width / liteParsePageRef.width;
+        const scaleY = pageDimensions.height / liteParsePageRef.height;
+        setCropBox({
+          left: pdfBox.left * scaleX,
+          top: pdfBox.top * scaleY,
+          right: pdfBox.right * scaleX,
+          bottom: pdfBox.bottom * scaleY
+        });
+      }
+    }
+  }, [pdfBox, pageDimensions, textItems, currentPage]);
+
   const renderPage = async (pageNum: number, pdf: pdfjsLib.PDFDocumentProxy) => {
     setIsLoading(true);
     try {
@@ -125,6 +142,41 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
 
       renderTaskRef.current = page.render(renderContext);
       await renderTaskRef.current.promise;
+
+      // Initialize crop lines to the edges of the page if they don't exist,
+      // otherwise, rescale the cropBox to match the new viewport based on the saved pdfBox.
+      if (textItems && textItems.length >= pageNum) {
+        const liteParsePageRef = textItems[pageNum - 1];
+
+        setPdfBox(currentPdfBox => {
+          if (!currentPdfBox) {
+            return {
+              left: 0,
+              top: 0,
+              right: liteParsePageRef.width,
+              bottom: liteParsePageRef.height
+            };
+          }
+          return currentPdfBox;
+        });
+
+        // Avoid nested state updaters by reading the current ref/state carefully, or
+        // relying on the next render pass if needed. Since we don't have a ref for pdfBox,
+        // we'll update cropBox based on current pageDimensions and pdfBox in a useEffect,
+        // but for initial load, we can set default values.
+        setCropBox(currentCropBox => {
+          if (!currentCropBox) {
+            return {
+              left: 0,
+              top: 0,
+              right: viewport.width,
+              bottom: viewport.height
+            };
+          }
+          return currentCropBox;
+        });
+      }
+
     } catch (err: any) {
       if (err instanceof pdfjsLib.RenderingCancelledException) {
       } else {
@@ -169,22 +221,19 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
     }
   };
 
-  const checkIntersections = (box: { x: number, y: number, width: number, height: number }) => {
+  const checkIntersections = (box: { left: number, top: number, right: number, bottom: number }) => {
     if (!textItems || textItems.length < currentPage) return;
     if (!pageDimensions) return;
 
-    // Map drawn box (which is in screen coords) to LiteParse coords
-    // LiteParse coords are roughly unscaled pdf space.
-    // Let's find scale factors based on current page viewing
     const liteParsePageRef = textItems[currentPage - 1];
     const scaleX = liteParsePageRef.width / pageDimensions.width;
     const scaleY = liteParsePageRef.height / pageDimensions.height;
 
     const lpBox = {
-      x: box.x * scaleX,
-      y: box.y * scaleY,
-      width: box.width * scaleX,
-      height: box.height * scaleY
+      left: box.left * scaleX,
+      top: box.top * scaleY,
+      right: box.right * scaleX,
+      bottom: box.bottom * scaleY
     };
 
     let intersects = false;
@@ -205,10 +254,10 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
         const itemTop = item.y;
         const itemBottom = item.y + item.height;
 
-        const boxLeft = lpBox.x;
-        const boxRight = lpBox.x + lpBox.width;
-        const boxTop = lpBox.y;
-        const boxBottom = lpBox.y + lpBox.height;
+        const boxLeft = lpBox.left;
+        const boxRight = lpBox.right;
+        const boxTop = lpBox.top;
+        const boxBottom = lpBox.bottom;
 
         // Check horizontal boundary crossing
         const crossesLeft = itemLeft < boxLeft && itemRight > boxLeft && itemBottom > boxTop && itemTop < boxBottom;
@@ -234,7 +283,7 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
   };
 
   useEffect(() => {
-    if (cropBox && cropBox.width > 10 && cropBox.height > 10) {
+    if (cropBox && (cropBox.right - cropBox.left) > 10 && (cropBox.bottom - cropBox.top) > 10) {
       checkIntersections(cropBox);
     }
   }, [applyPagesMode, customPageRange]);
@@ -243,7 +292,6 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
     const container = containerRef.current;
     if (!container) return;
 
-    // Check if we clicked on a resize handle first
     const target = e.target as HTMLElement;
     if (target.dataset.handle) {
       setResizeHandle(target.dataset.handle);
@@ -251,21 +299,11 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
       return;
     }
 
-    const rect = container.getBoundingClientRect();
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
-
-    setDragStart({ x, y });
-    setCropBox({ x, y, width: 0, height: 0 });
-    setIsDragging(true);
-    setWarningMessage(null);
+    // We no longer draw a box from scratch, so we don't start dragging without a handle
   };
 
   const handleMouseMove = (e: React.MouseEvent | React.TouchEvent) => {
-    if (!isDragging || !containerRef.current) return;
+    if (!isDragging || !containerRef.current || !resizeHandle || !cropBox) return;
 
     const rect = containerRef.current.getBoundingClientRect();
     const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
@@ -274,67 +312,45 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
     const currentX = Math.max(0, Math.min(clientX - rect.left, rect.width));
     const currentY = Math.max(0, Math.min(clientY - rect.top, rect.height));
 
-    let updatedCropBox = { ...cropBox! };
+    const updatedCropBox = { ...cropBox };
 
-    if (resizeHandle && cropBox) {
-      // Handle resizing
-      if (resizeHandle.includes('left')) {
-        const newWidth = cropBox.width + (cropBox.x - currentX);
-        if (newWidth > 10) {
-          updatedCropBox.x = currentX;
-          updatedCropBox.width = newWidth;
-        }
-      }
-      if (resizeHandle.includes('right')) {
-        const newWidth = currentX - cropBox.x;
-        if (newWidth > 10) {
-          updatedCropBox.width = newWidth;
-        }
-      }
-      if (resizeHandle.includes('top')) {
-        const newHeight = cropBox.height + (cropBox.y - currentY);
-        if (newHeight > 10) {
-          updatedCropBox.y = currentY;
-          updatedCropBox.height = newHeight;
-        }
-      }
-      if (resizeHandle.includes('bottom')) {
-        const newHeight = currentY - cropBox.y;
-        if (newHeight > 10) {
-          updatedCropBox.height = newHeight;
-        }
-      }
-    } else if (dragStart) {
-      // Handle drawing new box
-      const newX = Math.min(dragStart.x, currentX);
-      const newY = Math.min(dragStart.y, currentY);
-      const newWidth = Math.abs(currentX - dragStart.x);
-      const newHeight = Math.abs(currentY - dragStart.y);
-
-      updatedCropBox = { x: newX, y: newY, width: newWidth, height: newHeight };
+    if (resizeHandle === 'left') {
+      updatedCropBox.left = Math.min(currentX, updatedCropBox.right - 10);
+    } else if (resizeHandle === 'right') {
+      updatedCropBox.right = Math.max(currentX, updatedCropBox.left + 10);
+    } else if (resizeHandle === 'top') {
+      updatedCropBox.top = Math.min(currentY, updatedCropBox.bottom - 10);
+    } else if (resizeHandle === 'bottom') {
+      updatedCropBox.bottom = Math.max(currentY, updatedCropBox.top + 10);
     }
 
     setCropBox(updatedCropBox);
 
-    // Update PDF coordinate representation
     if (pageDimensions && textItems.length >= currentPage) {
       const liteParsePageRef = textItems[currentPage - 1];
       const scaleX = liteParsePageRef.width / pageDimensions.width;
       const scaleY = liteParsePageRef.height / pageDimensions.height;
 
       setPdfBox({
-        x: Math.round(updatedCropBox.x * scaleX),
-        y: Math.round(updatedCropBox.y * scaleY),
-        width: Math.round(updatedCropBox.width * scaleX),
-        height: Math.round(updatedCropBox.height * scaleY)
+        left: Math.round(updatedCropBox.left * scaleX),
+        top: Math.round(updatedCropBox.top * scaleY),
+        right: Math.round(updatedCropBox.right * scaleX),
+        bottom: Math.round(updatedCropBox.bottom * scaleY)
       });
     }
   };
 
-  const handlePdfBoxChange = (field: 'x' | 'y' | 'width' | 'height', value: number) => {
+  const handlePdfBoxChange = (field: 'left' | 'top' | 'right' | 'bottom', value: number) => {
     if (!pdfBox || !pageDimensions || !textItems[currentPage - 1]) return;
 
     const newPdfBox = { ...pdfBox, [field]: value };
+
+    // Enforce basic constraints
+    if (field === 'left') newPdfBox.left = Math.min(newPdfBox.left, newPdfBox.right - 10);
+    if (field === 'right') newPdfBox.right = Math.max(newPdfBox.right, newPdfBox.left + 10);
+    if (field === 'top') newPdfBox.top = Math.min(newPdfBox.top, newPdfBox.bottom - 10);
+    if (field === 'bottom') newPdfBox.bottom = Math.max(newPdfBox.bottom, newPdfBox.top + 10);
+
     setPdfBox(newPdfBox);
 
     const liteParsePageRef = textItems[currentPage - 1];
@@ -342,26 +358,22 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
     const scaleY = pageDimensions.height / liteParsePageRef.height;
 
     const newCropBox = {
-      x: newPdfBox.x * scaleX,
-      y: newPdfBox.y * scaleY,
-      width: newPdfBox.width * scaleX,
-      height: newPdfBox.height * scaleY
+      left: newPdfBox.left * scaleX,
+      top: newPdfBox.top * scaleY,
+      right: newPdfBox.right * scaleX,
+      bottom: newPdfBox.bottom * scaleY
     };
 
     setCropBox(newCropBox);
 
-    if (newCropBox.width > 10 && newCropBox.height > 10) {
+    if ((newCropBox.right - newCropBox.left) > 10 && (newCropBox.bottom - newCropBox.top) > 10) {
       checkIntersections(newCropBox);
     }
   };
 
   const handleMouseUp = () => {
-    if (isDragging && cropBox && cropBox.width > 10 && cropBox.height > 10) {
+    if (isDragging && cropBox && (cropBox.right - cropBox.left) > 10 && (cropBox.bottom - cropBox.top) > 10) {
       checkIntersections(cropBox);
-    } else if (cropBox && (cropBox.width <= 10 || cropBox.height <= 10)) {
-      setCropBox(null);
-      setPdfBox(null);
-      setWarningMessage(null);
     }
     setIsDragging(false);
     setResizeHandle(null);
@@ -377,10 +389,10 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
       const scaleY = liteParsePage.height / pageDimensions.height;
 
       const lpBox = {
-        x: cropBox.x * scaleX,
-        y: cropBox.y * scaleY,
-        width: cropBox.width * scaleX,
-        height: cropBox.height * scaleY
+        x: cropBox.left * scaleX,
+        y: cropBox.top * scaleY,
+        width: (cropBox.right - cropBox.left) * scaleX,
+        height: (cropBox.bottom - cropBox.top) * scaleY
       };
 
       let pagesToCrop: number | 'all' | number[] = 'all';
@@ -431,52 +443,46 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
 
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Left (X)</label>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Left Crop</label>
                 <input
                   type="number"
-                  value={pdfBox?.x ?? ''}
-                  onChange={(e) => handlePdfBoxChange('x', parseFloat(e.target.value) || 0)}
+                  value={pdfBox?.left ?? ''}
+                  onChange={(e) => handlePdfBoxChange('left', parseFloat(e.target.value) || 0)}
                   disabled={!pdfBox}
                   className="w-full border rounded px-3 py-2 text-sm focus:ring-1 focus:ring-blue-500 outline-none disabled:bg-gray-50 disabled:text-gray-400"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Top (Y)</label>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Right Crop</label>
                 <input
                   type="number"
-                  value={pdfBox?.y ?? ''}
-                  onChange={(e) => handlePdfBoxChange('y', parseFloat(e.target.value) || 0)}
+                  value={pdfBox?.right ?? ''}
+                  onChange={(e) => handlePdfBoxChange('right', parseFloat(e.target.value) || 0)}
                   disabled={!pdfBox}
                   className="w-full border rounded px-3 py-2 text-sm focus:ring-1 focus:ring-blue-500 outline-none disabled:bg-gray-50 disabled:text-gray-400"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Width</label>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Top Crop</label>
                 <input
                   type="number"
-                  value={pdfBox?.width ?? ''}
-                  onChange={(e) => handlePdfBoxChange('width', Math.max(1, parseFloat(e.target.value) || 0))}
+                  value={pdfBox?.top ?? ''}
+                  onChange={(e) => handlePdfBoxChange('top', parseFloat(e.target.value) || 0)}
                   disabled={!pdfBox}
                   className="w-full border rounded px-3 py-2 text-sm focus:ring-1 focus:ring-blue-500 outline-none disabled:bg-gray-50 disabled:text-gray-400"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Height</label>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Bottom Crop</label>
                 <input
                   type="number"
-                  value={pdfBox?.height ?? ''}
-                  onChange={(e) => handlePdfBoxChange('height', Math.max(1, parseFloat(e.target.value) || 0))}
+                  value={pdfBox?.bottom ?? ''}
+                  onChange={(e) => handlePdfBoxChange('bottom', parseFloat(e.target.value) || 0)}
                   disabled={!pdfBox}
                   className="w-full border rounded px-3 py-2 text-sm focus:ring-1 focus:ring-blue-500 outline-none disabled:bg-gray-50 disabled:text-gray-400"
                 />
               </div>
             </div>
-
-            {(!pdfBox) && (
-              <div className="mt-4 text-xs text-gray-400 text-center italic">
-                Draw a box on the PDF to start cropping
-              </div>
-            )}
           </div>
 
           <div className="flex-1 flex flex-col relative overflow-auto items-center justify-center p-8">
@@ -519,30 +525,50 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
                 {/* Dim overlay outside crop box */}
                 {cropBox && (
                   <>
-                    <div className="absolute top-0 left-0 right-0 bg-black/30 pointer-events-none" style={{ height: cropBox.y }} />
-                    <div className="absolute bottom-0 left-0 right-0 bg-black/30 pointer-events-none" style={{ top: cropBox.y + cropBox.height }} />
-                    <div className="absolute bg-black/30 pointer-events-none" style={{ top: cropBox.y, bottom: 0, left: 0, width: cropBox.x, height: cropBox.height }} />
-                    <div className="absolute bg-black/30 pointer-events-none" style={{ top: cropBox.y, bottom: 0, left: cropBox.x + cropBox.width, right: 0, height: cropBox.height }} />
+                    <div className="absolute top-0 left-0 right-0 bg-black/30 pointer-events-none" style={{ height: cropBox.top }} />
+                    <div className="absolute bottom-0 left-0 right-0 bg-black/30 pointer-events-none" style={{ top: cropBox.bottom }} />
+                    <div className="absolute bg-black/30 pointer-events-none" style={{ top: cropBox.top, bottom: 0, left: 0, width: cropBox.left, height: cropBox.bottom - cropBox.top }} />
+                    <div className="absolute bg-black/30 pointer-events-none" style={{ top: cropBox.top, bottom: 0, left: cropBox.right, right: 0, height: cropBox.bottom - cropBox.top }} />
 
-                    {/* Crop box border */}
+                    {/* 4 independent lines for cropping */}
+                    {/* Top Line */}
                     <div
-                      className="absolute border-2 border-blue-500 bg-blue-500/10 box-border pointer-events-none"
-                      style={{
-                        left: cropBox.x,
-                        top: cropBox.y,
-                        width: cropBox.width,
-                        height: cropBox.height
-                      }}
+                      className="absolute border-t-2 border-blue-500 pointer-events-none"
+                      style={{ top: cropBox.top, left: cropBox.left, width: cropBox.right - cropBox.left }}
                     >
-                      {/* Resize Handles */}
-                      <div data-handle="top-left" className="absolute w-3 h-3 bg-white border-2 border-blue-500 -top-1.5 -left-1.5 cursor-nwse-resize pointer-events-auto" />
-                      <div data-handle="top" className="absolute w-full h-3 -top-1.5 left-0 cursor-ns-resize pointer-events-auto opacity-0" />
-                      <div data-handle="top-right" className="absolute w-3 h-3 bg-white border-2 border-blue-500 -top-1.5 -right-1.5 cursor-nesw-resize pointer-events-auto" />
-                      <div data-handle="right" className="absolute w-3 h-full top-0 -right-1.5 cursor-ew-resize pointer-events-auto opacity-0" />
-                      <div data-handle="bottom-right" className="absolute w-3 h-3 bg-white border-2 border-blue-500 -bottom-1.5 -right-1.5 cursor-nwse-resize pointer-events-auto" />
-                      <div data-handle="bottom" className="absolute w-full h-3 -bottom-1.5 left-0 cursor-ns-resize pointer-events-auto opacity-0" />
-                      <div data-handle="bottom-left" className="absolute w-3 h-3 bg-white border-2 border-blue-500 -bottom-1.5 -left-1.5 cursor-nesw-resize pointer-events-auto" />
-                      <div data-handle="left" className="absolute w-3 h-full top-0 -left-1.5 cursor-ew-resize pointer-events-auto opacity-0" />
+                      <div data-handle="top" className="absolute w-full h-6 -top-3 left-0 cursor-ns-resize pointer-events-auto flex items-center justify-center group">
+                        <div className="w-8 h-1 bg-blue-500 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+                      </div>
+                    </div>
+
+                    {/* Bottom Line */}
+                    <div
+                      className="absolute border-b-2 border-blue-500 pointer-events-none"
+                      style={{ top: cropBox.bottom, left: cropBox.left, width: cropBox.right - cropBox.left }}
+                    >
+                      <div data-handle="bottom" className="absolute w-full h-6 -top-3 left-0 cursor-ns-resize pointer-events-auto flex items-center justify-center group">
+                        <div className="w-8 h-1 bg-blue-500 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+                      </div>
+                    </div>
+
+                    {/* Left Line */}
+                    <div
+                      className="absolute border-l-2 border-blue-500 pointer-events-none"
+                      style={{ left: cropBox.left, top: cropBox.top, height: cropBox.bottom - cropBox.top }}
+                    >
+                      <div data-handle="left" className="absolute w-6 h-full -left-3 top-0 cursor-ew-resize pointer-events-auto flex items-center justify-center group">
+                        <div className="h-8 w-1 bg-blue-500 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+                      </div>
+                    </div>
+
+                    {/* Right Line */}
+                    <div
+                      className="absolute border-r-2 border-blue-500 pointer-events-none"
+                      style={{ left: cropBox.right, top: cropBox.top, height: cropBox.bottom - cropBox.top }}
+                    >
+                      <div data-handle="right" className="absolute w-6 h-full -left-3 top-0 cursor-ew-resize pointer-events-auto flex items-center justify-center group">
+                        <div className="h-8 w-1 bg-blue-500 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+                      </div>
                     </div>
                   </>
                 )}
