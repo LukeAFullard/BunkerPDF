@@ -15,6 +15,8 @@ export interface EditBox {
   width: number;
   height: number;
   newText: string;
+  fontSize?: number;
+  lineHeight?: number;
 }
 
 interface InteractiveEditModalProps {
@@ -22,6 +24,81 @@ interface InteractiveEditModalProps {
   docId: string | null;
   onClose: () => void;
   onApply: (edits: EditBox[]) => void;
+}
+
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function groupTextItemsIntoBlocks(textItems: any[]) {
+  if (!textItems || textItems.length === 0) return [];
+
+  const blocks: any[] = [];
+  let currentBlock: any = null;
+  let lastItem: any = null;
+
+  for (const item of textItems) {
+    if (!item.text.trim()) continue;
+
+    if (!currentBlock) {
+      currentBlock = {
+        x: item.x,
+        y: item.y,
+        width: item.width,
+        height: item.height,
+        text: item.text,
+        fontSize: item.fontSize || 12
+      };
+      lastItem = item;
+      continue;
+    }
+
+    const fontSize = item.fontSize || 12;
+    const yDiff = Math.abs(item.y - lastItem.y);
+
+    if (yDiff > fontSize * 1.5) {
+      blocks.push(currentBlock);
+      currentBlock = {
+        x: item.x,
+        y: item.y,
+        width: item.width,
+        height: item.height,
+        text: item.text,
+        fontSize: item.fontSize || 12
+      };
+    } else {
+      const isSameLine = yDiff < fontSize * 0.5;
+      if (isSameLine) {
+        const gap = item.x - (lastItem.x + lastItem.width);
+        if (gap > fontSize * 0.2) {
+          currentBlock.text += ' ';
+        }
+      } else {
+        if (currentBlock.text.endsWith('-')) {
+          currentBlock.text = currentBlock.text.slice(0, -1);
+        } else if (!currentBlock.text.endsWith(' ')) {
+          currentBlock.text += ' ';
+        }
+      }
+      currentBlock.text += item.text;
+
+      const minX = Math.min(currentBlock.x, item.x);
+      const minY = Math.min(currentBlock.y, item.y);
+      const maxX = Math.max(currentBlock.x + currentBlock.width, item.x + item.width);
+      const maxY = Math.max(currentBlock.y + currentBlock.height, item.y + item.height);
+
+      currentBlock.x = minX;
+      currentBlock.y = minY;
+      currentBlock.width = maxX - minX;
+      currentBlock.height = maxY - minY;
+      currentBlock.fontSize = Math.max(currentBlock.fontSize, item.fontSize || 12);
+    }
+    lastItem = item;
+  }
+
+  if (currentBlock) {
+    blocks.push(currentBlock);
+  }
+
+  return blocks;
 }
 
 export function InteractiveEditModal({ isOpen, docId, onClose, onApply }: InteractiveEditModalProps) {
@@ -160,17 +237,18 @@ export function InteractiveEditModal({ isOpen, docId, onClose, onApply }: Intera
 
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const handleItemClick = (item: any, pageIdx: number, _idx: number) => {
+  const handleItemClick = (block: any, pageIdx: number, _idx: number) => {
     // Convert to edit box
-    const editExists = edits.findIndex(e => e.pageNum === pageIdx && e.x === item.x && e.y === item.y);
+    const editExists = edits.findIndex(e => e.pageNum === pageIdx && e.x === block.x && e.y === block.y);
     if (editExists === -1) {
        setEdits(prev => [...prev, {
           pageNum: pageIdx,
-          x: item.x,
-          y: item.y,
-          width: item.width,
-          height: item.height,
-          newText: item.text // init with original
+          x: block.x,
+          y: block.y,
+          width: block.width,
+          height: block.height,
+          newText: block.text, // init with original
+          fontSize: block.fontSize
        }]);
        setActiveEditBox(edits.length); // will be the new index
     } else {
@@ -201,6 +279,7 @@ export function InteractiveEditModal({ isOpen, docId, onClose, onApply }: Intera
 
   const pageIdx = currentPage - 1;
   const currentLpPage = liteparseData?.pages?.[pageIdx];
+  const blocks = currentLpPage?.textItems ? groupTextItemsIntoBlocks(currentLpPage.textItems) : [];
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex justify-center items-center p-4">
@@ -253,28 +332,25 @@ export function InteractiveEditModal({ isOpen, docId, onClose, onApply }: Intera
                   <canvas ref={canvasRef} className="block pointer-events-none" />
                   <div className="absolute top-0 left-0 w-full h-full">
                      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                     {!isLoading && currentLpPage?.textItems && overlayScale > 0 && currentLpPage.textItems.map((item: any, idx: number) => {
-                        const editIndex = edits.findIndex(e => e.pageNum === pageIdx && e.x === item.x && e.y === item.y);
+                     {!isLoading && blocks.length > 0 && overlayScale > 0 && blocks.map((block: any, idx: number) => {
+                        const editIndex = edits.findIndex(e => e.pageNum === pageIdx && e.x === block.x && e.y === block.y);
                         const isEdited = editIndex !== -1;
                         const isEditing = activeEditBox === editIndex;
 
                         if (isEditing && isEdited) {
                            return (
-                              <input
+                              <textarea
                                 key={idx}
                                 autoFocus
                                 value={edits[editIndex].newText}
                                 onChange={(e) => updateEditBox(editIndex, e.target.value)}
                                 onBlur={() => setActiveEditBox(null)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') setActiveEditBox(null);
-                                }}
-                                className="absolute bg-white border-2 border-indigo-500 shadow-lg px-1 outline-none font-sans text-sm z-50 text-black"
+                                className="absolute bg-white border-2 border-indigo-500 shadow-lg px-1 outline-none font-sans text-sm z-50 text-black resize-none"
                                 style={{
-                                   left: `${item.x * overlayScale}px`,
-                                   top: `${item.y * overlayScale - 4}px`, // slightly offset for visual clarity
-                                   minWidth: `${Math.max(item.width * overlayScale, 150)}px`,
-                                   height: `${item.height * overlayScale + 8}px`,
+                                   left: `${block.x * overlayScale}px`,
+                                   top: `${block.y * overlayScale - 4}px`, // slightly offset for visual clarity
+                                   minWidth: `${Math.max(block.width * overlayScale, 150)}px`,
+                                   height: `${Math.max(block.height * overlayScale + 8, 40)}px`,
                                 }}
                               />
                            );
@@ -283,22 +359,22 @@ export function InteractiveEditModal({ isOpen, docId, onClose, onApply }: Intera
                         return (
                            <div
                              key={idx}
-                             onClick={() => handleItemClick(item, pageIdx, idx)}
+                             onClick={() => handleItemClick(block, pageIdx, idx)}
                              className={`absolute cursor-pointer rounded-sm border ${
                                isEdited
                                  ? 'bg-indigo-100 border-indigo-400 opacity-90'
                                  : 'border-transparent hover:bg-indigo-500/20 hover:border-indigo-600/50'
                              }`}
                              style={{
-                               left: `${item.x * overlayScale}px`,
-                               top: `${item.y * overlayScale}px`,
-                               width: `${item.width * overlayScale}px`,
-                               height: `${item.height * overlayScale}px`,
+                               left: `${block.x * overlayScale}px`,
+                               top: `${block.y * overlayScale}px`,
+                               width: `${block.width * overlayScale}px`,
+                               height: `${block.height * overlayScale}px`,
                              }}
                              title="Click to edit"
                            >
                              {isEdited && (
-                                <div className="absolute inset-0 flex items-center overflow-hidden whitespace-nowrap text-xs text-indigo-900 px-0.5">
+                                <div className="absolute inset-0 p-0.5 overflow-hidden text-xs text-indigo-900 leading-tight">
                                    {edits[editIndex].newText}
                                 </div>
                              )}
