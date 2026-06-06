@@ -899,7 +899,7 @@ export const autoRedactLayoutLiteparse = async (
 
 export const cropPdfLiteparse = async (
   bytes: Uint8Array,
-  pageNum: number | 'all',
+  pageNum: number | 'all' | number[],
   cropBox: { x: number; y: number; width: number; height: number }
 ): Promise<Uint8Array> => {
   const { PDFDocument } = await import('pdf-lib');
@@ -915,6 +915,12 @@ export const cropPdfLiteparse = async (
   if (pageNum === 'all') {
     for (const page of pages) {
       applyCrop(page);
+    }
+  } else if (Array.isArray(pageNum)) {
+    for (const pNum of pageNum) {
+      if (pNum >= 0 && pNum < pages.length) {
+        applyCrop(pages[pNum]);
+      }
     }
   } else {
     if (pageNum < 0 || pageNum >= pages.length) return bytes;
