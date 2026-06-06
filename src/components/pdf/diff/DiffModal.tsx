@@ -5,12 +5,14 @@ import * as diff from 'diff';
 
 interface DiffModalProps {
   onClose: () => void;
+  initialDoc1Id?: string;
+  initialDoc2Id?: string;
   extractText: (bytes: Uint8Array) => Promise<string>;
   diffHighlightPdf: (bytes: Uint8Array, highlights: string[], color: [number, number, number]) => Promise<Uint8Array>;
   diffMergedHighlightPdf: (bytes1: Uint8Array, bytes2: Uint8Array, removedHighlights: string[], addedHighlights: string[]) => Promise<Uint8Array>;
 }
 
-export function DiffModal({ onClose, extractText, diffMergedHighlightPdf }: DiffModalProps) {
+export function DiffModal({ onClose, extractText, diffMergedHighlightPdf, initialDoc1Id, initialDoc2Id }: DiffModalProps) {
   const documents = useFileStore(state => state.documents);
 
   const [diffResult, setDiffResult] = useState<diff.Change[] | null>(null);
@@ -18,8 +20,8 @@ export function DiffModal({ onClose, extractText, diffMergedHighlightPdf }: Diff
   const [isLoading, setIsLoading] = useState(false);
 
   // Use state initialization for default values to avoid useEffect setState cascading renders
-  const [doc1Id, setDoc1Id] = useState<string>(documents.length >= 1 ? documents[0].id : '');
-  const [doc2Id, setDoc2Id] = useState<string>(documents.length >= 2 ? documents[1].id : '');
+  const [doc1Id, setDoc1Id] = useState<string>(initialDoc1Id || (documents.length >= 1 ? documents[0].id : ''));
+  const [doc2Id, setDoc2Id] = useState<string>(initialDoc2Id || (documents.length >= 2 ? documents[1].id : ''));
 
   const handleCompare = async () => {
     if (!doc1Id || !doc2Id) {
