@@ -78,6 +78,7 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
   const [lastSelectedId, setLastSelectedId] = useState<string | null>(null);
   const [lastSelectedColId, setLastSelectedColId] = useState<string | null>(null);
   const [thumbnailScale, setThumbnailScale] = useState(1);
+  const [draggedItemsOrder, setDraggedItemsOrder] = useState<PageItem[]>([]);
 
   // Initialize data
   useEffect(() => {
@@ -150,11 +151,23 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
     const activeStr = active.id as string;
     setActiveId(activeStr);
 
+    let currentSelected = selectedIds;
     // If we drag something that isn't selected, clear selection and select it
     if (!selectedIds.has(activeStr)) {
-      setSelectedIds(new Set([activeStr]));
+      currentSelected = new Set([activeStr]);
+      setSelectedIds(currentSelected);
       setLastSelectedId(activeStr);
     }
+
+    const itemsInOrder: PageItem[] = [];
+    columns.forEach(col => {
+      col.items.forEach(item => {
+        if (currentSelected.has(item.id)) {
+          itemsInOrder.push(item);
+        }
+      });
+    });
+    setDraggedItemsOrder(itemsInOrder);
   };
 
   const handleDragOver = (event: DragOverEvent) => {
@@ -181,13 +194,14 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
       setColumns((prevColumns) => {
         const newColumns = [...prevColumns];
 
-        // Find all selected items and remove them from all columns
-        const movedItems: PageItem[] = [];
+        // Only move the active item visually during the drag.
+        // The rest of the selected items will follow in handleDragEnd.
+        let movedItem: PageItem | null = null;
 
         newColumns.forEach((col, colIdx) => {
           const itemsToKeep = col.items.filter(item => {
-            if (selectedIds.has(item.id)) {
-              movedItems.push(item);
+            if (item.id === activeId) {
+              movedItem = item;
               return false;
             }
             return true;
@@ -195,11 +209,13 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
           newColumns[colIdx] = { ...col, items: itemsToKeep };
         });
 
+        if (!movedItem) return prevColumns;
+
         const overItems = [...newColumns[overColumnIndex].items];
         const overItemIndex = overItems.findIndex((item) => item.id === overId);
 
         if (overItemIndex === -1) {
-            overItems.push(...movedItems);
+            overItems.push(movedItem);
         } else {
              const isBelowOverItem =
               over &&
@@ -207,7 +223,7 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
               active.rect.current.translated.top > over.rect.top + over.rect.height;
 
              const modifier = isBelowOverItem ? 1 : 0;
-             overItems.splice(overItemIndex >= 0 ? overItemIndex + modifier : overItems.length + 1, 0, ...movedItems);
+             overItems.splice(overItemIndex >= 0 ? overItemIndex + modifier : overItems.length + 1, 0, movedItem);
         }
 
         newColumns[overColumnIndex] = { ...newColumns[overColumnIndex], items: overItems };
@@ -220,70 +236,80 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
     const { active, over } = event;
     if (!over) {
       setActiveId(null);
+      setDraggedItemsOrder([]);
       return;
     }
 
     const activeId = active.id;
     const overId = over.id;
 
-    if (activeId === overId) {
+    if (activeId === overId && selectedIds.size <= 1) {
        setActiveId(null);
+       setDraggedItemsOrder([]);
        return;
     }
 
-    const activeColumnIndex = columns.findIndex((col) => col.items.some((item) => item.id === activeId));
-    const overColumnIndex = columns.findIndex((col) => col.docId === overId) !== -1
-                            ? columns.findIndex((col) => col.docId === overId)
-                            : columns.findIndex((col) => col.items.some((item) => item.id === overId));
+    setColumns((prevColumns) => {
+      const newCols = [...prevColumns];
 
+      const selectedItems = draggedItemsOrder.map(draggedItem => {
+        for (const col of prevColumns) {
+           const found = col.items.find(i => i.id === draggedItem.id);
+           if (found) return found;
+        }
+        return draggedItem;
+      });
 
-    if (activeColumnIndex !== -1 && overColumnIndex !== -1 && activeColumnIndex === overColumnIndex) {
-      const items = [...columns[activeColumnIndex].items];
+      let overColIndex = newCols.findIndex(col => col.docId === overId);
+      if (overColIndex === -1) {
+        overColIndex = newCols.findIndex(col => col.items.some(i => i.id === overId));
+      }
 
-      const newIndex = items.findIndex((item) => item.id === overId);
-      if (newIndex !== -1) {
-        // Find selected items and their relative order
-        const selectedItems = items.filter(item => selectedIds.has(item.id));
-        const unselectedItems = items.filter(item => !selectedIds.has(item.id));
+      if (overColIndex === -1) return prevColumns;
 
-        // Find insert position in the unselected array.
-        // If we drop over a selected item, default to its original position.
-        let targetIndex = unselectedItems.findIndex(item => item.id === overId);
+      newCols.forEach((col, colIdx) => {
+        newCols[colIdx] = {
+          ...col,
+          items: col.items.filter(item => !selectedIds.has(item.id))
+        };
+      });
 
-        if (targetIndex === -1) {
-           // Find the closest unselected item before the drop target
-           const originalTargetIndex = items.findIndex(item => item.id === overId);
-           let closestUnselectedIdx = -1;
-           for (let i = originalTargetIndex - 1; i >= 0; i--) {
-              if (!selectedIds.has(items[i].id)) {
-                 closestUnselectedIdx = unselectedItems.findIndex(u => u.id === items[i].id);
-                 break;
-              }
-           }
-           targetIndex = closestUnselectedIdx !== -1 ? closestUnselectedIdx + 1 : 0;
-        } else {
+      const targetCol = newCols[overColIndex];
+      let insertIndex = targetCol.items.length;
+
+      if (overColIndex !== prevColumns.findIndex(col => col.docId === overId)) {
+         insertIndex = targetCol.items.findIndex(item => item.id === overId);
+
+         if (insertIndex === -1) {
+             const originalCol = prevColumns[overColIndex];
+             const originalTargetIndex = originalCol.items.findIndex(i => i.id === overId);
+
+             let closestUnselectedIdx = -1;
+             for (let i = originalTargetIndex - 1; i >= 0; i--) {
+                if (!selectedIds.has(originalCol.items[i].id)) {
+                   closestUnselectedIdx = targetCol.items.findIndex(u => u.id === originalCol.items[i].id);
+                   break;
+                }
+             }
+             insertIndex = closestUnselectedIdx !== -1 ? closestUnselectedIdx + 1 : 0;
+         } else {
              const isBelowOverItem =
               over &&
               active.rect.current.translated &&
               active.rect.current.translated.top > over.rect.top + over.rect.height;
 
-             if (isBelowOverItem) targetIndex++;
-        }
-
-        unselectedItems.splice(targetIndex, 0, ...selectedItems);
-
-        setColumns((prev) => {
-          const newCols = [...prev];
-          newCols[activeColumnIndex] = {
-            ...newCols[activeColumnIndex],
-            items: unselectedItems,
-          };
-          return newCols;
-        });
+             if (isBelowOverItem) insertIndex++;
+         }
       }
-    }
+
+      targetCol.items.splice(insertIndex, 0, ...selectedItems);
+      newCols[overColIndex] = targetCol;
+
+      return newCols;
+    });
 
     setActiveId(null);
+    setDraggedItemsOrder([]);
   };
 
   const handleSelectToggle = (e: React.MouseEvent | React.TouchEvent, id: string) => {
@@ -383,7 +409,7 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
     setColumns(prev => prev.map(col => ({
       ...col,
       items: col.items.map(item =>
-        item.id === id
+        (selectedIds.has(id) ? selectedIds.has(item.id) : item.id === id)
           ? { ...item, rotation: ((item.rotation || 0) + degrees) % 360 }
           : item
       )
@@ -391,21 +417,27 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
   };
 
   const handleDeleteSingle = (id: string) => {
+    const isSelected = selectedIds.has(id);
+    const idsToDelete = isSelected ? selectedIds : new Set([id]);
+
     setColumns(prev => prev.map(col => ({
       ...col,
-      items: col.items.filter(item => item.id !== id)
+      items: col.items.filter(item => !idsToDelete.has(item.id))
     })));
-    setSelectedIds(prev => {
-      if (prev.has(id)) {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      }
-      return prev;
-    });
+
+    if (isSelected) {
+       setSelectedIds(new Set());
+       setLastSelectedId(null);
+    } else {
+       setSelectedIds(prev => {
+         const next = new Set(prev);
+         next.delete(id);
+         return next;
+       });
+    }
   };
 
-const handleDeleteSelected = () => {
+  const handleDeleteSelected = () => {
     if (selectedIds.size === 0) return;
 
     setColumns(prev => prev.map(col => ({
@@ -421,16 +453,29 @@ const handleDeleteSelected = () => {
       const colIndex = prevColumns.findIndex((c) => c.docId === colId);
       if (colIndex === -1) return prevColumns;
 
+      const isSelected = selectedIds.has(itemId);
+      const itemsToMoveIds = isSelected ? selectedIds : new Set([itemId]);
+
       const newColumns = [...prevColumns];
-      const items = [...newColumns[colIndex].items];
+      const itemsToMove: PageItem[] = [];
 
-      const itemIndex = items.findIndex((i) => i.id === itemId);
-      if (itemIndex <= 0) return prevColumns; // Already at front or not found
+      newColumns.forEach((col) => {
+        col.items.forEach(item => {
+          if (itemsToMoveIds.has(item.id)) {
+            itemsToMove.push(item);
+          }
+        });
+      });
 
-      const [item] = items.splice(itemIndex, 1);
-      items.unshift(item);
+      newColumns.forEach((col, idx) => {
+        newColumns[idx] = {
+          ...col,
+          items: col.items.filter(item => !itemsToMoveIds.has(item.id))
+        };
+      });
 
-      newColumns[colIndex] = { ...newColumns[colIndex], items };
+      newColumns[colIndex].items.unshift(...itemsToMove);
+
       return newColumns;
     });
   };
@@ -440,16 +485,29 @@ const handleDeleteSelected = () => {
       const colIndex = prevColumns.findIndex((c) => c.docId === colId);
       if (colIndex === -1) return prevColumns;
 
+      const isSelected = selectedIds.has(itemId);
+      const itemsToMoveIds = isSelected ? selectedIds : new Set([itemId]);
+
       const newColumns = [...prevColumns];
-      const items = [...newColumns[colIndex].items];
+      const itemsToMove: PageItem[] = [];
 
-      const itemIndex = items.findIndex((i) => i.id === itemId);
-      if (itemIndex === -1 || itemIndex === items.length - 1) return prevColumns; // Already at end or not found
+      newColumns.forEach((col) => {
+        col.items.forEach(item => {
+          if (itemsToMoveIds.has(item.id)) {
+            itemsToMove.push(item);
+          }
+        });
+      });
 
-      const [item] = items.splice(itemIndex, 1);
-      items.push(item);
+      newColumns.forEach((col, idx) => {
+        newColumns[idx] = {
+          ...col,
+          items: col.items.filter(item => !itemsToMoveIds.has(item.id))
+        };
+      });
 
-      newColumns[colIndex] = { ...newColumns[colIndex], items };
+      newColumns[colIndex].items.push(...itemsToMove);
+
       return newColumns;
     });
   };
