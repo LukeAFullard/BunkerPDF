@@ -268,11 +268,12 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
 
     let intersects = false;
     let cutCount = 0;
+    const cutPages = new Set<number>();
 
     const indicesToCheck = getPagesToCheckIndices();
-    const pagesToCheck = indicesToCheck.map(idx => textItems[idx]).filter(p => p !== undefined);
+    const pagesToCheck = indicesToCheck.map(idx => ({ pageIdx: idx, page: textItems[idx] })).filter(p => p.page !== undefined);
 
-    for (const page of pagesToCheck) {
+    for (const { pageIdx, page } of pagesToCheck) {
       if (!page || !page.textItems) continue;
       for (const item of page.textItems) {
         // Check if item intersects the boundary of the crop box
@@ -300,12 +301,21 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
         if (crossesLeft || crossesRight || crossesTop || crossesBottom) {
           intersects = true;
           cutCount++;
+          cutPages.add(pageIdx + 1);
         }
       }
     }
 
     if (intersects) {
-      const pageDesc = applyPagesMode === 'all' ? ' across all pages' : applyPagesMode === 'custom' ? ' across selected pages' : '';
+      let pageDesc = '';
+      if (applyPagesMode === 'all' || applyPagesMode === 'custom') {
+        const cutPagesArr = Array.from(cutPages).sort((a, b) => a - b);
+        if (cutPagesArr.length <= 5) {
+          pageDesc = ` on page(s) ${cutPagesArr.join(', ')}`;
+        } else {
+          pageDesc = ` on ${cutPagesArr.length} pages (e.g. ${cutPagesArr.slice(0, 5).join(', ')}...)`;
+        }
+      }
       setWarningMessage(`Warning: The crop area cuts through ${cutCount} text element(s)${pageDesc}.`);
     } else {
       setWarningMessage(null);
@@ -535,65 +545,70 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
           </div>
 
           <div className="flex-1 flex flex-col relative bg-gray-100 overflow-hidden">
-            {/* Zoom Bar Overlay */}
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-white px-4 py-2 rounded-full shadow-md z-20">
-              <button onClick={() => setZoomLevel(z => Math.max(0.5, z - 0.25))} className="p-1 hover:bg-gray-100 rounded">
-                <ZoomOut className="w-4 h-4" />
-              </button>
-              <span className="text-sm font-medium w-12 text-center">{Math.round(zoomLevel * 100)}%</span>
-              <button onClick={() => setZoomLevel(z => Math.min(3.0, z + 0.25))} className="p-1 hover:bg-gray-100 rounded">
-                <ZoomIn className="w-4 h-4" />
-              </button>
-              <div className="w-px h-4 bg-gray-300 mx-2" />
-              <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage <= 1} className="px-2 py-1 bg-gray-100 rounded disabled:opacity-50 text-sm">Prev</button>
-              <span className="text-sm font-medium">Page {currentPage} / {totalPages}</span>
-              <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages} className="px-2 py-1 bg-gray-100 rounded disabled:opacity-50 text-sm">Next</button>
+            {/* Top Toolbar */}
+            <div className="bg-white border-b px-4 py-3 flex flex-wrap items-center justify-between gap-4 z-10 shrink-0 shadow-sm">
+              {/* Zoom and Page Controls */}
+              <div className="flex items-center gap-3 bg-gray-50 px-3 py-1.5 rounded-lg border">
+                <button onClick={() => setZoomLevel(z => Math.max(0.5, z - 0.25))} className="p-1 hover:bg-gray-200 rounded transition-colors">
+                  <ZoomOut className="w-4 h-4 text-gray-700" />
+                </button>
+                <span className="text-sm font-medium w-12 text-center text-gray-700">{Math.round(zoomLevel * 100)}%</span>
+                <button onClick={() => setZoomLevel(z => Math.min(3.0, z + 0.25))} className="p-1 hover:bg-gray-200 rounded transition-colors">
+                  <ZoomIn className="w-4 h-4 text-gray-700" />
+                </button>
+                <div className="w-px h-5 bg-gray-300 mx-1" />
+                <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage <= 1} className="px-2 py-1 hover:bg-gray-200 rounded disabled:opacity-50 text-sm font-medium text-gray-700 transition-colors">Prev</button>
+                <span className="text-sm font-medium text-gray-700 min-w-[80px] text-center">Page {currentPage} / {totalPages}</span>
+                <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages} className="px-2 py-1 hover:bg-gray-200 rounded disabled:opacity-50 text-sm font-medium text-gray-700 transition-colors">Next</button>
+              </div>
+
+              {/* Measurement Controls */}
+              <div className="flex items-center gap-4 bg-gray-50 px-4 py-1.5 rounded-lg border">
+                <div className="flex items-center gap-2 border-r pr-4 border-gray-300">
+                  <h4 className="text-xs font-semibold text-gray-600">Size</h4>
+                  <select
+                    value={measurementUnit}
+                    onChange={(e) => setMeasurementUnit(e.target.value as any)}
+                    className="text-xs border rounded p-1 outline-none bg-white text-gray-700 focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value="pt">Points (pt)</option>
+                    <option value="in">Inches (in)</option>
+                    <option value="mm">Millimeters (mm)</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-gray-500 font-medium">W:</label>
+                    <input
+                      key={`width-${measurementUnit}-${pdfBox ? pdfBox.right - pdfBox.left : ''}`}
+                      type="number"
+                      step="0.01"
+                      defaultValue={pdfBox ? formatUnit(pdfBox.right - pdfBox.left, measurementUnit) : ''}
+                      onBlur={(e) => handleDimensionChange('width', e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleDimensionChange('width', e.currentTarget.value)}
+                      disabled={!pdfBox}
+                      className="w-16 text-sm border rounded px-2 py-1 outline-none focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-400 text-gray-700"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-gray-500 font-medium">H:</label>
+                    <input
+                      key={`height-${measurementUnit}-${pdfBox ? pdfBox.bottom - pdfBox.top : ''}`}
+                      type="number"
+                      step="0.01"
+                      defaultValue={pdfBox ? formatUnit(pdfBox.bottom - pdfBox.top, measurementUnit) : ''}
+                      onBlur={(e) => handleDimensionChange('height', e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleDimensionChange('height', e.currentTarget.value)}
+                      disabled={!pdfBox}
+                      className="w-16 text-sm border rounded px-2 py-1 outline-none focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-400 text-gray-700"
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {/* Measurement Overlay */}
-            <div className="absolute top-4 right-8 flex flex-col gap-2 bg-white/90 backdrop-blur px-4 py-3 rounded-lg shadow-md z-20 border">
-              <div className="flex items-center justify-between gap-4 mb-2">
-                <h4 className="text-xs font-semibold text-gray-700">Dimensions</h4>
-                <select
-                  value={measurementUnit}
-                  onChange={(e) => setMeasurementUnit(e.target.value as any)}
-                  className="text-xs border rounded p-1 outline-none bg-white"
-                >
-                  <option value="pt">Points (pt)</option>
-                  <option value="in">Inches (in)</option>
-                  <option value="mm">Millimeters (mm)</option>
-                </select>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-gray-500 w-12">Width:</label>
-                <input
-                  key={`width-${measurementUnit}-${pdfBox ? pdfBox.right - pdfBox.left : ''}`}
-                  type="number"
-                  step="0.01"
-                  defaultValue={pdfBox ? formatUnit(pdfBox.right - pdfBox.left, measurementUnit) : ''}
-                  onBlur={(e) => handleDimensionChange('width', e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleDimensionChange('width', e.currentTarget.value)}
-                  disabled={!pdfBox}
-                  className="w-20 text-sm border rounded px-2 py-1 outline-none focus:border-blue-500 disabled:bg-gray-50"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-gray-500 w-12">Height:</label>
-                <input
-                  key={`height-${measurementUnit}-${pdfBox ? pdfBox.bottom - pdfBox.top : ''}`}
-                  type="number"
-                  step="0.01"
-                  defaultValue={pdfBox ? formatUnit(pdfBox.bottom - pdfBox.top, measurementUnit) : ''}
-                  onBlur={(e) => handleDimensionChange('height', e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleDimensionChange('height', e.currentTarget.value)}
-                  disabled={!pdfBox}
-                  className="w-20 text-sm border rounded px-2 py-1 outline-none focus:border-blue-500 disabled:bg-gray-50"
-                />
-              </div>
-            </div>
-
-            <div className="flex-1 flex relative overflow-auto items-center justify-center p-8 pt-20">
+            <div className="flex-1 flex relative overflow-auto items-center justify-center p-8 bg-gray-100">
 
               {isLoading && (
                 <div className="absolute inset-0 flex items-center justify-center bg-white/50 z-20">
