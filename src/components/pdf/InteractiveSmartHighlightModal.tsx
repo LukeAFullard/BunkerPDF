@@ -40,6 +40,10 @@ export function InteractiveSmartHighlightModal({ isOpen, docId, onClose, onApply
   const [selectedBoxes, setSelectedBoxes] = useState<HighlightBox[]>([]);
   const [currentColor, setCurrentColor] = useState<[number, number, number]>([1, 1, 0]); // Yellow
 
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [startPos, setStartPos] = useState({ x: 0, y: 0 });
+  const [currentPos, setCurrentPos] = useState({ x: 0, y: 0 });
+
   // Store LiteParse items per page
   const [textItems, setTextItems] = useState<Record<string, unknown>[]>([]);
 
@@ -115,12 +119,13 @@ export function InteractiveSmartHighlightModal({ isOpen, docId, onClose, onApply
         ? [outputScale, 0, 0, outputScale, 0, 0]
         : undefined;
 
-      const renderContext: any = {
+      const renderContext = {
         canvasContext: context,
         transform: transform as number[] | undefined,
         viewport: viewport,
       };
 
+      // @ts-expect-error - The types for pdfjs-dist do not export RenderParameters perfectly, but page.render accepts this shape.
       renderTaskRef.current = page.render(renderContext);
       await renderTaskRef.current.promise;
     } catch (err: unknown) {
@@ -140,12 +145,27 @@ export function InteractiveSmartHighlightModal({ isOpen, docId, onClose, onApply
     }
   }, [pdfDoc, currentPage, zoomLevel]);
 
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (!overlayRef.current) return;
+    const rect = overlayRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    setStartPos({ x, y });
+    setCurrentPos({ x, y });
+    setIsDrawing(true);
+  };
+
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!overlayRef.current || !textItems || textItems.length < currentPage || !pageDimensions) return;
 
     const rect = overlayRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
+
+    if (isDrawing) {
+      setCurrentPos({ x, y });
+      return;
+    }
 
     const pageItems = textItems[currentPage - 1].textItems;
     if (!pageItems) return;
@@ -196,30 +216,94 @@ export function InteractiveSmartHighlightModal({ isOpen, docId, onClose, onApply
     }
   };
 
-  const handleClick = () => {
-    if (hoveredBox && pageDimensions && textItems.length >= currentPage) {
+  const handleMouseUp = () => {
+    if (!isDrawing) return;
+    setIsDrawing(false);
+
+    const x = Math.min(startPos.x, currentPos.x);
+    const y = Math.min(startPos.y, currentPos.y);
+    const w = Math.abs(currentPos.x - startPos.x);
+    const h = Math.abs(currentPos.y - startPos.y);
+
+    if (w > 5 || h > 5) {
+      if (!pageDimensions || textItems.length < currentPage) return;
       const liteParsePage = textItems[currentPage - 1] as Record<string, unknown>;
+      const pageItems = liteParsePage.textItems as Record<string, unknown>[];
+      if (!pageItems) return;
+
       const scaleX = (liteParsePage.width as number) / pageDimensions.width;
       const scaleY = (liteParsePage.height as number) / pageDimensions.height;
 
-      const newBox: HighlightBox = {
-        pageNum: currentPage - 1,
-        x: hoveredBox.x * scaleX,
-        y: hoveredBox.y * scaleY,
-        width: hoveredBox.width * scaleX,
-        height: hoveredBox.height * scaleY,
-        text: hoveredBox.text,
-        color: currentColor
-      };
+      const lpX = x * scaleX;
+      const lpY = y * scaleY;
+      const lpW = w * scaleX;
+      const lpH = h * scaleY;
 
-      const existingIndex = selectedBoxes.findIndex(
-        b => Math.abs(b.x - newBox.x) < 1 && Math.abs(b.y - newBox.y) < 1 && b.pageNum === newBox.pageNum
-      );
+      const newBoxes: HighlightBox[] = [];
 
-      if (existingIndex !== -1) {
-        setSelectedBoxes(prev => prev.filter((_, i) => i !== existingIndex));
-      } else {
-        setSelectedBoxes(prev => [...prev, newBox]);
+      for (const item of pageItems) {
+        const ix = item.x as number;
+        const iy = item.y as number;
+        const iw = item.width as number;
+        const ih = item.height as number;
+        const itemCenterX = ix + iw / 2;
+        const itemCenterY = iy + ih / 2;
+
+        if (
+          itemCenterX >= lpX &&
+          itemCenterX <= lpX + lpW &&
+          itemCenterY >= lpY &&
+          itemCenterY <= lpY + lpH
+        ) {
+          const newBox: HighlightBox = {
+            pageNum: currentPage - 1,
+            x: ix,
+            y: iy,
+            width: iw,
+            height: ih,
+            text: item.text as string,
+            color: currentColor
+          };
+
+          const existingIndex = selectedBoxes.findIndex(
+            b => Math.abs(b.x - newBox.x) < 1 && Math.abs(b.y - newBox.y) < 1 && b.pageNum === newBox.pageNum
+          );
+
+          if (existingIndex === -1 && !newBoxes.some(b => Math.abs(b.x - newBox.x) < 1 && Math.abs(b.y - newBox.y) < 1)) {
+            newBoxes.push(newBox);
+          }
+        }
+      }
+
+      if (newBoxes.length > 0) {
+        setSelectedBoxes(prev => [...prev, ...newBoxes]);
+      }
+    } else {
+      // It was a click, not a drag
+      if (hoveredBox && pageDimensions && textItems.length >= currentPage) {
+        const liteParsePage = textItems[currentPage - 1] as Record<string, unknown>;
+        const scaleX = (liteParsePage.width as number) / pageDimensions.width;
+        const scaleY = (liteParsePage.height as number) / pageDimensions.height;
+
+        const newBox: HighlightBox = {
+          pageNum: currentPage - 1,
+          x: hoveredBox.x * scaleX,
+          y: hoveredBox.y * scaleY,
+          width: hoveredBox.width * scaleX,
+          height: hoveredBox.height * scaleY,
+          text: hoveredBox.text,
+          color: currentColor
+        };
+
+        const existingIndex = selectedBoxes.findIndex(
+          b => Math.abs(b.x - newBox.x) < 1 && Math.abs(b.y - newBox.y) < 1 && b.pageNum === newBox.pageNum
+        );
+
+        if (existingIndex !== -1) {
+          setSelectedBoxes(prev => prev.filter((_, i) => i !== existingIndex));
+        } else {
+          setSelectedBoxes(prev => [...prev, newBox]);
+        }
       }
     }
   };
@@ -279,13 +363,30 @@ export function InteractiveSmartHighlightModal({ isOpen, docId, onClose, onApply
 
                 <div
                   ref={overlayRef}
-                  className="absolute inset-0"
+                  className="absolute inset-0 select-none cursor-crosshair"
+                  onMouseDown={handleMouseDown}
                   onMouseMove={handleMouseMove}
-                  onClick={handleClick}
-                  onMouseLeave={() => setHoveredBox(null)}
+                  onMouseUp={handleMouseUp}
+                  onMouseLeave={() => {
+                    handleMouseUp();
+                    setHoveredBox(null);
+                  }}
                 >
+                  {/* Render drawing box */}
+                  {isDrawing && (
+                    <div
+                      className="absolute border-2 border-blue-500 bg-blue-500/20 pointer-events-none"
+                      style={{
+                        left: Math.min(startPos.x, currentPos.x),
+                        top: Math.min(startPos.y, currentPos.y),
+                        width: Math.abs(currentPos.x - startPos.x),
+                        height: Math.abs(currentPos.y - startPos.y)
+                      }}
+                    />
+                  )}
+
                   {/* Render hovered box */}
-                  {hoveredBox && (
+                  {hoveredBox && !isDrawing && (
                     <div
                       className="absolute border border-blue-500 bg-blue-500/20 pointer-events-none transition-all duration-75"
                       style={{
