@@ -106,6 +106,11 @@ export function DiffModal({ onClose, extractParagraphs, diffMergedHighlightPdf }
              count: change.count
           });
         }
+
+        // Update the UI progressively
+        if (i % 5 === 0) {
+          setDiffResult([...finalChanges]);
+        }
       }
 
       setDiffResult(finalChanges);
