@@ -41,23 +41,12 @@ export function InteractiveSmartHighlightModal({ isOpen, docId, onClose, onApply
   const [currentColor, setCurrentColor] = useState<[number, number, number]>([1, 1, 0]); // Yellow
 
   // Store LiteParse items per page
-  const [textItems, setTextItems] = useState<any[]>([]);
+  const [textItems, setTextItems] = useState<Record<string, unknown>[]>([]);
 
-  const renderTaskRef = useRef<any>(null);
+  const renderTaskRef = useRef<pdfjsLib.RenderTask | null>(null);
   const [pdfDoc, setPdfDoc] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
 
   const [pageDimensions, setPageDimensions] = useState<{ width: number, height: number } | null>(null);
-
-  useEffect(() => {
-    if (isOpen && doc) {
-      loadDocument();
-    } else {
-      setPdfDoc(null);
-      setTextItems([]);
-      setSelectedBoxes([]);
-      setHoveredBox(null);
-    }
-  }, [isOpen, doc]);
 
   const loadDocument = async () => {
     setIsLoading(true);
@@ -75,18 +64,25 @@ export function InteractiveSmartHighlightModal({ isOpen, docId, onClose, onApply
       setPdfDoc(pdf);
       setTotalPages(pdf.numPages);
       setCurrentPage(1);
-    } catch (err: any) {
-      setError(err.message || "Failed to load document");
+    } catch (err: unknown) {
+      setError((err as Error)?.message || "Failed to load document");
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    if (pdfDoc) {
-      renderPage(currentPage, pdfDoc);
+    if (isOpen && doc) {
+      setTimeout(() => loadDocument(), 0);
+    } else {
+      setTimeout(() => {
+        setPdfDoc(null);
+        setTextItems([]);
+        setSelectedBoxes([]);
+        setHoveredBox(null);
+      }, 0);
     }
-  }, [pdfDoc, currentPage, zoomLevel]);
+  }, [isOpen, doc]);
 
   const renderPage = async (pageNum: number, pdf: pdfjsLib.PDFDocumentProxy) => {
     setIsLoading(true);
@@ -127,8 +123,9 @@ export function InteractiveSmartHighlightModal({ isOpen, docId, onClose, onApply
 
       renderTaskRef.current = page.render(renderContext);
       await renderTaskRef.current.promise;
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (err instanceof pdfjsLib.RenderingCancelledException) {
+        // Ignored
       } else {
         console.error("Error rendering page", err);
       }
@@ -136,6 +133,12 @@ export function InteractiveSmartHighlightModal({ isOpen, docId, onClose, onApply
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (pdfDoc) {
+      setTimeout(() => renderPage(currentPage, pdfDoc), 0);
+    }
+  }, [pdfDoc, currentPage, zoomLevel]);
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!overlayRef.current || !textItems || textItems.length < currentPage || !pageDimensions) return;
@@ -147,42 +150,57 @@ export function InteractiveSmartHighlightModal({ isOpen, docId, onClose, onApply
     const pageItems = textItems[currentPage - 1].textItems;
     if (!pageItems) return;
 
-    const liteParsePage = textItems[currentPage - 1];
-    const scaleX = pageDimensions.width / liteParsePage.width;
-    const scaleY = pageDimensions.height / liteParsePage.height;
+    const liteParsePage = textItems[currentPage - 1] as Record<string, unknown>;
+    const scaleX = pageDimensions.width / (liteParsePage.width as number);
+    const scaleY = pageDimensions.height / (liteParsePage.height as number);
 
     const lpX = x / scaleX;
     const lpY = y / scaleY;
 
-    let found = false;
+    let closestItem: Record<string, unknown> | null = null;
+    let minDistance = Infinity;
+
     // Find closest item within tolerance
-    for (const item of pageItems) {
+    for (const item of pageItems as Record<string, unknown>[]) {
+      const ix = item.x as number;
+      const iy = item.y as number;
+      const iw = item.width as number;
+      const ih = item.height as number;
       if (
-        lpX >= item.x - 2 &&
-        lpX <= item.x + item.width + 2 &&
-        lpY >= item.y - 2 &&
-        lpY <= item.y + item.height + 2
+        lpX >= ix - 2 &&
+        lpX <= ix + iw + 2 &&
+        lpY >= iy - 2 &&
+        lpY <= iy + ih + 2
       ) {
-        setHoveredBox({
-          x: item.x * scaleX,
-          y: item.y * scaleY,
-          width: item.width * scaleX,
-          height: item.height * scaleY,
-          text: item.text
-        });
-        found = true;
-        break;
+        const centerX = ix + iw / 2;
+        const centerY = iy + ih / 2;
+        const distance = Math.sqrt((lpX - centerX) ** 2 + (lpY - centerY) ** 2);
+
+        if (distance < minDistance) {
+          closestItem = item as Record<string, unknown>;
+          minDistance = distance;
+        }
       }
     }
 
-    if (!found) setHoveredBox(null);
+    if (closestItem) {
+      setHoveredBox({
+        x: (closestItem.x as number) * scaleX,
+        y: (closestItem.y as number) * scaleY,
+        width: (closestItem.width as number) * scaleX,
+        height: (closestItem.height as number) * scaleY,
+        text: closestItem.text as string
+      });
+    } else {
+      setHoveredBox(null);
+    }
   };
 
   const handleClick = () => {
     if (hoveredBox && pageDimensions && textItems.length >= currentPage) {
-      const liteParsePage = textItems[currentPage - 1];
-      const scaleX = liteParsePage.width / pageDimensions.width;
-      const scaleY = liteParsePage.height / pageDimensions.height;
+      const liteParsePage = textItems[currentPage - 1] as Record<string, unknown>;
+      const scaleX = (liteParsePage.width as number) / pageDimensions.width;
+      const scaleY = (liteParsePage.height as number) / pageDimensions.height;
 
       const newBox: HighlightBox = {
         pageNum: currentPage - 1,
@@ -283,9 +301,9 @@ export function InteractiveSmartHighlightModal({ isOpen, docId, onClose, onApply
                   {selectedBoxes.filter(b => b.pageNum === currentPage - 1).map((box, i) => {
                      // Need to convert back to screen coordinates
                      if (!pageDimensions || !textItems[currentPage - 1]) return null;
-                     const liteParsePage = textItems[currentPage - 1];
-                     const scaleX = pageDimensions.width / liteParsePage.width;
-                     const scaleY = pageDimensions.height / liteParsePage.height;
+                     const liteParsePage = textItems[currentPage - 1] as Record<string, unknown>;
+                     const scaleX = pageDimensions.width / (liteParsePage.width as number);
+                     const scaleY = pageDimensions.height / (liteParsePage.height as number);
                      const screenX = box.x * scaleX;
                      const screenY = box.y * scaleY;
                      const screenW = box.width * scaleX;
