@@ -83,6 +83,45 @@ export const extractTextLiteparse = async (bytes: Uint8Array): Promise<string> =
   return result.text || "";
 };
 
+export const extractParagraphsLiteparse = async (bytes: Uint8Array): Promise<string[]> => {
+  const processedBytes = await preprocessWithOcr(bytes);
+  const engine = await getConfiguredLiteParse({ outputFormat: "json" });
+  const result = await engine.parse(processedBytes);
+
+  if (!result || !result.pages) return [];
+
+  const paragraphs: string[] = [];
+
+  for (const page of result.pages) {
+    if (!page.textItems || page.textItems.length === 0) continue;
+
+    let currentBlock: string[] = [];
+    let lastY = page.textItems[0].y;
+
+    for (const item of page.textItems) {
+      const text = item.text.trim();
+      if (!text) continue;
+
+      const fontSize = item.fontSize || 12;
+      const yDiff = Math.abs(item.y - lastY);
+
+      if (yDiff > fontSize * 1.5 && currentBlock.length > 0) {
+        paragraphs.push(currentBlock.join(" ").trim());
+        currentBlock = [];
+      }
+
+      currentBlock.push(text);
+      lastY = item.y;
+    }
+
+    if (currentBlock.length > 0) {
+      paragraphs.push(currentBlock.join(" ").trim());
+    }
+  }
+
+  return paragraphs;
+};
+
 export const extractAllPagesTextLiteparse = async (bytes: Uint8Array): Promise<string[]> => {
   const processedBytes = await preprocessWithOcr(bytes);
   // We need per-page strings, so we use JSON output which contains an array of pages.
