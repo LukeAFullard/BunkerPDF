@@ -43,6 +43,8 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
   const renderTaskRef = useRef<any>(null);
   const [pdfDoc, setPdfDoc] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
   const [pageDimensions, setPageDimensions] = useState<{ width: number, height: number } | null>(null);
+  const [unscaledDimensions, setUnscaledDimensions] = useState<{ width: number, height: number } | null>(null);
+  const [measurementUnit, setMeasurementUnit] = useState<'pt' | 'in' | 'mm'>('in');
 
   useEffect(() => {
     if (isOpen && doc) {
@@ -123,6 +125,7 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
       const viewport = page.getViewport({ scale });
 
       setPageDimensions({ width: viewport.width, height: viewport.height });
+      setUnscaledDimensions({ width: unscaledViewport.width, height: unscaledViewport.height });
 
       const outputScale = window.devicePixelRatio || 1;
       canvas.width = Math.floor(viewport.width * outputScale);
@@ -184,6 +187,33 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
       }
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const formatUnit = (pts: number, unit: 'pt' | 'in' | 'mm'): string => {
+    if (unit === 'in') return (pts / 72).toFixed(2);
+    if (unit === 'mm') return (pts * 0.352778).toFixed(1);
+    return Math.round(pts).toString();
+  };
+
+  const parseUnit = (value: string, unit: 'pt' | 'in' | 'mm'): number => {
+    const val = parseFloat(value);
+    if (isNaN(val)) return 0;
+    if (unit === 'in') return val * 72;
+    if (unit === 'mm') return val / 0.352778;
+    return val;
+  };
+
+  const handleDimensionChange = (dimension: 'width' | 'height', valueStr: string) => {
+    if (!pdfBox || !unscaledDimensions) return;
+    const valPts = parseUnit(valueStr, measurementUnit);
+
+    if (dimension === 'width') {
+      const newRight = Math.min(unscaledDimensions.width, pdfBox.left + valPts);
+      handlePdfBoxChange('right', newRight);
+    } else {
+      const newBottom = Math.min(unscaledDimensions.height, pdfBox.top + valPts);
+      handlePdfBoxChange('bottom', newBottom);
     }
   };
 
@@ -322,6 +352,18 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
       updatedCropBox.top = Math.min(currentY, updatedCropBox.bottom - 10);
     } else if (resizeHandle === 'bottom') {
       updatedCropBox.bottom = Math.max(currentY, updatedCropBox.top + 10);
+    } else if (resizeHandle === 'top-left') {
+      updatedCropBox.top = Math.min(currentY, updatedCropBox.bottom - 10);
+      updatedCropBox.left = Math.min(currentX, updatedCropBox.right - 10);
+    } else if (resizeHandle === 'top-right') {
+      updatedCropBox.top = Math.min(currentY, updatedCropBox.bottom - 10);
+      updatedCropBox.right = Math.max(currentX, updatedCropBox.left + 10);
+    } else if (resizeHandle === 'bottom-left') {
+      updatedCropBox.bottom = Math.max(currentY, updatedCropBox.top + 10);
+      updatedCropBox.left = Math.min(currentX, updatedCropBox.right - 10);
+    } else if (resizeHandle === 'bottom-right') {
+      updatedCropBox.bottom = Math.max(currentY, updatedCropBox.top + 10);
+      updatedCropBox.right = Math.max(currentX, updatedCropBox.left + 10);
     }
 
     setCropBox(updatedCropBox);
@@ -341,21 +383,20 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
   };
 
   const handlePdfBoxChange = (field: 'left' | 'top' | 'right' | 'bottom', value: number) => {
-    if (!pdfBox || !pageDimensions || !textItems[currentPage - 1]) return;
+    if (!pdfBox || !pageDimensions || !unscaledDimensions) return;
 
     const newPdfBox = { ...pdfBox, [field]: value };
 
     // Enforce basic constraints
-    if (field === 'left') newPdfBox.left = Math.min(newPdfBox.left, newPdfBox.right - 10);
-    if (field === 'right') newPdfBox.right = Math.max(newPdfBox.right, newPdfBox.left + 10);
-    if (field === 'top') newPdfBox.top = Math.min(newPdfBox.top, newPdfBox.bottom - 10);
-    if (field === 'bottom') newPdfBox.bottom = Math.max(newPdfBox.bottom, newPdfBox.top + 10);
+    if (field === 'left') newPdfBox.left = Math.max(0, Math.min(newPdfBox.left, newPdfBox.right - 10));
+    if (field === 'right') newPdfBox.right = Math.min(unscaledDimensions.width, Math.max(newPdfBox.right, newPdfBox.left + 10));
+    if (field === 'top') newPdfBox.top = Math.max(0, Math.min(newPdfBox.top, newPdfBox.bottom - 10));
+    if (field === 'bottom') newPdfBox.bottom = Math.min(unscaledDimensions.height, Math.max(newPdfBox.bottom, newPdfBox.top + 10));
 
     setPdfBox(newPdfBox);
 
-    const liteParsePageRef = textItems[currentPage - 1];
-    const scaleX = pageDimensions.width / liteParsePageRef.width;
-    const scaleY = pageDimensions.height / liteParsePageRef.height;
+    const scaleX = pageDimensions.width / unscaledDimensions.width;
+    const scaleY = pageDimensions.height / unscaledDimensions.height;
 
     const newCropBox = {
       left: newPdfBox.left * scaleX,
@@ -456,9 +497,13 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
                 <label className="block text-xs font-medium text-gray-500 mb-1">Right Crop</label>
                 <input
                   type="number"
-                  value={pdfBox?.right ?? ''}
-                  onChange={(e) => handlePdfBoxChange('right', parseFloat(e.target.value) || 0)}
-                  disabled={!pdfBox}
+                  value={pdfBox && unscaledDimensions ? Math.max(0, Math.round(unscaledDimensions.width - pdfBox.right)) : ''}
+                  onChange={(e) => {
+                    if (!unscaledDimensions) return;
+                    const margin = parseFloat(e.target.value) || 0;
+                    handlePdfBoxChange('right', unscaledDimensions.width - margin);
+                  }}
+                  disabled={!pdfBox || !unscaledDimensions}
                   className="w-full border rounded px-3 py-2 text-sm focus:ring-1 focus:ring-blue-500 outline-none disabled:bg-gray-50 disabled:text-gray-400"
                 />
               </div>
@@ -476,17 +521,22 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
                 <label className="block text-xs font-medium text-gray-500 mb-1">Bottom Crop</label>
                 <input
                   type="number"
-                  value={pdfBox?.bottom ?? ''}
-                  onChange={(e) => handlePdfBoxChange('bottom', parseFloat(e.target.value) || 0)}
-                  disabled={!pdfBox}
+                  value={pdfBox && unscaledDimensions ? Math.max(0, Math.round(unscaledDimensions.height - pdfBox.bottom)) : ''}
+                  onChange={(e) => {
+                    if (!unscaledDimensions) return;
+                    const margin = parseFloat(e.target.value) || 0;
+                    handlePdfBoxChange('bottom', unscaledDimensions.height - margin);
+                  }}
+                  disabled={!pdfBox || !unscaledDimensions}
                   className="w-full border rounded px-3 py-2 text-sm focus:ring-1 focus:ring-blue-500 outline-none disabled:bg-gray-50 disabled:text-gray-400"
                 />
               </div>
             </div>
           </div>
 
-          <div className="flex-1 flex flex-col relative overflow-auto items-center justify-center p-8">
-            <div className="mb-4 flex items-center gap-4 bg-white px-4 py-2 rounded-full shadow-sm z-10">
+          <div className="flex-1 flex flex-col relative bg-gray-100 overflow-hidden">
+            {/* Zoom Bar Overlay */}
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-white px-4 py-2 rounded-full shadow-md z-20">
               <button onClick={() => setZoomLevel(z => Math.max(0.5, z - 0.25))} className="p-1 hover:bg-gray-100 rounded">
                 <ZoomOut className="w-4 h-4" />
               </button>
@@ -500,26 +550,71 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
               <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages} className="px-2 py-1 bg-gray-100 rounded disabled:opacity-50 text-sm">Next</button>
             </div>
 
-            {isLoading && (
-              <div className="absolute inset-0 flex items-center justify-center bg-white/50 z-20">
-                <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+            {/* Measurement Overlay */}
+            <div className="absolute top-4 right-8 flex flex-col gap-2 bg-white/90 backdrop-blur px-4 py-3 rounded-lg shadow-md z-20 border">
+              <div className="flex items-center justify-between gap-4 mb-2">
+                <h4 className="text-xs font-semibold text-gray-700">Dimensions</h4>
+                <select
+                  value={measurementUnit}
+                  onChange={(e) => setMeasurementUnit(e.target.value as any)}
+                  className="text-xs border rounded p-1 outline-none bg-white"
+                >
+                  <option value="pt">Points (pt)</option>
+                  <option value="in">Inches (in)</option>
+                  <option value="mm">Millimeters (mm)</option>
+                </select>
               </div>
-            )}
 
-            {error ? (
-              <div className="text-red-500 bg-red-50 p-4 rounded-lg">{error}</div>
-            ) : (
-              <div
-                ref={containerRef}
-                className="relative shadow-lg cursor-crosshair touch-none"
-                onMouseDown={handleMouseDown}
-                onMouseMove={handleMouseMove}
-                onMouseUp={handleMouseUp}
-                onMouseLeave={handleMouseUp}
-                onTouchStart={handleMouseDown}
-                onTouchMove={handleMouseMove}
-                onTouchEnd={handleMouseUp}
-              >
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-500 w-12">Width:</label>
+                <input
+                  key={`width-${measurementUnit}-${pdfBox ? pdfBox.right - pdfBox.left : ''}`}
+                  type="number"
+                  step="0.01"
+                  defaultValue={pdfBox ? formatUnit(pdfBox.right - pdfBox.left, measurementUnit) : ''}
+                  onBlur={(e) => handleDimensionChange('width', e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleDimensionChange('width', e.currentTarget.value)}
+                  disabled={!pdfBox}
+                  className="w-20 text-sm border rounded px-2 py-1 outline-none focus:border-blue-500 disabled:bg-gray-50"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-500 w-12">Height:</label>
+                <input
+                  key={`height-${measurementUnit}-${pdfBox ? pdfBox.bottom - pdfBox.top : ''}`}
+                  type="number"
+                  step="0.01"
+                  defaultValue={pdfBox ? formatUnit(pdfBox.bottom - pdfBox.top, measurementUnit) : ''}
+                  onBlur={(e) => handleDimensionChange('height', e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleDimensionChange('height', e.currentTarget.value)}
+                  disabled={!pdfBox}
+                  className="w-20 text-sm border rounded px-2 py-1 outline-none focus:border-blue-500 disabled:bg-gray-50"
+                />
+              </div>
+            </div>
+
+            <div className="flex-1 flex relative overflow-auto items-center justify-center p-8 pt-20">
+
+              {isLoading && (
+                <div className="absolute inset-0 flex items-center justify-center bg-white/50 z-20">
+                  <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+                </div>
+              )}
+
+              {error ? (
+                <div className="text-red-500 bg-red-50 p-4 rounded-lg">{error}</div>
+              ) : (
+                <div
+                  ref={containerRef}
+                  className="relative shadow-lg cursor-crosshair touch-none"
+                  onMouseDown={handleMouseDown}
+                  onMouseMove={handleMouseMove}
+                  onMouseUp={handleMouseUp}
+                  onMouseLeave={handleMouseUp}
+                  onTouchStart={handleMouseDown}
+                  onTouchMove={handleMouseMove}
+                  onTouchEnd={handleMouseUp}
+                >
                 <canvas ref={canvasRef} className="block select-none" />
 
                 {/* Dim overlay outside crop box */}
@@ -570,10 +665,33 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
                         <div className="h-8 w-1 bg-blue-500 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
                       </div>
                     </div>
+
+                    {/* Corner Handles */}
+                    <div
+                      data-handle="top-left"
+                      className="absolute w-6 h-6 -ml-3 -mt-3 bg-blue-500 border-2 border-white rounded-full cursor-nwse-resize pointer-events-auto shadow-md"
+                      style={{ left: cropBox.left, top: cropBox.top }}
+                    />
+                    <div
+                      data-handle="top-right"
+                      className="absolute w-6 h-6 -ml-3 -mt-3 bg-blue-500 border-2 border-white rounded-full cursor-nesw-resize pointer-events-auto shadow-md"
+                      style={{ left: cropBox.right, top: cropBox.top }}
+                    />
+                    <div
+                      data-handle="bottom-left"
+                      className="absolute w-6 h-6 -ml-3 -mt-3 bg-blue-500 border-2 border-white rounded-full cursor-nesw-resize pointer-events-auto shadow-md"
+                      style={{ left: cropBox.left, top: cropBox.bottom }}
+                    />
+                    <div
+                      data-handle="bottom-right"
+                      className="absolute w-6 h-6 -ml-3 -mt-3 bg-blue-500 border-2 border-white rounded-full cursor-nwse-resize pointer-events-auto shadow-md"
+                      style={{ left: cropBox.right, top: cropBox.bottom }}
+                    />
                   </>
                 )}
               </div>
             )}
+            </div>
           </div>
         </div>
 
