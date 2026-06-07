@@ -297,11 +297,29 @@ export const editParagraphLiteparse = async (bytes: Uint8Array, searchText: stri
     }
   }
 
-  if (!targetBox) return bytes;
+  if (!targetBox || targetPageNum === -1) return bytes;
 
   // Use pdf-lib to overwrite
   const { PDFDocument, rgb } = await import('pdf-lib');
+  const fontkit = (await import('@pdf-lib/fontkit')).default;
+
   const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  pdfDoc.registerFontkit(fontkit);
+
+  let font;
+  try {
+    const fontUrl = new URL((typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL ? import.meta.env.BASE_URL : '/') + 'fonts/NotoSans-Regular.ttf', typeof window !== 'undefined' ? window.location.origin : (typeof import.meta !== 'undefined' ? import.meta.url : 'http://localhost')).href;
+    const fontBytes = await fetch(fontUrl).then(res => {
+      if (!res.ok) throw new Error(`Failed to fetch font: ${res.statusText}`);
+      return res.arrayBuffer();
+    });
+    font = await pdfDoc.embedFont(fontBytes);
+  } catch (e) {
+    console.error('Failed to load custom font, falling back to Helvetica', e);
+    const { StandardFonts } = await import('pdf-lib');
+    font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  }
+
   const pages = pdfDoc.getPages();
   const pdfPage = pages[targetPageNum];
 
@@ -324,6 +342,7 @@ export const editParagraphLiteparse = async (bytes: Uint8Array, searchText: stri
     x: targetBox.x,
     y: height - targetBox.y - targetFontSize, // baseline approximation
     size: targetFontSize,
+    font,
     color: rgb(0, 0, 0),
     maxWidth: targetBox.width,
     lineHeight: targetFontSize * 1.2
@@ -456,9 +475,26 @@ export const editBoxesLiteparse = async (
   bytes: Uint8Array,
   edits: { pageNum: number; x: number; y: number; width: number; height: number; newText: string; fontSize?: number; lineHeight?: number }[]
 ): Promise<Uint8Array> => {
-  const { PDFDocument, rgb, StandardFonts } = await import('pdf-lib');
+  const { PDFDocument, rgb } = await import('pdf-lib');
+  const fontkit = (await import('@pdf-lib/fontkit')).default;
+
   const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  pdfDoc.registerFontkit(fontkit);
+
+  let font;
+  try {
+    const fontUrl = new URL((typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL ? import.meta.env.BASE_URL : '/') + 'fonts/NotoSans-Regular.ttf', typeof window !== 'undefined' ? window.location.origin : (typeof import.meta !== 'undefined' ? import.meta.url : 'http://localhost')).href;
+    const fontBytes = await fetch(fontUrl).then(res => {
+      if (!res.ok) throw new Error(`Failed to fetch font: ${res.statusText}`);
+      return res.arrayBuffer();
+    });
+    font = await pdfDoc.embedFont(fontBytes);
+  } catch (e) {
+    console.error('Failed to load custom font, falling back to Helvetica', e);
+    const { StandardFonts } = await import('pdf-lib');
+    font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  }
+
   const pages = pdfDoc.getPages();
 
   for (const edit of edits) {
@@ -498,6 +534,7 @@ export const editBoxesLiteparse = async (
   return await pdfDoc.save();
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const redactBoxesLiteparse = async (
   bytes: Uint8Array,
   boxesToRedact: { pageNum: number; x: number; y: number; width: number; height: number }[]
@@ -526,6 +563,7 @@ export const redactBoxesLiteparse = async (
   return await pdfDoc.save();
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const redactDocumentLiteparse = async (bytes: Uint8Array, redactions: string[]): Promise<Uint8Array> => {
   const engine = await getConfiguredLiteParse({ outputFormat: "json" });
   const result = await engine.parse(bytes);
@@ -843,6 +881,7 @@ export const formatParagraphFromItems = (textItems: any[]): string => {
   return finalString.trim();
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const autoRedactLayoutLiteparse = async (
   bytes: Uint8Array,
   layoutTypes: ('header' | 'footer' | 'largest-text')[]
@@ -1052,10 +1091,25 @@ export const normalizeFontsLiteparse = async (
   edits: { pageNum: number; x: number; y: number; width: number; height: number; newText: string }[],
   targetFontSize: number
 ): Promise<Uint8Array> => {
-  const { PDFDocument, rgb, StandardFonts } = await import('pdf-lib');
-  const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const { PDFDocument, rgb } = await import('pdf-lib');
+  const fontkit = (await import('@pdf-lib/fontkit')).default;
 
-  const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  pdfDoc.registerFontkit(fontkit);
+
+  let font;
+  try {
+    const fontUrl = new URL((typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL ? import.meta.env.BASE_URL : '/') + 'fonts/NotoSans-Regular.ttf', typeof window !== 'undefined' ? window.location.origin : (typeof import.meta !== 'undefined' ? import.meta.url : 'http://localhost')).href;
+    const fontBytes = await fetch(fontUrl).then(res => {
+      if (!res.ok) throw new Error(`Failed to fetch font: ${res.statusText}`);
+      return res.arrayBuffer();
+    });
+    font = await pdfDoc.embedFont(fontBytes);
+  } catch (e) {
+    console.error('Failed to load custom font, falling back to Helvetica', e);
+    const { StandardFonts } = await import('pdf-lib');
+    font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  }
 
   const editsByPage = edits.reduce((acc, edit) => {
     if (!acc[edit.pageNum]) acc[edit.pageNum] = [];
@@ -1094,7 +1148,7 @@ export const normalizeFontsLiteparse = async (
         x: edit.x,
         y: pdfLibY + (edit.height - targetFontSize) / 2 + 2, // Approximate centering
         size: targetFontSize,
-        font: helveticaFont,
+        font: font,
         color: rgb(0, 0, 0),
       });
     }
