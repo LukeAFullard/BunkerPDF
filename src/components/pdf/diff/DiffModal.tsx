@@ -79,13 +79,9 @@ export function DiffModal({ onClose, extractParagraphs, diffMergedHighlightPdf, 
 
           const inlineChanges = diff.diffWordsWithSpace(removedBlock.value.join("\n\n"), addedBlock.value.join("\n\n"));
 
-          if (inlineChanges.length > 0) {
-             const lastChange = inlineChanges[inlineChanges.length - 1];
-             inlineChanges[inlineChanges.length - 1] = {
-               ...lastChange,
-               value: lastChange.value + "\n\n"
-             };
-          }
+          // Ensure we append the paragraph separator as an unchanged block
+          // so it aligns correctly in both the left and right panes.
+          inlineChanges.push({ value: "\n\n" });
           finalChanges.push(...inlineChanges);
           i++; // Skip the next block since we processed it
         } else {

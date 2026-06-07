@@ -95,28 +95,13 @@ export const extractParagraphsLiteparse = async (bytes: Uint8Array): Promise<str
   for (const page of result.pages) {
     if (!page.textItems || page.textItems.length === 0) continue;
 
-    let currentBlock: string[] = [];
-    let lastY = page.textItems[0].y;
+    // Use the robust formatParagraphFromItems which sorts by Y and then X
+    // and correctly inserts "\n\n" between structural paragraphs.
+    const fullPageText = formatParagraphFromItems(page.textItems);
 
-    for (const item of page.textItems) {
-      const text = item.text.trim();
-      if (!text) continue;
-
-      const fontSize = item.fontSize || 12;
-      const yDiff = Math.abs(item.y - lastY);
-
-      if (yDiff > fontSize * 1.5 && currentBlock.length > 0) {
-        paragraphs.push(currentBlock.join(" ").trim());
-        currentBlock = [];
-      }
-
-      currentBlock.push(text);
-      lastY = item.y;
-    }
-
-    if (currentBlock.length > 0) {
-      paragraphs.push(currentBlock.join(" ").trim());
-    }
+    // Split by the double newlines inserted by formatParagraphFromItems
+    const pageParagraphs = fullPageText.split("\n\n").map(p => p.trim()).filter(p => p.length > 0);
+    paragraphs.push(...pageParagraphs);
   }
 
   return paragraphs;
