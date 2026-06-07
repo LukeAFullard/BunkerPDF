@@ -6,11 +6,12 @@ import * as diff from 'diff';
 interface DiffModalProps {
   onClose: () => void;
   extractText: (bytes: Uint8Array) => Promise<string>;
+  extractParagraphs: (bytes: Uint8Array) => Promise<string[]>;
   diffHighlightPdf: (bytes: Uint8Array, highlights: string[], color: [number, number, number]) => Promise<Uint8Array>;
   diffMergedHighlightPdf: (bytes1: Uint8Array, bytes2: Uint8Array, removedHighlights: string[], addedHighlights: string[]) => Promise<Uint8Array>;
 }
 
-export function DiffModal({ onClose, extractText, diffMergedHighlightPdf }: DiffModalProps) {
+export function DiffModal({ onClose, extractParagraphs, diffMergedHighlightPdf }: DiffModalProps) {
   const documents = useFileStore(state => state.documents);
 
   const [diffResult, setDiffResult] = useState<diff.Change[] | null>(null);
@@ -20,6 +21,8 @@ export function DiffModal({ onClose, extractText, diffMergedHighlightPdf }: Diff
   // Use state initialization for default values to avoid useEffect setState cascading renders
   const [doc1Id, setDoc1Id] = useState<string>(documents.length >= 1 ? documents[0].id : '');
   const [doc2Id, setDoc2Id] = useState<string>(documents.length >= 2 ? documents[1].id : '');
+
+  const [progressMsg, setProgressMsg] = useState<string | null>(null);
 
   const handleCompare = async () => {
     if (!doc1Id || !doc2Id) {
@@ -41,24 +44,78 @@ export function DiffModal({ onClose, extractText, diffMergedHighlightPdf }: Diff
 
     setIsLoading(true);
     setError(null);
-    setDiffResult(null);
+    setDiffResult([]);
 
     try {
       const buffer1 = await doc1.file.arrayBuffer();
-      const text1 = await extractText(new Uint8Array(buffer1));
-
       const buffer2 = await doc2.file.arrayBuffer();
-      const text2 = await extractText(new Uint8Array(buffer2));
 
-      // Compute diff
-      const changes = diff.diffWordsWithSpace(text1, text2);
-      setDiffResult(changes);
+      setProgressMsg('Extracting layout from original document...');
+      const blocks1 = await extractParagraphs(new Uint8Array(buffer1));
+
+      setProgressMsg('Extracting layout from modified document...');
+      const blocks2 = await extractParagraphs(new Uint8Array(buffer2));
+
+      setProgressMsg('Computing differences...');
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      const blockChanges = diff.diffArrays(blocks1, blocks2, {
+        comparator: (a, b) => {
+          // Identify if blocks are identical
+          return a === b;
+        }
+      });
+
+      const finalChanges: diff.Change[] = [];
+
+      for (let i = 0; i < blockChanges.length; i++) {
+        const change = blockChanges[i];
+
+        // Progress update every few blocks
+        if (i % 10 === 0) {
+          setProgressMsg(`Processing chunk ${i + 1} of ${blockChanges.length}...`);
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+
+        // If a block was removed and the very next block was added, we can compute an inline diff
+        // to show intra-paragraph modifications.
+        if (change.removed && i + 1 < blockChanges.length && blockChanges[i+1].added) {
+          const removedText = change.value.join('\n\n');
+          const addedText = blockChanges[i+1].value.join('\n\n');
+          const inlineChanges = diff.diffWordsWithSpace(removedText, addedText);
+
+          finalChanges.push(...inlineChanges);
+          finalChanges.push({ value: '\n\n', count: 1, added: false, removed: false }); // block separator
+
+          i++; // Skip the added block since we processed it
+        } else if (change.added && i + 1 < blockChanges.length && blockChanges[i+1].removed) {
+          const addedText = change.value.join('\n\n');
+          const removedText = blockChanges[i+1].value.join('\n\n');
+          const inlineChanges = diff.diffWordsWithSpace(removedText, addedText);
+
+          finalChanges.push(...inlineChanges);
+          finalChanges.push({ value: '\n\n', count: 1, added: false, removed: false });
+
+          i++;
+        } else {
+          // Complete addition or removal of block
+          finalChanges.push({
+             value: change.value.join('\n\n') + '\n\n',
+             added: change.added,
+             removed: change.removed,
+             count: change.count
+          });
+        }
+      }
+
+      setDiffResult(finalChanges);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       console.error(err);
       setError(err.message || 'Failed to compare documents.');
     } finally {
       setIsLoading(false);
+      setProgressMsg(null);
     }
   };
 
@@ -165,13 +222,20 @@ export function DiffModal({ onClose, extractText, diffMergedHighlightPdf }: Diff
             </button>
           </div>
 
+          {progressMsg && (
+            <div className="p-4 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-sm rounded-lg border border-blue-100 dark:border-blue-900/50 flex items-center justify-center">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-3"></div>
+              {progressMsg}
+            </div>
+          )}
+
           {error && (
             <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-lg border border-red-100 dark:border-red-900/50">
               {error}
             </div>
           )}
 
-          {diffResult && (
+          {diffResult && diffResult.length > 0 && (
             <div className="flex-1 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden flex flex-col bg-gray-50 dark:bg-gray-900 min-h-[300px]">
               <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center justify-between">
                 <div className="flex items-center gap-4">

@@ -70,7 +70,7 @@ import type {
 import { ImageReorderRail, type ImageItem } from "./components/ui/ImageReorderRail";
 import { convertImagesToPdf } from "./lib/engineA";
 import { SettingsDropdown } from "./components/ui/SettingsDropdown";
-import { extractTextLiteparse, extractAllPagesTextLiteparse, extractMarkdownLiteparse, extractHtmlLiteparse, editParagraphLiteparse, extractTablesLiteparse, redactDocumentLiteparse, redactBoxesLiteparse, editBoxesLiteparse, diffMergedHighlightPdfLiteparse, diffHighlightPdfLiteparse, autoRedactLayoutLiteparse } from "./lib/liteparseEngine";
+import { extractTextLiteparse, extractAllPagesTextLiteparse, extractParagraphsLiteparse, extractMarkdownLiteparse, extractHtmlLiteparse, editParagraphLiteparse, extractTablesLiteparse, redactDocumentLiteparse, redactBoxesLiteparse, editBoxesLiteparse, diffMergedHighlightPdfLiteparse, diffHighlightPdfLiteparse, autoRedactLayoutLiteparse } from "./lib/liteparseEngine";
 
 function App() {
   const documents = useFileStore((state) => state.documents);
@@ -1085,6 +1085,10 @@ function App() {
         pdfBytes: bytes,
       } satisfies PyodideWorkerMessage);
     });
+  };
+
+  const extractParagraphs = (bytes: Uint8Array): Promise<string[]> => {
+    return extractParagraphsLiteparse(bytes);
   };
 
   const editParagraph = async (bytes: Uint8Array, searchText: string, replacementText: string): Promise<Uint8Array> => {
@@ -3242,7 +3246,7 @@ function App() {
         isOpen={isAuditModalOpen}
         onClose={() => setIsAuditModalOpen(false)}
       />
-      {isDiffModalOpen && <DiffModal onClose={() => setIsDiffModalOpen(false)} extractText={extractText} diffHighlightPdf={diffHighlightPdf} diffMergedHighlightPdf={diffMergedHighlightPdf} />}
+      {isDiffModalOpen && <DiffModal onClose={() => setIsDiffModalOpen(false)} extractText={extractText} extractParagraphs={extractParagraphs} diffHighlightPdf={diffHighlightPdf} diffMergedHighlightPdf={diffMergedHighlightPdf} />}
       {isSideBySideModalOpen && <SideBySideViewerModal onClose={() => setIsSideBySideModalOpen(false)} />}
       <ProcessingModal />
       <FeedbackPrompt />

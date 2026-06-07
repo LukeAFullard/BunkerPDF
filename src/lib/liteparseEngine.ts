@@ -95,6 +95,46 @@ export const extractAllPagesTextLiteparse = async (bytes: Uint8Array): Promise<s
   return result.pages.map((page: any) => page.text || "");
 };
 
+export const extractParagraphsLiteparse = async (bytes: Uint8Array): Promise<string[]> => {
+  const processedBytes = await preprocessWithOcr(bytes);
+  const engine = await getConfiguredLiteParse({ outputFormat: "json" });
+  const result = await engine.parse(processedBytes);
+
+  if (!result || !result.pages) return [];
+
+  const paragraphs: string[] = [];
+
+  for (const page of result.pages) {
+    if (!page.textItems || page.textItems.length === 0) continue;
+
+    let currentBlockTexts: string[] = [];
+    let lastY = page.textItems[0].y;
+
+    for (const item of page.textItems) {
+      const text = item.text.trim();
+      if (!text) continue;
+
+      const fontSize = item.fontSize || 12;
+      const yDiff = Math.abs(item.y - lastY);
+
+      // New paragraph detection logic
+      if (yDiff > fontSize * 1.5 && currentBlockTexts.length > 0) {
+        paragraphs.push(currentBlockTexts.join(" ").trim());
+        currentBlockTexts = [];
+      }
+
+      currentBlockTexts.push(text);
+      lastY = item.y;
+    }
+
+    if (currentBlockTexts.length > 0) {
+      paragraphs.push(currentBlockTexts.join(" ").trim());
+    }
+  }
+
+  return paragraphs;
+};
+
 export const extractMarkdownLiteparse = async (bytes: Uint8Array): Promise<string> => {
   const processedBytes = await preprocessWithOcr(bytes);
   // Use LiteParse's JSON output for spatial/layout data.
