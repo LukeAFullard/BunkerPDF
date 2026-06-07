@@ -1,0 +1,159 @@
+<<<<<<< SEARCH
+import { useState, useEffect, useRef } from 'react';
+=======
+import { useState, useEffect, useRef, useMemo } from 'react';
+>>>>>>> REPLACE
+<<<<<<< SEARCH
+export function InteractiveSmartHighlightModal({ isOpen, docId, onClose, onApply }: InteractiveSmartHighlightModalProps) {
+=======
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function groupTextItemsIntoLines(textItems: any[]) {
+  if (!textItems || textItems.length === 0) return [];
+
+  const lines: any[] = [];
+  let currentLine: any = null;
+  let lastItem: any = null;
+
+  for (const item of textItems) {
+    if (!item.text.trim()) continue;
+
+    if (!currentLine) {
+      currentLine = {
+        x: item.x,
+        y: item.y,
+        width: item.width,
+        height: item.height,
+        text: item.text,
+        fontSize: item.fontSize || 12
+      };
+      lastItem = item;
+      continue;
+    }
+
+    const fontSize = item.fontSize || 12;
+    const yDiff = Math.abs(item.y - lastItem.y);
+
+    const isSameLine = yDiff < fontSize * 0.5;
+
+    if (!isSameLine) {
+      lines.push(currentLine);
+      currentLine = {
+        x: item.x,
+        y: item.y,
+        width: item.width,
+        height: item.height,
+        text: item.text,
+        fontSize: item.fontSize || 12
+      };
+    } else {
+      const gap = item.x - (lastItem.x + lastItem.width);
+      if (gap > fontSize * 0.2) {
+        currentLine.text += ' ';
+      }
+      currentLine.text += item.text;
+
+      const minX = Math.min(currentLine.x, item.x);
+      const minY = Math.min(currentLine.y, item.y);
+      const maxX = Math.max(currentLine.x + currentLine.width, item.x + item.width);
+      const maxY = Math.max(currentLine.y + currentLine.height, item.y + item.height);
+
+      currentLine.x = minX;
+      currentLine.y = minY;
+      currentLine.width = maxX - minX;
+      currentLine.height = maxY - minY;
+      currentLine.fontSize = Math.max(currentLine.fontSize, item.fontSize || 12);
+    }
+    lastItem = item;
+  }
+
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+
+  return lines;
+}
+
+export function InteractiveSmartHighlightModal({ isOpen, docId, onClose, onApply }: InteractiveSmartHighlightModalProps) {
+>>>>>>> REPLACE
+<<<<<<< SEARCH
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!overlayRef.current || !textItems || textItems.length < currentPage || !pageDimensions) return;
+
+    const rect = overlayRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const pageItems = textItems[currentPage - 1].textItems;
+    if (!pageItems) return;
+
+    const liteParsePage = textItems[currentPage - 1];
+    const scaleX = pageDimensions.width / liteParsePage.width;
+    const scaleY = pageDimensions.height / liteParsePage.height;
+=======
+  const currentPageLines = useMemo(() => {
+    if (!textItems || textItems.length < currentPage) return [];
+    return groupTextItemsIntoLines(textItems[currentPage - 1].textItems);
+  }, [textItems, currentPage]);
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!overlayRef.current || !textItems || textItems.length < currentPage || !pageDimensions) return;
+
+    const rect = overlayRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    if (!currentPageLines || currentPageLines.length === 0) return;
+
+    const liteParsePage = textItems[currentPage - 1];
+    const scaleX = pageDimensions.width / liteParsePage.width;
+    const scaleY = pageDimensions.height / liteParsePage.height;
+>>>>>>> REPLACE
+<<<<<<< SEARCH
+    let found = false;
+    // Find closest item within tolerance
+    for (const item of pageItems) {
+      if (
+        lpX >= item.x - 2 &&
+        lpX <= item.x + item.width + 2 &&
+        lpY >= item.y - 2 &&
+        lpY <= item.y + item.height + 2
+      ) {
+        setHoveredBox({
+          x: item.x * scaleX,
+          y: item.y * scaleY,
+          width: item.width * scaleX,
+          height: item.height * scaleY,
+          text: item.text
+        });
+        found = true;
+        break;
+      }
+    }
+
+    if (!found) setHoveredBox(null);
+  };
+=======
+    let found = false;
+    // Find closest line within tolerance
+    for (const item of currentPageLines) {
+      if (
+        lpX >= item.x - 2 &&
+        lpX <= item.x + item.width + 2 &&
+        lpY >= item.y - 2 &&
+        lpY <= item.y + item.height + 2
+      ) {
+        setHoveredBox({
+          x: item.x * scaleX,
+          y: item.y * scaleY,
+          width: item.width * scaleX,
+          height: item.height * scaleY,
+          text: item.text
+        });
+        found = true;
+        break;
+      }
+    }
+
+    if (!found) setHoveredBox(null);
+  };
+>>>>>>> REPLACE

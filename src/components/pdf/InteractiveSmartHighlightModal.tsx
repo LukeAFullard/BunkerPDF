@@ -48,16 +48,6 @@ export function InteractiveSmartHighlightModal({ isOpen, docId, onClose, onApply
 
   const [pageDimensions, setPageDimensions] = useState<{ width: number, height: number } | null>(null);
 
-  useEffect(() => {
-    if (isOpen && doc) {
-      loadDocument();
-    } else {
-      setPdfDoc(null);
-      setTextItems([]);
-      setSelectedBoxes([]);
-      setHoveredBox(null);
-    }
-  }, [isOpen, doc]);
 
   const loadDocument = async () => {
     setIsLoading(true);
@@ -83,10 +73,18 @@ export function InteractiveSmartHighlightModal({ isOpen, docId, onClose, onApply
   };
 
   useEffect(() => {
-    if (pdfDoc) {
-      renderPage(currentPage, pdfDoc);
+    if (isOpen && doc) {
+      setTimeout(() => void loadDocument(), 0);
+    } else {
+      setTimeout(() => setPdfDoc(null), 0);
+      setTimeout(() => setTextItems([]), 0);
+      setTimeout(() => setSelectedBoxes([]), 0);
+      setTimeout(() => setHoveredBox(null), 0);
     }
-  }, [pdfDoc, currentPage, zoomLevel]);
+  }, [isOpen, doc]);
+
+
+
 
   const renderPage = async (pageNum: number, pdf: pdfjsLib.PDFDocumentProxy) => {
     setIsLoading(true);
@@ -137,6 +135,14 @@ export function InteractiveSmartHighlightModal({ isOpen, docId, onClose, onApply
     }
   };
 
+  useEffect(() => {
+    if (pdfDoc) {
+      setTimeout(() => void renderPage(currentPage, pdfDoc), 0);
+    }
+  }, [pdfDoc, currentPage, zoomLevel]);
+
+
+
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!overlayRef.current || !textItems || textItems.length < currentPage || !pageDimensions) return;
 
@@ -154,8 +160,11 @@ export function InteractiveSmartHighlightModal({ isOpen, docId, onClose, onApply
     const lpX = x / scaleX;
     const lpY = y / scaleY;
 
-    let found = false;
-    // Find closest item within tolerance
+    let closestItem = null;
+    let minDistance = Infinity;
+
+    // Find closest item within tolerance, computing distance to center
+    // to handle overlapping bounding boxes so individual words can be selected.
     for (const item of pageItems) {
       if (
         lpX >= item.x - 2 &&
@@ -163,19 +172,28 @@ export function InteractiveSmartHighlightModal({ isOpen, docId, onClose, onApply
         lpY >= item.y - 2 &&
         lpY <= item.y + item.height + 2
       ) {
-        setHoveredBox({
-          x: item.x * scaleX,
-          y: item.y * scaleY,
-          width: item.width * scaleX,
-          height: item.height * scaleY,
-          text: item.text
-        });
-        found = true;
-        break;
+        const centerX = item.x + item.width / 2;
+        const centerY = item.y + item.height / 2;
+        const dist = Math.sqrt((lpX - centerX) ** 2 + (lpY - centerY) ** 2);
+
+        if (dist < minDistance) {
+          minDistance = dist;
+          closestItem = item;
+        }
       }
     }
 
-    if (!found) setHoveredBox(null);
+    if (closestItem) {
+        setHoveredBox({
+          x: closestItem.x * scaleX,
+          y: closestItem.y * scaleY,
+          width: closestItem.width * scaleX,
+          height: closestItem.height * scaleY,
+          text: closestItem.text
+        });
+    } else {
+        setTimeout(() => setHoveredBox(null), 0);
+    }
   };
 
   const handleClick = () => {
