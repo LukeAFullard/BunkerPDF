@@ -7,17 +7,18 @@ interface DiffModalProps {
   onClose: () => void;
   initialDoc1Id?: string;
   initialDoc2Id?: string;
-  extractText: (bytes: Uint8Array) => Promise<string>;
+  extractParagraphs: (bytes: Uint8Array) => Promise<string[]>;
   diffHighlightPdf: (bytes: Uint8Array, highlights: string[], color: [number, number, number]) => Promise<Uint8Array>;
   diffMergedHighlightPdf: (bytes1: Uint8Array, bytes2: Uint8Array, removedHighlights: string[], addedHighlights: string[]) => Promise<Uint8Array>;
 }
 
-export function DiffModal({ onClose, extractText, diffMergedHighlightPdf, initialDoc1Id, initialDoc2Id }: DiffModalProps) {
+export function DiffModal({ onClose, extractParagraphs, diffMergedHighlightPdf, initialDoc1Id, initialDoc2Id }: DiffModalProps) {
   const documents = useFileStore(state => state.documents);
 
   const [diffResult, setDiffResult] = useState<diff.Change[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [progressMsg, setProgressMsg] = useState<string | null>(null);
 
   // Use state initialization for default values to avoid useEffect setState cascading renders
   const [doc1Id, setDoc1Id] = useState<string>(initialDoc1Id || (documents.length >= 1 ? documents[0].id : ''));
@@ -44,23 +45,70 @@ export function DiffModal({ onClose, extractText, diffMergedHighlightPdf, initia
     setIsLoading(true);
     setError(null);
     setDiffResult(null);
+    setProgressMsg("Starting comparison...");
 
     try {
+      setProgressMsg("Extracting layout from original document...");
       const buffer1 = await doc1.file.arrayBuffer();
-      const text1 = await extractText(new Uint8Array(buffer1));
+      const blocks1 = await extractParagraphs(new Uint8Array(buffer1));
 
+      setProgressMsg("Extracting layout from modified document...");
       const buffer2 = await doc2.file.arrayBuffer();
-      const text2 = await extractText(new Uint8Array(buffer2));
+      const blocks2 = await extractParagraphs(new Uint8Array(buffer2));
 
-      // Compute diff
-      const changes = diff.diffWordsWithSpace(text1, text2);
-      setDiffResult(changes);
+      setProgressMsg("Computing structural differences...");
+      const blockChanges = diff.diffArrays(blocks1, blocks2, { comparator: (a, b) => a === b });
+
+      const finalChanges: diff.Change[] = [];
+
+      for (let i = 0; i < blockChanges.length; i++) {
+        if (i % 10 === 0) {
+          setProgressMsg(`Processing paragraph ${i + 1} of ${blockChanges.length}...`);
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+
+        const block = blockChanges[i];
+
+        if (i < blockChanges.length - 1 &&
+            ((block.removed && blockChanges[i + 1].added) ||
+             (block.added && blockChanges[i + 1].removed))) {
+
+          // Inline modification within a paragraph
+          const removedBlock = block.removed ? block : blockChanges[i + 1];
+          const addedBlock = block.added ? block : blockChanges[i + 1];
+
+          const inlineChanges = diff.diffWordsWithSpace(removedBlock.value.join("\n\n"), addedBlock.value.join("\n\n"));
+
+          if (inlineChanges.length > 0) {
+             const lastChange = inlineChanges[inlineChanges.length - 1];
+             inlineChanges[inlineChanges.length - 1] = {
+               ...lastChange,
+               value: lastChange.value + "\n\n"
+             };
+          }
+          finalChanges.push(...inlineChanges);
+          i++; // Skip the next block since we processed it
+        } else {
+          // Pure addition, removal, or unchanged
+          finalChanges.push({
+            ...block,
+            value: block.value.join("\n\n") + "\n\n"
+          });
+        }
+
+        if (i % 5 === 0) {
+          setDiffResult([...finalChanges]);
+        }
+      }
+
+      setDiffResult([...finalChanges]);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       console.error(err);
       setError(err.message || 'Failed to compare documents.');
     } finally {
       setIsLoading(false);
+      setProgressMsg(null);
     }
   };
 
@@ -170,6 +218,16 @@ export function DiffModal({ onClose, extractText, diffMergedHighlightPdf, initia
           {error && (
             <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-lg border border-red-100 dark:border-red-900/50">
               {error}
+            </div>
+          )}
+
+          {progressMsg && (
+            <div className="p-4 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-sm rounded-lg border border-blue-100 dark:border-blue-900/50 flex items-center gap-3">
+              <svg className="animate-spin h-5 w-5 text-blue-600 dark:text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <span>{progressMsg}</span>
             </div>
           )}
 

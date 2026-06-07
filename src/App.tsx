@@ -70,7 +70,7 @@ import type {
 import { ImageReorderRail, type ImageItem } from "./components/ui/ImageReorderRail";
 import { convertImagesToPdf } from "./lib/engineA";
 import { SettingsDropdown } from "./components/ui/SettingsDropdown";
-import { extractTextLiteparse, extractAllPagesTextLiteparse, extractMarkdownLiteparse, extractHtmlLiteparse, editParagraphLiteparse, extractTablesLiteparse, redactDocumentLiteparse, redactBoxesLiteparse, editBoxesLiteparse, diffMergedHighlightPdfLiteparse, diffHighlightPdfLiteparse, autoRedactLayoutLiteparse } from "./lib/liteparseEngine";
+import { extractParagraphsLiteparse, extractTextLiteparse, extractAllPagesTextLiteparse, extractMarkdownLiteparse, extractHtmlLiteparse, editParagraphLiteparse, extractTablesLiteparse, redactDocumentLiteparse, redactBoxesLiteparse, editBoxesLiteparse, diffMergedHighlightPdfLiteparse, diffHighlightPdfLiteparse, autoRedactLayoutLiteparse } from "./lib/liteparseEngine";
 
 function App() {
   const documents = useFileStore((state) => state.documents);
@@ -1087,6 +1087,10 @@ function App() {
         pdfBytes: bytes,
       } satisfies PyodideWorkerMessage);
     });
+  };
+
+  const extractParagraphs = (bytes: Uint8Array): Promise<string[]> => {
+    return extractParagraphsLiteparse(bytes);
   };
 
   const editParagraph = async (bytes: Uint8Array, searchText: string, replacementText: string): Promise<Uint8Array> => {
@@ -3264,7 +3268,7 @@ function App() {
         isOpen={isAuditModalOpen}
         onClose={() => setIsAuditModalOpen(false)}
       />
-      {isDiffModalOpen && <DiffModal onClose={() => { setIsDiffModalOpen(false); setDiffInitialDoc1Id(undefined); setDiffInitialDoc2Id(undefined); }} extractText={extractText} diffHighlightPdf={diffHighlightPdf} diffMergedHighlightPdf={diffMergedHighlightPdf} initialDoc1Id={diffInitialDoc1Id} initialDoc2Id={diffInitialDoc2Id} />}
+      {isDiffModalOpen && <DiffModal onClose={() => { setIsDiffModalOpen(false); setDiffInitialDoc1Id(undefined); setDiffInitialDoc2Id(undefined); }} extractParagraphs={extractParagraphs} diffHighlightPdf={diffHighlightPdf} diffMergedHighlightPdf={diffMergedHighlightPdf} initialDoc1Id={diffInitialDoc1Id} initialDoc2Id={diffInitialDoc2Id} />}
       {isSideBySideModalOpen && <SideBySideViewerModal onClose={() => setIsSideBySideModalOpen(false)} onOpenCompare={(doc1Id, doc2Id) => { setIsSideBySideModalOpen(false); setDiffInitialDoc1Id(doc1Id); setDiffInitialDoc2Id(doc2Id); setIsDiffModalOpen(true); }} />}
       <ProcessingModal />
       <FeedbackPrompt />
