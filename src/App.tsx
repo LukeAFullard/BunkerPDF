@@ -189,19 +189,29 @@ function App() {
   const [isSideBySideModalOpen, setIsSideBySideModalOpen] = useState(false);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
 
-  const { isIndexing, setIndexingState, addSegments } = useSearchStore();
+  const { isIndexing, setIndexingState, addSegments, segments } = useSearchStore();
 
   const handleIndexDocuments = async () => {
     if (isIndexing || documents.length === 0) return;
+
+    // Only index documents that haven't been indexed yet
+    const indexedDocIds = new Set(segments.map(s => s.docId));
+    const unindexedDocs = documents.filter(doc => !indexedDocIds.has(doc.id));
+
+    if (unindexedDocs.length === 0) {
+      setIsSearchModalOpen(true);
+      return;
+    }
+
     setIndexingState(true, 0);
 
     const BATCH_SIZE = 5; // Process 5 pages then yield to UI
     const newSegments: DocumentSegment[] = [];
     let processedPages = 0;
-    const totalPages = documents.reduce((sum, doc) => sum + (doc.pageCount || 1), 0);
+    const totalPages = unindexedDocs.reduce((sum, doc) => sum + (doc.pageCount || 1), 0);
 
     try {
-      for (const doc of documents) {
+      for (const doc of unindexedDocs) {
         const fileBuffer = await doc.file.arrayBuffer();
         const bytes = new Uint8Array(fileBuffer);
         const pageCount = doc.pageCount || 1;
@@ -3713,9 +3723,6 @@ function App() {
                 <button onClick={() => setIsSearchModalOpen(true)} className="mr-2 px-3 py-1.5 text-sm font-medium bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center gap-2">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg> Search
                 </button>
-                <button onClick={handleIndexDocuments} className="mr-2 px-3 py-1.5 text-sm font-medium bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center gap-2" title="Index all documents for search">
-                  Index
-                </button>
                 <button onClick={() => setIsDiffModalOpen(true)} className="mr-2 px-3 py-1.5 text-sm font-medium bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center gap-2">
                   <FileDiff className="w-4 h-4" /> Compare
                 </button>
@@ -3809,7 +3816,11 @@ function App() {
       <SearchModal
         isOpen={isSearchModalOpen}
         onClose={() => setIsSearchModalOpen(false)}
-
+        onIndexDocuments={handleIndexDocuments}
+        onRunOcr={(doc) => {
+          setIsSearchModalOpen(false);
+          handleOcr(doc);
+        }}
       />
     </div>
   );
