@@ -97,9 +97,6 @@ export function SideBySideViewerModal({ onClose, onOpenCompare }: SideBySideView
             <button
               onClick={() => {
                 setIsZoomLocked(!isZoomLocked);
-                if (!isZoomLocked) {
-                  setScale2(scale1);
-                }
               }}
               className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                 isZoomLocked
