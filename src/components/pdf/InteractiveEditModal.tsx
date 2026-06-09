@@ -265,8 +265,11 @@ export function InteractiveEditModal({ isOpen, docId, onClose, onApply }: Intera
   };
 
   const removeEditBox = (index: number) => {
+    const edit = edits[index];
+    if (edit && getBoxId(edit.pageNum, edit.x, edit.y) === activeEditBoxId) {
+      setActiveEditBoxId(null);
+    }
     setEdits(prev => prev.filter((_, i) => i !== index));
-    if (activeEditBox === index) setActiveEditBox(null);
   };
 
   const handleApply = () => {
