@@ -57,7 +57,8 @@ export function DiffModal({ onClose, extractParagraphs, diffMergedHighlightPdf, 
       const blocks2 = await extractParagraphs(new Uint8Array(buffer2));
 
       setProgressMsg("Computing structural differences...");
-      const blockChanges = diff.diffArrays(blocks1, blocks2, { comparator: (a, b) => a === b });
+      const normalizeText = (text: string) => text.trim().replace(/\s+/g, ' ');
+      const blockChanges = diff.diffArrays(blocks1, blocks2, { comparator: (a, b) => normalizeText(a) === normalizeText(b) });
 
       const finalChanges: diff.Change[] = [];
 
@@ -77,7 +78,7 @@ export function DiffModal({ onClose, extractParagraphs, diffMergedHighlightPdf, 
           const removedBlock = block.removed ? block : blockChanges[i + 1];
           const addedBlock = block.added ? block : blockChanges[i + 1];
 
-          const inlineChanges = diff.diffWordsWithSpace(removedBlock.value.join("\n\n"), addedBlock.value.join("\n\n"));
+          const inlineChanges = diff.diffWords(removedBlock.value.join("\n\n"), addedBlock.value.join("\n\n"));
 
           // Ensure we append the paragraph separator as an unchanged block
           // so it aligns correctly in both the left and right panes.
