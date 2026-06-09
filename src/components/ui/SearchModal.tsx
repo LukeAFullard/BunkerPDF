@@ -1,29 +1,34 @@
 import React, { useState, useEffect } from 'react';
 import { X, Search as SearchIcon, Loader2 } from 'lucide-react';
 import { useSearchStore, type DocumentSegment } from '../../store/searchStore';
-import { useFileStore } from '../../store/fileStore';
+import { useFileStore, type PDFDocument } from '../../store/fileStore';
 import { generateEmbedding, cosineSimilarity } from '../../lib/searchEngine';
+import { analyzeDocumentHealth } from '../../lib/healthChecks';
 
 interface SearchModalProps {
   isOpen: boolean;
   onClose: () => void;
   onIndexDocuments: () => void;
+  onRunOcr: (doc: PDFDocument) => void;
 }
 
 type SearchMode = 'semantic' | 'keyword';
 
-export function SearchModal({ isOpen, onClose, onIndexDocuments }: SearchModalProps) {
+export function SearchModal({ isOpen, onClose, onIndexDocuments, onRunOcr }: SearchModalProps) {
   const [searchMode, setSearchMode] = useState<SearchMode>('semantic');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<{ segment: DocumentSegment, score?: number }[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [ocrNeededDocs, setOcrNeededDocs] = useState<PDFDocument[]>([]);
+  const [isAnalyzingHealth, setIsAnalyzingHealth] = useState(false);
 
   const { segments, isIndexing, indexingProgress } = useSearchStore();
   const { documents, setActiveDocument } = useFileStore();
 
   const indexedDocIds = new Set(segments.map(s => s.docId));
-  const unindexedDocsCount = documents.filter(doc => !indexedDocIds.has(doc.id)).length;
+  const unindexedDocs = documents.filter(doc => !indexedDocIds.has(doc.id));
+  const unindexedDocsCount = unindexedDocs.length;
 
   useEffect(() => {
     if (!isOpen) {
@@ -35,6 +40,39 @@ export function SearchModal({ isOpen, onClose, onIndexDocuments }: SearchModalPr
       setError(null);
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || unindexedDocsCount === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setOcrNeededDocs([]);
+      return;
+    }
+
+    let isMounted = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setIsAnalyzingHealth(true);
+
+    const checkDocs = async () => {
+      const needsOcr: PDFDocument[] = [];
+      for (const doc of unindexedDocs) {
+        const health = await analyzeDocumentHealth(doc.file);
+        if (health.needsOcr) {
+          needsOcr.push(doc);
+        }
+      }
+      if (isMounted) {
+        setOcrNeededDocs(needsOcr);
+        setIsAnalyzingHealth(false);
+      }
+    };
+
+    checkDocs();
+
+    return () => {
+      isMounted = false;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, unindexedDocsCount]);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,7 +134,7 @@ export function SearchModal({ isOpen, onClose, onIndexDocuments }: SearchModalPr
         </div>
 
         <div className="p-4 border-b bg-gray-50">
-          {unindexedDocsCount === 0 && !isIndexing && (
+          {unindexedDocsCount === 0 && !isIndexing && !isAnalyzingHealth && (
             <div className="flex gap-4 mb-4 border-b border-gray-200">
               <button
                 onClick={() => setSearchMode('semantic')}
@@ -115,19 +153,41 @@ export function SearchModal({ isOpen, onClose, onIndexDocuments }: SearchModalPr
             </div>
           )}
 
-          {unindexedDocsCount > 0 && !isIndexing ? (
+          {isAnalyzingHealth ? (
+            <div className="flex flex-col items-center p-6 text-gray-500">
+              <Loader2 className="w-8 h-8 animate-spin mb-3 text-blue-500" />
+              <p>Analyzing document health...</p>
+            </div>
+          ) : unindexedDocsCount > 0 && !isIndexing ? (
             <div className="flex flex-col items-center p-6 bg-blue-50 rounded-lg border border-blue-200">
               <SearchIcon className="w-12 h-12 text-blue-500 mb-3" />
               <h3 className="text-lg font-bold text-blue-800 mb-2">Indexing Required</h3>
-              <p className="text-center text-blue-600 mb-4">
-                You have {unindexedDocsCount} {unindexedDocsCount === 1 ? 'document' : 'documents'} that must be indexed before you can search.
-              </p>
-              <button
-                onClick={onIndexDocuments}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors"
-              >
-                Index Documents Now
-              </button>
+
+              {ocrNeededDocs.length > 0 ? (
+                <>
+                  <p className="text-center text-red-600 mb-4 font-medium">
+                    ⚠️ {ocrNeededDocs.length} of your unindexed {ocrNeededDocs.length === 1 ? 'document appears' : 'documents appear'} to be scanned and require OCR before indexing.
+                  </p>
+                  <button
+                    onClick={() => onRunOcr(ocrNeededDocs[0])}
+                    className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium transition-colors"
+                  >
+                    Run OCR on "{ocrNeededDocs[0].name}"
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-center text-blue-600 mb-4">
+                    You have {unindexedDocsCount} {unindexedDocsCount === 1 ? 'document' : 'documents'} that must be indexed before you can search.
+                  </p>
+                  <button
+                    onClick={onIndexDocuments}
+                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors"
+                  >
+                    Index Documents Now
+                  </button>
+                </>
+              )}
             </div>
           ) : (
             <>

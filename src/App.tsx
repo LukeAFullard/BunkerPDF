@@ -3817,6 +3817,10 @@ function App() {
         isOpen={isSearchModalOpen}
         onClose={() => setIsSearchModalOpen(false)}
         onIndexDocuments={handleIndexDocuments}
+        onRunOcr={(doc) => {
+          setIsSearchModalOpen(false);
+          handleOcr(doc);
+        }}
       />
     </div>
   );
