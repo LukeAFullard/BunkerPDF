@@ -8,6 +8,44 @@ import { cleanupPdfResources } from '../../lib/pdfCleanup';
 import { getConfiguredLiteParse } from '../../lib/liteparseEngine';
 
 
+interface InlineTextEditorProps {
+  initialText: string;
+  onSave: (text: string) => void;
+  style: React.CSSProperties;
+}
+
+function InlineTextEditor({ initialText, onSave, style }: InlineTextEditorProps) {
+  const [text, setText] = useState(initialText);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-resize vertically based on content
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = textareaRef.current.scrollHeight + "px";
+    }
+  }, [text]);
+
+  return (
+    <textarea
+      ref={textareaRef}
+      autoFocus
+      value={text}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={() => onSave(text)}
+      onKeyDown={(e) => {
+         // Optionally allow shift+enter for new lines and enter to save
+         if (e.key === 'Enter' && !e.shiftKey) {
+           e.preventDefault();
+           onSave(text);
+         }
+      }}
+      className="absolute bg-white border-2 border-indigo-500 rounded shadow-xl p-1 outline-none font-sans text-sm z-50 text-black resize-none overflow-hidden ring-2 ring-indigo-200"
+      style={style}
+    />
+  );
+}
+
 export interface EditBox {
   pageNum: number;
   x: number;
@@ -116,7 +154,7 @@ export function InteractiveEditModal({ isOpen, docId, onClose, onApply }: Intera
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [liteparseData, setLiteparseData] = useState<any>(null);
   const [edits, setEdits] = useState<EditBox[]>([]);
-  const [activeEditBox, setActiveEditBox] = useState<number | null>(null);
+  const [activeEditBoxId, setActiveEditBoxId] = useState<string | null>(null);
 
   const renderTaskRef = useRef<pdfjsLib.RenderTask | null>(null);
   const pdfDocRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
@@ -236,10 +274,14 @@ export function InteractiveEditModal({ isOpen, docId, onClose, onApply }: Intera
   };
 
 
+  const getBoxId = (pageNum: number, x: number, y: number) => `${pageNum}-${x}-${y}`;
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleItemClick = (block: any, pageIdx: number, _idx: number) => {
     // Convert to edit box
     const editExists = edits.findIndex(e => e.pageNum === pageIdx && e.x === block.x && e.y === block.y);
+    const boxId = getBoxId(pageIdx, block.x, block.y);
+
     if (editExists === -1) {
        setEdits(prev => [...prev, {
           pageNum: pageIdx,
@@ -250,23 +292,24 @@ export function InteractiveEditModal({ isOpen, docId, onClose, onApply }: Intera
           newText: block.text, // init with original
           fontSize: block.fontSize
        }]);
-       setActiveEditBox(edits.length); // will be the new index
-    } else {
-       setActiveEditBox(editExists);
     }
+    setActiveEditBoxId(boxId);
   };
 
   const updateEditBox = (index: number, newText: string) => {
     setEdits(prev => {
       const next = [...prev];
-      next[index].newText = newText;
+      next[index] = { ...next[index], newText };
       return next;
     });
   };
 
   const removeEditBox = (index: number) => {
+    const edit = edits[index];
+    if (edit && getBoxId(edit.pageNum, edit.x, edit.y) === activeEditBoxId) {
+      setActiveEditBoxId(null);
+    }
     setEdits(prev => prev.filter((_, i) => i !== index));
-    if (activeEditBox === index) setActiveEditBox(null);
   };
 
   const handleApply = () => {
@@ -335,22 +378,23 @@ export function InteractiveEditModal({ isOpen, docId, onClose, onApply }: Intera
                      {!isLoading && blocks.length > 0 && overlayScale > 0 && blocks.map((block: any, idx: number) => {
                         const editIndex = edits.findIndex(e => e.pageNum === pageIdx && e.x === block.x && e.y === block.y);
                         const isEdited = editIndex !== -1;
-                        const isEditing = activeEditBox === editIndex;
+                        const boxId = getBoxId(pageIdx, block.x, block.y);
+                        const isEditing = activeEditBoxId === boxId;
 
                         if (isEditing && isEdited) {
                            return (
-                              <textarea
-                                key={idx}
-                                autoFocus
-                                value={edits[editIndex].newText}
-                                onChange={(e) => updateEditBox(editIndex, e.target.value)}
-                                onBlur={() => setActiveEditBox(null)}
-                                className="absolute bg-white border-2 border-indigo-500 shadow-lg px-1 outline-none font-sans text-sm z-50 text-black resize-none"
+                              <InlineTextEditor
+                                key={`edit-${boxId}`}
+                                initialText={edits[editIndex].newText}
+                                onSave={(newText) => {
+                                  updateEditBox(editIndex, newText);
+                                  setActiveEditBoxId(null);
+                                }}
                                 style={{
                                    left: `${block.x * overlayScale}px`,
-                                   top: `${block.y * overlayScale - 4}px`, // slightly offset for visual clarity
+                                   top: `${block.y * overlayScale - 4}px`,
                                    minWidth: `${Math.max(block.width * overlayScale, 150)}px`,
-                                   height: `${Math.max(block.height * overlayScale + 8, 40)}px`,
+                                   minHeight: `${Math.max(block.height * overlayScale + 8, 40)}px`,
                                 }}
                               />
                            );
