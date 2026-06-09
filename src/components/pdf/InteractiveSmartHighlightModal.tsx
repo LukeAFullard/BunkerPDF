@@ -186,24 +186,19 @@ export function InteractiveSmartHighlightModal({ isOpen, docId, onClose, onApply
       const iy = item.y as number;
       const iw = item.width as number;
       const ih = item.height as number;
-      if (
-        lpX >= ix - 2 &&
-        lpX <= ix + iw + 2 &&
-        lpY >= iy - 2 &&
-        lpY <= iy + ih + 2
-      ) {
-        const centerX = ix + iw / 2;
-        const centerY = iy + ih / 2;
-        const distance = Math.sqrt((lpX - centerX) ** 2 + (lpY - centerY) ** 2);
 
-        if (distance < minDistance) {
-          closestItem = item as Record<string, unknown>;
-          minDistance = distance;
-        }
+      const centerX = ix + iw / 2;
+      const centerY = iy + ih / 2;
+      const distance = Math.sqrt((lpX - centerX) ** 2 + (lpY - centerY) ** 2);
+
+      if (distance < minDistance) {
+        closestItem = item as Record<string, unknown>;
+        minDistance = distance;
       }
     }
 
-    if (closestItem) {
+    // Allow a larger tolerance for hover selection to make smaller words easier to target
+    if (closestItem && minDistance < 50) {
       setHoveredBox({
         x: (closestItem.x as number) * scaleX,
         y: (closestItem.y as number) * scaleY,
@@ -241,20 +236,20 @@ export function InteractiveSmartHighlightModal({ isOpen, docId, onClose, onApply
 
       const newBoxes: HighlightBox[] = [];
 
+      const lpRight = lpX + lpW;
+      const lpBottom = lpY + lpH;
+
       for (const item of pageItems) {
         const ix = item.x as number;
         const iy = item.y as number;
         const iw = item.width as number;
         const ih = item.height as number;
-        const itemCenterX = ix + iw / 2;
-        const itemCenterY = iy + ih / 2;
+        const itemRight = ix + iw;
+        const itemBottom = iy + ih;
 
-        if (
-          itemCenterX >= lpX &&
-          itemCenterX <= lpX + lpW &&
-          itemCenterY >= lpY &&
-          itemCenterY <= lpY + lpH
-        ) {
+        // Check for intersection rather than center-point to allow selecting words
+        // even if the user only dragged over a portion of them.
+        if (!(lpRight < ix || lpX > itemRight || lpBottom < iy || lpY > itemBottom)) {
           const newBox: HighlightBox = {
             pageNum: currentPage - 1,
             x: ix,
