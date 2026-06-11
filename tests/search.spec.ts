@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import path from 'path';
 
 test('Multi-PDF Search Initialization', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/BunkerPDF/');
 
   // Wait for the app to load
   await page.waitForSelector('text=The Zero-Trust Document Suite', { timeout: 10000 });

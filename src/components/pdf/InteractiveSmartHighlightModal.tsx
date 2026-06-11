@@ -7,6 +7,57 @@ import { useFileStore } from '../../store/fileStore';
 import { getConfiguredLiteParse } from '../../lib/liteparseEngine';
 
 
+
+export interface SubBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  text: string;
+}
+
+export function splitItemIntoWords(item: Record<string, unknown>): SubBox[] {
+  const text = (item.text as string) || '';
+  const ix = item.x as number;
+  const iy = item.y as number;
+  const iw = item.width as number;
+  const ih = item.height as number;
+
+  const words = text.split(/\s+/).filter(w => w.length > 0);
+  if (words.length === 0) return [];
+  if (words.length === 1) {
+    return [{ x: ix, y: iy, width: iw, height: ih, text: words[0] }];
+  }
+
+  const subBoxes: SubBox[] = [];
+  const charWidth = iw / text.length;
+
+  let currentX = ix;
+  let currentIndex = 0;
+
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i];
+    const wordIndex = text.indexOf(word, currentIndex);
+    const leadingSpaces = wordIndex - currentIndex;
+
+    currentX += leadingSpaces * charWidth;
+    const wordWidth = word.length * charWidth;
+
+    subBoxes.push({
+      x: currentX,
+      y: iy,
+      width: wordWidth,
+      height: ih,
+      text: word
+    });
+
+    currentX += wordWidth;
+    currentIndex = wordIndex + word.length;
+  }
+
+  return subBoxes;
+}
+
 export interface HighlightBox {
   pageNum: number;
   x: number;
@@ -80,7 +131,10 @@ export function InteractiveSmartHighlightModal({ isOpen, docId, onClose, onApply
       setTimeout(() => loadDocument(), 0);
     } else {
       setTimeout(() => {
-        setPdfDoc(null);
+        setPdfDoc(prev => {
+          if (prev) prev.destroy();
+          return null;
+        });
         setTextItems([]);
         setSelectedBoxes([]);
         setHoveredBox(null);
@@ -167,44 +221,43 @@ export function InteractiveSmartHighlightModal({ isOpen, docId, onClose, onApply
       return;
     }
 
-    const pageItems = textItems[currentPage - 1].textItems;
-    if (!pageItems) return;
-
     const liteParsePage = textItems[currentPage - 1] as Record<string, unknown>;
-    const scaleX = pageDimensions.width / (liteParsePage.width as number);
-    const scaleY = pageDimensions.height / (liteParsePage.height as number);
+    if (!liteParsePage) return;
+    const pageItems = liteParsePage.textItems;
+    if (!pageItems || !Array.isArray(pageItems)) return;
+    const lpWidth = (liteParsePage.width as number) || (liteParsePage.dimensions as any)?.width || pageDimensions.width;
+    const lpHeight = (liteParsePage.height as number) || (liteParsePage.dimensions as any)?.height || pageDimensions.height;
+
+    if (!lpWidth || !lpHeight) return;
+
+    const scaleX = pageDimensions.width / lpWidth;
+    const scaleY = pageDimensions.height / lpHeight;
 
     const lpX = x / scaleX;
     const lpY = y / scaleY;
 
-    let closestItem: Record<string, unknown> | null = null;
-    let minDistance = Infinity;
+    let hoveredWordBox: SubBox | null = null;
 
-    // Find closest item within tolerance
+    // Check containment
     for (const item of pageItems as Record<string, unknown>[]) {
-      const ix = item.x as number;
-      const iy = item.y as number;
-      const iw = item.width as number;
-      const ih = item.height as number;
-
-      const centerX = ix + iw / 2;
-      const centerY = iy + ih / 2;
-      const distance = Math.sqrt((lpX - centerX) ** 2 + (lpY - centerY) ** 2);
-
-      if (distance < minDistance) {
-        closestItem = item as Record<string, unknown>;
-        minDistance = distance;
+      const words = splitItemIntoWords(item);
+      for (const wordBox of words) {
+        if (lpX >= wordBox.x && lpX <= wordBox.x + wordBox.width &&
+            lpY >= wordBox.y && lpY <= wordBox.y + wordBox.height) {
+          hoveredWordBox = wordBox;
+          break;
+        }
       }
+      if (hoveredWordBox) break;
     }
 
-    // Allow a larger tolerance for hover selection to make smaller words easier to target
-    if (closestItem && minDistance < 50) {
+    if (hoveredWordBox) {
       setHoveredBox({
-        x: (closestItem.x as number) * scaleX,
-        y: (closestItem.y as number) * scaleY,
-        width: (closestItem.width as number) * scaleX,
-        height: (closestItem.height as number) * scaleY,
-        text: closestItem.text as string
+        x: hoveredWordBox.x * scaleX,
+        y: hoveredWordBox.y * scaleY,
+        width: hoveredWordBox.width * scaleX,
+        height: hoveredWordBox.height * scaleY,
+        text: hoveredWordBox.text
       });
     } else {
       setHoveredBox(null);
@@ -223,49 +276,53 @@ export function InteractiveSmartHighlightModal({ isOpen, docId, onClose, onApply
     if (w > 5 || h > 5) {
       if (!pageDimensions || textItems.length < currentPage) return;
       const liteParsePage = textItems[currentPage - 1] as Record<string, unknown>;
+      if (!liteParsePage) return;
       const pageItems = liteParsePage.textItems as Record<string, unknown>[];
-      if (!pageItems) return;
+      if (!pageItems || !Array.isArray(pageItems)) return;
 
-      const scaleX = (liteParsePage.width as number) / pageDimensions.width;
-      const scaleY = (liteParsePage.height as number) / pageDimensions.height;
+      const lpWidth = (liteParsePage.width as number) || (liteParsePage.dimensions as any)?.width || pageDimensions.width;
+      const lpHeight = (liteParsePage.height as number) || (liteParsePage.dimensions as any)?.height || pageDimensions.height;
 
-      const lpX = x * scaleX;
-      const lpY = y * scaleY;
-      const lpW = w * scaleX;
-      const lpH = h * scaleY;
+      if (!lpWidth || !lpHeight) return;
+
+      const scaleX = pageDimensions.width / lpWidth;
+      const scaleY = pageDimensions.height / lpHeight;
+
+      const lpX = x / scaleX;
+      const lpY = y / scaleY;
+      const lpW = w / scaleX;
+      const lpH = h / scaleY;
 
       const newBoxes: HighlightBox[] = [];
 
       const lpRight = lpX + lpW;
       const lpBottom = lpY + lpH;
 
-      for (const item of pageItems) {
-        const ix = item.x as number;
-        const iy = item.y as number;
-        const iw = item.width as number;
-        const ih = item.height as number;
-        const itemRight = ix + iw;
-        const itemBottom = iy + ih;
+      for (const item of pageItems as Record<string, unknown>[]) {
+        const words = splitItemIntoWords(item);
+        for (const wordBox of words) {
+          const centerX = wordBox.x + wordBox.width / 2;
+          const centerY = wordBox.y + wordBox.height / 2;
 
-        // Check for intersection rather than center-point to allow selecting words
-        // even if the user only dragged over a portion of them.
-        if (!(lpRight < ix || lpX > itemRight || lpBottom < iy || lpY > itemBottom)) {
-          const newBox: HighlightBox = {
-            pageNum: currentPage - 1,
-            x: ix,
-            y: iy,
-            width: iw,
-            height: ih,
-            text: item.text as string,
-            color: currentColor
-          };
+          // Check if center point is inside the dragged box
+          if (centerX >= lpX && centerX <= lpRight && centerY >= lpY && centerY <= lpBottom) {
+            const newBox: HighlightBox = {
+              pageNum: currentPage - 1,
+              x: wordBox.x,
+              y: wordBox.y,
+              width: wordBox.width,
+              height: wordBox.height,
+              text: wordBox.text,
+              color: currentColor
+            };
 
-          const existingIndex = selectedBoxes.findIndex(
-            b => Math.abs(b.x - newBox.x) < 1 && Math.abs(b.y - newBox.y) < 1 && b.pageNum === newBox.pageNum
-          );
+            const existingIndex = selectedBoxes.findIndex(
+              b => Math.abs(b.x - newBox.x) < 1 && Math.abs(b.y - newBox.y) < 1 && b.pageNum === newBox.pageNum
+            );
 
-          if (existingIndex === -1 && !newBoxes.some(b => Math.abs(b.x - newBox.x) < 1 && Math.abs(b.y - newBox.y) < 1)) {
-            newBoxes.push(newBox);
+            if (existingIndex === -1 && !newBoxes.some(b => Math.abs(b.x - newBox.x) < 1 && Math.abs(b.y - newBox.y) < 1)) {
+              newBoxes.push(newBox);
+            }
           }
         }
       }
@@ -277,15 +334,21 @@ export function InteractiveSmartHighlightModal({ isOpen, docId, onClose, onApply
       // It was a click, not a drag
       if (hoveredBox && pageDimensions && textItems.length >= currentPage) {
         const liteParsePage = textItems[currentPage - 1] as Record<string, unknown>;
-        const scaleX = (liteParsePage.width as number) / pageDimensions.width;
-        const scaleY = (liteParsePage.height as number) / pageDimensions.height;
+
+        const lpWidth = (liteParsePage.width as number) || (liteParsePage.dimensions as any)?.width || pageDimensions.width;
+        const lpHeight = (liteParsePage.height as number) || (liteParsePage.dimensions as any)?.height || pageDimensions.height;
+
+        if (!lpWidth || !lpHeight) return;
+
+        const scaleX = pageDimensions.width / lpWidth;
+        const scaleY = pageDimensions.height / lpHeight;
 
         const newBox: HighlightBox = {
           pageNum: currentPage - 1,
-          x: hoveredBox.x * scaleX,
-          y: hoveredBox.y * scaleY,
-          width: hoveredBox.width * scaleX,
-          height: hoveredBox.height * scaleY,
+          x: hoveredBox.x / scaleX,
+          y: hoveredBox.y / scaleY,
+          width: hoveredBox.width / scaleX,
+          height: hoveredBox.height / scaleY,
           text: hoveredBox.text,
           color: currentColor
         };
@@ -398,8 +461,10 @@ export function InteractiveSmartHighlightModal({ isOpen, docId, onClose, onApply
                      // Need to convert back to screen coordinates
                      if (!pageDimensions || !textItems[currentPage - 1]) return null;
                      const liteParsePage = textItems[currentPage - 1] as Record<string, unknown>;
-                     const scaleX = pageDimensions.width / (liteParsePage.width as number);
-                     const scaleY = pageDimensions.height / (liteParsePage.height as number);
+                     const lpWidth = (liteParsePage.width as number) || (liteParsePage.dimensions as any)?.width || pageDimensions.width;
+                     const lpHeight = (liteParsePage.height as number) || (liteParsePage.dimensions as any)?.height || pageDimensions.height;
+                     const scaleX = pageDimensions.width / lpWidth;
+                     const scaleY = pageDimensions.height / lpHeight;
                      const screenX = box.x * scaleX;
                      const screenY = box.y * scaleY;
                      const screenW = box.width * scaleX;
