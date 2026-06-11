@@ -5,7 +5,7 @@ import 'pdfjs-dist/web/pdf_viewer.css';
 import { X, Type, ZoomIn, ZoomOut, Loader2, Copy, Check, Image as ImageIcon } from 'lucide-react';
 import { useFileStore } from '../../store/fileStore';
 import { cleanupPdfResources } from '../../lib/pdfCleanup';
-import { getConfiguredLiteParse, formatParagraphFromItems } from '../../lib/liteparseEngine';
+import { getConfiguredLiteParse, formatParagraphFromItems, formatMarkdownFromItems } from '../../lib/liteparseEngine';
 import { createWorker } from 'tesseract.js';
 
 interface InteractiveCopyModalProps {
@@ -41,6 +41,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
   const [copiedImage, setCopiedImage] = useState(false);
   const [marginThresholdPercent, setMarginThresholdPercent] = useState(12);
   const [selectWholeLine, setSelectWholeLine] = useState(false);
+  const [copyFormat, setCopyFormat] = useState<'text' | 'markdown'>('text');
   const [isOcrRunning, setIsOcrRunning] = useState(false);
 
   const renderTaskRef = useRef<pdfjsLib.RenderTask | null>(null);
@@ -231,7 +232,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
     }
   };
 
-  const extractRegion = (x: number, y: number, w: number, h: number, customThreshold?: number, overrideWholeLine?: boolean) => {
+  const extractRegion = (x: number, y: number, w: number, h: number, customThreshold?: number, overrideWholeLine?: boolean, overrideFormat?: 'text' | 'markdown') => {
     if (!liteparseData || overlayScale <= 0) return;
 
     // Convert overlay pixels to LiteParse units (which are native PDF points usually)
@@ -288,7 +289,10 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
     }
 
     if (intersectingItems.length > 0) {
-      const textStr = formatParagraphFromItems(intersectingItems);
+      const currentFormat = overrideFormat !== undefined ? overrideFormat : copyFormat;
+      const textStr = currentFormat === 'markdown'
+        ? formatMarkdownFromItems(intersectingItems)
+        : formatParagraphFromItems(intersectingItems);
       setExtractedText(textStr);
     } else {
       setExtractedText(null);
@@ -535,7 +539,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
                    const val = parseInt(e.target.value);
                    setMarginThresholdPercent(val);
                    if (selectionBox) {
-                     extractRegion(selectionBox.x, selectionBox.y, selectionBox.w, selectionBox.h, val);
+                     extractRegion(selectionBox.x, selectionBox.y, selectionBox.w, selectionBox.h, val, selectWholeLine, copyFormat);
                    }
                  }}
                  className="flex-1 accent-indigo-600"
@@ -551,13 +555,31 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
                     const checked = e.target.checked;
                     setSelectWholeLine(checked);
                     if (selectionBox) {
-                      extractRegion(selectionBox.x, selectionBox.y, selectionBox.w, selectionBox.h, marginThresholdPercent, checked);
+                      extractRegion(selectionBox.x, selectionBox.y, selectionBox.w, selectionBox.h, marginThresholdPercent, checked, copyFormat);
                     }
                   }}
                   className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
                 />
                 <label htmlFor="wholeLineToggle" className="text-xs font-medium text-gray-600 cursor-pointer">
                   Select whole line(s) automatically
+                </label>
+             </div>
+             <div className="flex items-center gap-2 mt-1">
+                <input
+                  type="checkbox"
+                  id="markdownToggle"
+                  checked={copyFormat === 'markdown'}
+                  onChange={(e) => {
+                    const format = e.target.checked ? 'markdown' : 'text';
+                    setCopyFormat(format);
+                    if (selectionBox) {
+                      extractRegion(selectionBox.x, selectionBox.y, selectionBox.w, selectionBox.h, marginThresholdPercent, selectWholeLine, format);
+                    }
+                  }}
+                  className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                />
+                <label htmlFor="markdownToggle" className="text-xs font-medium text-gray-600 cursor-pointer">
+                  Copy as Markdown
                 </label>
              </div>
           </div>

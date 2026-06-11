@@ -132,61 +132,13 @@ export const extractMarkdownLiteparse = async (bytes: Uint8Array): Promise<strin
   for (const page of result.pages) {
     if (!page.textItems || page.textItems.length === 0) continue;
 
-    // Group text items by roughly their Y coordinate to form lines
-    // and then blocks. For a simple approximation matching the PyMuPDF heuristic:
-    // We'll iterate through items, if Y differs by a significant amount, it's a new line.
-    // If it differs by a lot, it's a new block.
-
-    let currentBlock: { texts: string[], maxFontSize: number } = { texts: [], maxFontSize: 0 };
-    let lastY = page.textItems[0].y;
-
-    for (const item of page.textItems) {
-      const text = item.text.trim();
-      if (!text) continue;
-
-      const fontSize = item.fontSize || 12;
-      const yDiff = Math.abs(item.y - lastY);
-
-      // If Y difference is large (e.g. > fontSize * 1.5), consider it a new block/paragraph
-      if (yDiff > fontSize * 1.5 && currentBlock.texts.length > 0) {
-        const combinedText = currentBlock.texts.join(" ").trim();
-        if (currentBlock.maxFontSize > 20) {
-           markdownLines.push(`# ${combinedText}`);
-        } else if (currentBlock.maxFontSize > 16) {
-           markdownLines.push(`## ${combinedText}`);
-        } else if (currentBlock.maxFontSize > 14) {
-           markdownLines.push(`### ${combinedText}`);
-        } else {
-           markdownLines.push(combinedText);
-        }
-        markdownLines.push("");
-        currentBlock = { texts: [], maxFontSize: 0 };
-      }
-
-      currentBlock.texts.push(text);
-      if (fontSize > currentBlock.maxFontSize) {
-        currentBlock.maxFontSize = fontSize;
-      }
-      lastY = item.y;
-    }
-
-    // Process the final block
-    if (currentBlock.texts.length > 0) {
-      const combinedText = currentBlock.texts.join(" ").trim();
-      if (currentBlock.maxFontSize > 20) {
-         markdownLines.push(`# ${combinedText}`);
-      } else if (currentBlock.maxFontSize > 16) {
-         markdownLines.push(`## ${combinedText}`);
-      } else if (currentBlock.maxFontSize > 14) {
-         markdownLines.push(`### ${combinedText}`);
-      } else {
-         markdownLines.push(combinedText);
-      }
-      markdownLines.push("");
+    const pageMarkdown = formatMarkdownFromItems(page.textItems);
+    if (pageMarkdown) {
+      markdownLines.push(pageMarkdown);
     }
   }
 
-  return markdownLines.join("\n");
+  return markdownLines.join("\n\n");
 };
 
 export const extractHtmlLiteparse = async (bytes: Uint8Array): Promise<string> => {
@@ -1140,4 +1092,64 @@ export const normalizeFontsLiteparse = async (
   }
 
   return await pdfDoc.save();
+};
+
+
+export const formatMarkdownFromItems = (textItems: any[]): string => {
+  if (!textItems || textItems.length === 0) return "";
+
+  const markdownLines: string[] = [];
+
+  // Sort items top-to-bottom, left-to-right
+  const sortedItems = [...textItems].sort((a, b) => {
+    if (Math.abs(a.y - b.y) > 5) return a.y - b.y;
+    return a.x - b.x;
+  });
+
+  let currentBlock: { texts: string[], maxFontSize: number } = { texts: [], maxFontSize: 0 };
+  let lastY = sortedItems[0].y;
+
+  for (const item of sortedItems) {
+    const text = item.text.trim();
+    if (!text) continue;
+
+    const fontSize = item.fontSize || 12;
+    const yDiff = Math.abs(item.y - lastY);
+
+    if (yDiff > fontSize * 1.5 && currentBlock.texts.length > 0) {
+      const combinedText = currentBlock.texts.join(" ").trim();
+      if (currentBlock.maxFontSize > 20) {
+         markdownLines.push(`# ${combinedText}`);
+      } else if (currentBlock.maxFontSize > 16) {
+         markdownLines.push(`## ${combinedText}`);
+      } else if (currentBlock.maxFontSize > 14) {
+         markdownLines.push(`### ${combinedText}`);
+      } else {
+         markdownLines.push(combinedText);
+      }
+      markdownLines.push("");
+      currentBlock = { texts: [], maxFontSize: 0 };
+    }
+
+    currentBlock.texts.push(text);
+    if (fontSize > currentBlock.maxFontSize) {
+      currentBlock.maxFontSize = fontSize;
+    }
+    lastY = item.y;
+  }
+
+  if (currentBlock.texts.length > 0) {
+    const combinedText = currentBlock.texts.join(" ").trim();
+    if (currentBlock.maxFontSize > 20) {
+       markdownLines.push(`# ${combinedText}`);
+    } else if (currentBlock.maxFontSize > 16) {
+       markdownLines.push(`## ${combinedText}`);
+    } else if (currentBlock.maxFontSize > 14) {
+       markdownLines.push(`### ${combinedText}`);
+    } else {
+       markdownLines.push(combinedText);
+    }
+  }
+
+  return markdownLines.join("\n").trim();
 };
