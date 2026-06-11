@@ -1098,58 +1098,149 @@ export const normalizeFontsLiteparse = async (
 export const formatMarkdownFromItems = (textItems: any[]): string => {
   if (!textItems || textItems.length === 0) return "";
 
-  const markdownLines: string[] = [];
+  // 1. Calculate median font size
+  const fontSizes = textItems.map(it => it.fontSize || 12).sort((a, b) => a - b);
+  const baseFontSize = fontSizes[Math.floor(fontSizes.length / 2)];
 
-  // Sort items top-to-bottom, left-to-right
-  const sortedItems = [...textItems].sort((a, b) => {
-    if (Math.abs(a.y - b.y) > 5) return a.y - b.y;
-    return a.x - b.x;
+  // 2. Group into rows
+  const rowTolerance = 5; // pixels
+  const rows: { items: any[], y: number }[] = [];
+
+  for (const item of textItems) {
+    let foundRow = false;
+    for (const row of rows) {
+      if (Math.abs(row.y - item.y) < rowTolerance) {
+        row.items.push(item);
+        foundRow = true;
+        break;
+      }
+    }
+    if (!foundRow) {
+      rows.push({ items: [item], y: item.y });
+    }
+  }
+
+  rows.sort((a, b) => a.y - b.y);
+
+  // 3. Create row strings
+  const formattedRows = rows.map((row) => {
+    row.items.sort((a, b) => a.x - b.x);
+    let rowString = "";
+    let rowMaxFontSize = 0;
+
+    for (let j = 0; j < row.items.length; j++) {
+       const item = row.items[j];
+       rowString += item.text;
+       if ((item.fontSize || 12) > rowMaxFontSize) {
+         rowMaxFontSize = item.fontSize || 12;
+       }
+       if (j < row.items.length - 1) {
+          if (row.items[j+1].x - (item.x + item.width) > 3) {
+             rowString += " ";
+          }
+       }
+    }
+
+    return {
+      text: rowString.trim(),
+      maxFontSize: rowMaxFontSize,
+      y: row.y,
+      bottom: row.y + Math.max(...row.items.map(it => it.height || 12)),
+      averageHeight: row.items.reduce((acc, it) => acc + (it.height || 12), 0) / row.items.length
+    };
   });
 
-  let currentBlock: { texts: string[], maxFontSize: number } = { texts: [], maxFontSize: 0 };
-  let lastY = sortedItems[0].y;
+  // 4. Group rows into blocks
+  const blocks: { rows: typeof formattedRows, maxFontSize: number }[] = [];
+  let currentBlock: { rows: typeof formattedRows, maxFontSize: number } = { rows: [], maxFontSize: 0 };
 
-  for (const item of sortedItems) {
-    const text = item.text.trim();
-    if (!text) continue;
+  for (let i = 0; i < formattedRows.length; i++) {
+    const row = formattedRows[i];
 
-    const fontSize = item.fontSize || 12;
-    const yDiff = Math.abs(item.y - lastY);
+    // Add row to current block
+    currentBlock.rows.push(row);
+    if (row.maxFontSize > currentBlock.maxFontSize) {
+      currentBlock.maxFontSize = row.maxFontSize;
+    }
 
-    if (yDiff > fontSize * 1.5 && currentBlock.texts.length > 0) {
-      const combinedText = currentBlock.texts.join(" ").trim();
-      if (currentBlock.maxFontSize > 20) {
-         markdownLines.push(`# ${combinedText}`);
-      } else if (currentBlock.maxFontSize > 16) {
-         markdownLines.push(`## ${combinedText}`);
-      } else if (currentBlock.maxFontSize > 14) {
-         markdownLines.push(`### ${combinedText}`);
-      } else {
-         markdownLines.push(combinedText);
+    // Determine if next row starts a new block
+    if (i < formattedRows.length - 1) {
+      const nextRow = formattedRows[i + 1];
+      const gap = nextRow.y - row.bottom;
+
+      // If gap is significant, start a new block
+      if (gap > row.averageHeight * 0.5) {
+        blocks.push(currentBlock);
+        currentBlock = { rows: [], maxFontSize: 0 };
       }
-      markdownLines.push("");
-      currentBlock = { texts: [], maxFontSize: 0 };
-    }
-
-    currentBlock.texts.push(text);
-    if (fontSize > currentBlock.maxFontSize) {
-      currentBlock.maxFontSize = fontSize;
-    }
-    lastY = item.y;
-  }
-
-  if (currentBlock.texts.length > 0) {
-    const combinedText = currentBlock.texts.join(" ").trim();
-    if (currentBlock.maxFontSize > 20) {
-       markdownLines.push(`# ${combinedText}`);
-    } else if (currentBlock.maxFontSize > 16) {
-       markdownLines.push(`## ${combinedText}`);
-    } else if (currentBlock.maxFontSize > 14) {
-       markdownLines.push(`### ${combinedText}`);
     } else {
-       markdownLines.push(combinedText);
+      blocks.push(currentBlock);
     }
   }
 
-  return markdownLines.join("\n").trim();
+  // 5. Format each block
+  const markdownLines: string[] = [];
+
+  for (const block of blocks) {
+    if (block.rows.length === 0) continue;
+
+    // Join rows into a single block text
+    let blockText = "";
+    for (let i = 0; i < block.rows.length; i++) {
+       const row = block.rows[i];
+       blockText += row.text;
+
+       if (i < block.rows.length - 1) {
+          if (!blockText.endsWith(" ") && !blockText.endsWith("-")) {
+            blockText += " ";
+          } else if (blockText.endsWith("-")) {
+            blockText = blockText.slice(0, -1);
+          }
+       }
+    }
+
+    // Check for lists
+    let isList = false;
+
+    const listMatch = blockText.match(/^([•\-\*o]|\d+\.)\s+/i);
+    if (listMatch) {
+       isList = true;
+       const bullet = listMatch[1];
+       if (['•', 'o'].includes(bullet)) {
+          blockText = "- " + blockText.substring(listMatch[0].length);
+       }
+    } else if (blockText.match(/^[•\-\*o]/)) {
+       const bullet = blockText[0];
+       if (['•', 'o', '-', '*'].includes(bullet)) {
+          blockText = "- " + blockText.substring(1).trim();
+          isList = true;
+       }
+    }
+
+    if (isList) {
+       markdownLines.push(blockText);
+       continue;
+    }
+
+    // Apply header formatting
+    const relativeSize = block.maxFontSize / baseFontSize;
+    const sizeDiff = block.maxFontSize - baseFontSize;
+
+    // Don't format as header if it's multiple long lines
+    if (block.rows.length <= 2) {
+      if (relativeSize > 1.5 || sizeDiff >= 6 || block.maxFontSize > 20) {
+        markdownLines.push(`# ${blockText}`);
+      } else if (relativeSize > 1.3 || sizeDiff >= 4 || block.maxFontSize > 16) {
+        markdownLines.push(`## ${blockText}`);
+      } else if (relativeSize > 1.1 || sizeDiff >= 2 || block.maxFontSize > 14) {
+        markdownLines.push(`### ${blockText}`);
+      } else {
+        markdownLines.push(blockText);
+      }
+    } else {
+      markdownLines.push(blockText);
+    }
+  }
+
+  return markdownLines.join("\n\n").trim();
 };
