@@ -2,7 +2,7 @@ import { loadPdfDocument } from "../../lib/pdfHelper";
 import { useState, useEffect, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import 'pdfjs-dist/web/pdf_viewer.css';
-import { X, Type, ZoomIn, ZoomOut, Loader2, Copy, Check, Image as ImageIcon } from 'lucide-react';
+import { X, Type, ZoomIn, ZoomOut, Loader2, Copy, Check, Image as ImageIcon, ScanText } from 'lucide-react';
 import { useFileStore } from '../../store/fileStore';
 import { cleanupPdfResources } from '../../lib/pdfCleanup';
 import { getConfiguredLiteParse, formatParagraphFromItems, formatMarkdownFromItems } from '../../lib/liteparseEngine';
@@ -609,6 +609,18 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
           </div>
 
           <div className="p-4 bg-white border-t border-gray-200 flex flex-col gap-3">
+             <button
+               onClick={() => {
+                 if (selectionBox) {
+                   runOcrOnRegion(selectionBox.x, selectionBox.y, selectionBox.w, selectionBox.h);
+                 }
+               }}
+               disabled={!selectionBox || isOcrRunning}
+               className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-gray-100 text-gray-700 border border-gray-300 rounded-xl font-medium hover:bg-gray-200 disabled:opacity-50 transition-colors shadow-sm text-sm"
+             >
+               <ScanText className="w-4 h-4" />
+               Force OCR on Selection
+             </button>
              <div className="flex gap-3">
                <button
                  onClick={handleCopy}
