@@ -1202,14 +1202,14 @@ export const formatMarkdownFromItems = (textItems: any[]): string => {
     // Check for lists
     let isList = false;
 
-    const listMatch = blockText.match(/^([•\-\*o]|\d+\.)\s+/i);
+    const listMatch = blockText.match(/^([•\-*o]|\d+\.)\s+/i);
     if (listMatch) {
        isList = true;
        const bullet = listMatch[1];
        if (['•', 'o'].includes(bullet)) {
           blockText = "- " + blockText.substring(listMatch[0].length);
        }
-    } else if (blockText.match(/^[•\-\*o]/)) {
+    } else if (blockText.match(/^[•\-*o]/)) {
        const bullet = blockText[0];
        if (['•', 'o', '-', '*'].includes(bullet)) {
           blockText = "- " + blockText.substring(1).trim();
@@ -1228,11 +1228,11 @@ export const formatMarkdownFromItems = (textItems: any[]): string => {
 
     // Don't format as header if it's multiple long lines
     if (block.rows.length <= 2) {
-      if (relativeSize > 1.5 || sizeDiff >= 6 || block.maxFontSize > 20) {
+      if (relativeSize >= 1.4 || sizeDiff >= 5 || block.maxFontSize >= 18) {
         markdownLines.push(`# ${blockText}`);
-      } else if (relativeSize > 1.3 || sizeDiff >= 4 || block.maxFontSize > 16) {
+      } else if (relativeSize >= 1.2 || sizeDiff >= 3 || block.maxFontSize >= 15) {
         markdownLines.push(`## ${blockText}`);
-      } else if (relativeSize > 1.1 || sizeDiff >= 2 || block.maxFontSize > 14) {
+      } else if (relativeSize >= 1.05 || sizeDiff >= 1 || block.maxFontSize >= 13) {
         markdownLines.push(`### ${blockText}`);
       } else {
         markdownLines.push(blockText);
