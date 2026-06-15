@@ -517,7 +517,38 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
             <button disabled={currentPage <= 1 || isLoading} onClick={() => { setCurrentPage(p => p - 1); setSelectionBox(null); setExtractedText(null); }} className="px-4 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 transition-colors">
               Previous
             </button>
-            <span className="text-sm font-medium text-gray-600 min-w-[5rem] text-center">{currentPage} / {totalPages}</span>
+            <div className="flex items-center gap-2">
+              <input
+                key={`page-input-${currentPage}`}
+                type="number"
+                min={1}
+                max={totalPages}
+                defaultValue={currentPage}
+                onBlur={(e) => {
+                  let val = parseInt(e.target.value);
+                  if (isNaN(val)) {
+                    e.target.value = currentPage.toString();
+                    return;
+                  }
+                  if (val < 1) val = 1;
+                  if (val > totalPages) val = totalPages;
+                  if (val !== currentPage) {
+                    setCurrentPage(val);
+                    setSelectionBox(null);
+                    setExtractedText(null);
+                  } else {
+                    e.target.value = currentPage.toString();
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.currentTarget.blur();
+                  }
+                }}
+                className="w-16 px-1 py-1 text-center text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+              />
+              <span className="text-sm font-medium text-gray-600">/ {totalPages}</span>
+            </div>
             <button disabled={currentPage >= totalPages || isLoading} onClick={() => { setCurrentPage(p => p + 1); setSelectionBox(null); setExtractedText(null); }} className="px-4 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 transition-colors">
               Next
             </button>
