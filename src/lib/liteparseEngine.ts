@@ -7,10 +7,11 @@ let hasInit = false;
 
 let cachedEngineJson: LiteParse | null = null;
 let cachedEngineText: LiteParse | null = null;
+let cachedEngineMarkdown: LiteParse | null = null;
 let lastOcrEnabled: boolean | null = null;
 
 
-export const getConfiguredLiteParse = async (options: { outputFormat?: 'json' | 'text' } = {}): Promise<LiteParse> => {
+export const getConfiguredLiteParse = async (options: { outputFormat?: 'json' | 'text' | 'markdown' } = {}): Promise<LiteParse> => {
   await initLiteParse();
   const ocrEnabled = useUIStore.getState().liteparseOcrEnabled;
   const format = options.outputFormat || 'json';
@@ -18,11 +19,13 @@ export const getConfiguredLiteParse = async (options: { outputFormat?: 'json' | 
   if (lastOcrEnabled !== null && lastOcrEnabled !== ocrEnabled) {
     if (cachedEngineJson) { cachedEngineJson.free(); cachedEngineJson = null; }
     if (cachedEngineText) { cachedEngineText.free(); cachedEngineText = null; }
+    if (cachedEngineMarkdown) { cachedEngineMarkdown.free(); cachedEngineMarkdown = null; }
   }
   lastOcrEnabled = ocrEnabled;
 
   if (format === 'json' && cachedEngineJson) return cachedEngineJson;
   if (format === 'text' && cachedEngineText) return cachedEngineText;
+  if (format === 'markdown' && cachedEngineMarkdown) return cachedEngineMarkdown;
 
   // OCR via WASM natively in LiteParse is currently broken due to upstream panics in @llamaindex/liteparse-wasm
   // regarding the missing Tokio 1.x runtime when `ocrEnabled: true` is passed.
@@ -36,6 +39,7 @@ export const getConfiguredLiteParse = async (options: { outputFormat?: 'json' | 
 
   if (format === 'json') cachedEngineJson = engine;
   if (format === 'text') cachedEngineText = engine;
+  if (format === 'markdown') cachedEngineMarkdown = engine;
 
   return engine;
 };
@@ -121,24 +125,11 @@ export const extractAllPagesTextLiteparse = async (bytes: Uint8Array): Promise<s
 
 export const extractMarkdownLiteparse = async (bytes: Uint8Array): Promise<string> => {
   const processedBytes = await preprocessWithOcr(bytes);
-  // Use LiteParse's JSON output for spatial/layout data.
-  const engine = await getConfiguredLiteParse({ outputFormat: "json" });
+  // Use the new native LiteParse markdown engine
+  const engine = await getConfiguredLiteParse({ outputFormat: "markdown" });
   const result = await engine.parse(processedBytes);
 
-  if (!result || !result.pages) return "";
-
-  const markdownLines: string[] = [];
-
-  for (const page of result.pages) {
-    if (!page.textItems || page.textItems.length === 0) continue;
-
-    const pageMarkdown = formatMarkdownFromItems(page.textItems);
-    if (pageMarkdown) {
-      markdownLines.push(pageMarkdown);
-    }
-  }
-
-  return markdownLines.join("\n\n");
+  return result.text || "";
 };
 
 export const extractHtmlLiteparse = async (bytes: Uint8Array): Promise<string> => {
