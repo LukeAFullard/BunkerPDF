@@ -5,7 +5,6 @@ import 'pdfjs-dist/web/pdf_viewer.css';
 import { X, Link2, ZoomIn, ZoomOut, Loader2, Check, AlertCircle } from 'lucide-react';
 import { useFileStore } from '../../store/fileStore';
 import { cleanupPdfResources } from '../../lib/pdfCleanup';
-import { getConfiguredLiteParse } from '../../lib/liteparseEngine';
 
 
 export interface LinkBox {
@@ -71,13 +70,39 @@ export function InteractiveAutoLinkerModal({ isOpen, docId, onClose, onApplyLink
         pdfDocRef.current = pdf;
         setTotalPages(pdf.numPages);
 
-        const engine = await getConfiguredLiteParse({ outputFormat: "json" });
-        const result = await engine.parse(bytes);
+        // Perform layout analysis with native link extraction in a single pass
+        // to avoid redundant parsing and OCR pre-processing.
+        const { analyzeLayoutLiteparse } = await import('../../lib/liteparseEngine');
+        const result = await analyzeLayoutLiteparse(bytes, { extractLinks: true });
 
         if (isMounted) {
           const foundLinks: LinkBox[] = [];
+          const seenLinks = new Set<string>();
 
-          // Regex to find URLs and Emails
+          // 1. Process native links identified by LiteParse
+          if (result.pages) {
+            result.pages.forEach((page: any, pageIdx: number) => {
+              if (page.textItems) {
+                page.textItems.forEach((item: any) => {
+                  if (item.url || item.link) {
+                    const key = `${pageIdx}-${Math.round(item.x)}-${Math.round(item.y)}`;
+                    seenLinks.add(key);
+                    foundLinks.push({
+                      pageNum: pageIdx,
+                      x: item.x,
+                      y: item.y,
+                      width: item.width,
+                      height: item.height,
+                      text: item.text,
+                      url: item.url || item.link
+                    });
+                  }
+                });
+              }
+            });
+          }
+
+          // 2. Regex fallback for plain-text URLs not in native metadata
           const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i;
 
           if (result.pages) {
@@ -85,7 +110,9 @@ export function InteractiveAutoLinkerModal({ isOpen, docId, onClose, onApplyLink
               if (page.textItems) {
                 page.textItems.forEach((item: any) => {
                   const text = item.text;
-                  if (urlRegex.test(text)) {
+                  const key = `${pageIdx}-${Math.round(item.x)}-${Math.round(item.y)}`;
+
+                  if (!seenLinks.has(key) && urlRegex.test(text)) {
                     // Extract the exact URL part
                     const match = text.match(urlRegex);
                     if (match && match[0]) {
