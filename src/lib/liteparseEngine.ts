@@ -11,21 +11,26 @@ let cachedEngineMarkdown: LiteParse | null = null;
 let lastOcrEnabled: boolean | null = null;
 
 
-export const getConfiguredLiteParse = async (options: { outputFormat?: 'json' | 'text' | 'markdown' } = {}): Promise<LiteParse> => {
+export const getConfiguredLiteParse = async (options: { outputFormat?: 'json' | 'text' | 'markdown', extractLinks?: boolean } = {}): Promise<LiteParse> => {
   await initLiteParse();
   const ocrEnabled = useUIStore.getState().liteparseOcrEnabled;
   const format = options.outputFormat || 'json';
+  const extractLinks = options.extractLinks ?? false;
 
-  if (lastOcrEnabled !== null && lastOcrEnabled !== ocrEnabled) {
-    if (cachedEngineJson) { cachedEngineJson.free(); cachedEngineJson = null; }
-    if (cachedEngineText) { cachedEngineText.free(); cachedEngineText = null; }
-    if (cachedEngineMarkdown) { cachedEngineMarkdown.free(); cachedEngineMarkdown = null; }
+  // We only cache basic engines without extra flags for now to avoid complexity.
+  // If extractLinks is requested, we create a fresh one or we could add more caching layers.
+  if (!extractLinks) {
+    if (lastOcrEnabled !== null && lastOcrEnabled !== ocrEnabled) {
+      if (cachedEngineJson) { cachedEngineJson.free(); cachedEngineJson = null; }
+      if (cachedEngineText) { cachedEngineText.free(); cachedEngineText = null; }
+      if (cachedEngineMarkdown) { cachedEngineMarkdown.free(); cachedEngineMarkdown = null; }
+    }
+    lastOcrEnabled = ocrEnabled;
+
+    if (format === 'json' && cachedEngineJson) return cachedEngineJson;
+    if (format === 'text' && cachedEngineText) return cachedEngineText;
+    if (format === 'markdown' && cachedEngineMarkdown) return cachedEngineMarkdown;
   }
-  lastOcrEnabled = ocrEnabled;
-
-  if (format === 'json' && cachedEngineJson) return cachedEngineJson;
-  if (format === 'text' && cachedEngineText) return cachedEngineText;
-  if (format === 'markdown' && cachedEngineMarkdown) return cachedEngineMarkdown;
 
   // OCR via WASM natively in LiteParse is currently broken due to upstream panics in @llamaindex/liteparse-wasm
   // regarding the missing Tokio 1.x runtime when `ocrEnabled: true` is passed.
@@ -35,11 +40,14 @@ export const getConfiguredLiteParse = async (options: { outputFormat?: 'json' | 
   const engine = new LiteParse({
     outputFormat: format,
     ocrEnabled: false,
+    extractLinks: extractLinks,
   });
 
-  if (format === 'json') cachedEngineJson = engine;
-  if (format === 'text') cachedEngineText = engine;
-  if (format === 'markdown') cachedEngineMarkdown = engine;
+  if (!extractLinks) {
+    if (format === 'json') cachedEngineJson = engine;
+    if (format === 'text') cachedEngineText = engine;
+    if (format === 'markdown') cachedEngineMarkdown = engine;
+  }
 
   return engine;
 };
@@ -65,9 +73,28 @@ export const initLiteParse = async (): Promise<void> => {
 
 import { useProcessingStore } from '../store/processingStore';
 
+// Simple in-memory cache for OCR-processed bytes to prevent redundant expensive operations.
+// Keys are generated from byte-length and a small sampling of the content (pseudo-fingerprint).
+const ocrCache = new Map<string, Uint8Array>();
+
+const getByteFingerprint = (bytes: Uint8Array): string => {
+  if (bytes.length < 1024) return `${bytes.length}-${bytes.join(',')}`;
+  // Sample start, middle, and end
+  const sampleSize = 100;
+  const mid = Math.floor(bytes.length / 2);
+  return `${bytes.length}-${bytes.slice(0, sampleSize).join('')}-${bytes.slice(mid, mid + sampleSize).join('')}-${bytes.slice(-sampleSize).join('')}`;
+};
+
 const preprocessWithOcr = async (bytes: Uint8Array): Promise<Uint8Array> => {
   const ocrEnabled = useUIStore.getState().liteparseOcrEnabled;
   if (!ocrEnabled) return bytes;
+
+  const fingerprint = getByteFingerprint(bytes);
+  const cached = ocrCache.get(fingerprint);
+  if (cached) {
+    console.log("Using cached OCR-processed PDF bytes...");
+    return cached;
+  }
 
   console.log("Pre-processing PDF with Tesseract OCR before passing to LiteParse...");
   const file = new File([bytes.buffer as ArrayBuffer], "temp-ocr.pdf", { type: "application/pdf" });
@@ -77,7 +104,16 @@ const preprocessWithOcr = async (bytes: Uint8Array): Promise<Uint8Array> => {
      useProcessingStore.getState().updateStage(stage);
   });
 
-  return new Uint8Array(await processedFile.arrayBuffer());
+  const processedBytes = new Uint8Array(await processedFile.arrayBuffer());
+  ocrCache.set(fingerprint, processedBytes);
+
+  // Cap cache size to prevent memory leaks in long sessions
+  if (ocrCache.size > 5) {
+     const firstKey = ocrCache.keys().next().value;
+     if (firstKey !== undefined) ocrCache.delete(firstKey);
+  }
+
+  return processedBytes;
 };
 
 export const extractTextLiteparse = async (bytes: Uint8Array): Promise<string> => {
@@ -381,8 +417,61 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
   return allTablesOutput.join("\n\n---\n\n");
 };
 
+/**
+ * Unified layout analysis function that returns JSON structure with optional native link extraction.
+ * Handles OCR pre-processing automatically.
+ */
+export const analyzeLayoutLiteparse = async (bytes: Uint8Array, options: { extractLinks?: boolean } = {}): Promise<any> => {
+  const processedBytes = await preprocessWithOcr(bytes);
+  const engine = await getConfiguredLiteParse({
+    outputFormat: "json",
+    extractLinks: options.extractLinks
+  });
+  return await engine.parse(processedBytes);
+};
+
+export const extractLinksLiteparse = async (bytes: Uint8Array): Promise<any[]> => {
+  const result = await analyzeLayoutLiteparse(bytes, { extractLinks: true });
+
+  if (!result || !result.pages) return [];
+
+  const allLinks: any[] = [];
+  result.pages.forEach((page: any, pageIdx: number) => {
+    if (page.textItems) {
+      page.textItems.forEach((item: any) => {
+        if (item.url || item.link) {
+          allLinks.push({
+            ...item,
+            pageNum: pageIdx
+          });
+        }
+      });
+    }
+  });
+
+  return allLinks;
+};
+
 export const extractTablesLiteparse = async (bytes: Uint8Array, format: 'csv' | 'markdown' | 'latex'): Promise<string> => {
   const processedBytes = await preprocessWithOcr(bytes);
+
+  // For Markdown, we use the superior native LiteParse markdown engine which uses
+  // the Grid Projection Algorithm to identify tables with much higher accuracy.
+  if (format === 'markdown') {
+    const engine = await getConfiguredLiteParse({ outputFormat: "markdown" });
+    const result = await engine.parse(processedBytes);
+    const md = result.text || "";
+
+    // Extract only the table portions from the full markdown if possible,
+    // or just return the markdown. For now, since this tool is specifically for tables,
+    // we'll try to find the table blocks.
+    const tableBlocks = md.match(/\|(.+)\|(\r?\n)\|[ \-|]+\|(\r?\n)(\|(.+)\|(\r?\n?))+/g);
+    if (tableBlocks) {
+      return tableBlocks.join("\n\n---\n\n");
+    }
+    // Fallback if no markdown tables found natively
+  }
+
   const engine = await getConfiguredLiteParse({ outputFormat: "json" });
   const result = await engine.parse(processedBytes);
 
@@ -1118,12 +1207,16 @@ export const formatMarkdownFromItems = (textItems: any[]): string => {
     row.items.sort((a, b) => a.x - b.x);
     let rowString = "";
     let rowMaxFontSize = 0;
+    let rowHasBold = false;
 
     for (let j = 0; j < row.items.length; j++) {
        const item = row.items[j];
        rowString += item.text;
        if ((item.fontSize || 12) > rowMaxFontSize) {
          rowMaxFontSize = item.fontSize || 12;
+       }
+       if (item.fontName?.toLowerCase().includes("bold")) {
+         rowHasBold = true;
        }
        if (j < row.items.length - 1) {
           if (row.items[j+1].x - (item.x + item.width) > 3) {
@@ -1137,7 +1230,8 @@ export const formatMarkdownFromItems = (textItems: any[]): string => {
       maxFontSize: rowMaxFontSize,
       y: row.y,
       bottom: row.y + Math.max(...row.items.map(it => it.height || 12)),
-      averageHeight: row.items.reduce((acc, it) => acc + (it.height || 12), 0) / row.items.length
+      averageHeight: row.items.reduce((acc, it) => acc + (it.height || 12), 0) / row.items.length,
+      isBold: rowHasBold
     };
   });
 
@@ -1214,17 +1308,27 @@ export const formatMarkdownFromItems = (textItems: any[]): string => {
     }
 
     // Apply header formatting
+    // We refine these to better match the native Grid Projection Algorithm
+    // which is more sensitive to font-weight and relative differences.
     const relativeSize = block.maxFontSize / baseFontSize;
     const sizeDiff = block.maxFontSize - baseFontSize;
 
-    // Don't format as header if it's multiple long lines
-    if (block.rows.length <= 2) {
-      if (relativeSize >= 1.4 || sizeDiff >= 5 || block.maxFontSize >= 18) {
+    // Check if the block is bold (heuristic: Helvetica-Bold or similar in fontName)
+    // Optimized by using pre-calculated row-level bold status.
+    const isBold = block.rows.some(row => row.text.length > 0 && row.text.toUpperCase() === row.text) ||
+                   block.rows.some(row => row.isBold);
+
+    // Don't format as header if it's a long paragraph
+    if (block.rows.length <= 3) {
+      if (relativeSize >= 1.5 || sizeDiff >= 6 || (block.maxFontSize >= 20)) {
         markdownLines.push(`# ${blockText}`);
-      } else if (relativeSize >= 1.2 || sizeDiff >= 3 || block.maxFontSize >= 15) {
+      } else if (relativeSize >= 1.3 || sizeDiff >= 4 || (block.maxFontSize >= 16)) {
         markdownLines.push(`## ${blockText}`);
-      } else if (relativeSize >= 1.05 || sizeDiff >= 1 || block.maxFontSize >= 13) {
+      } else if (relativeSize >= 1.15 || sizeDiff >= 2 || (block.maxFontSize >= 14 && isBold)) {
         markdownLines.push(`### ${blockText}`);
+      } else if (isBold && block.rows.length === 1 && blockText.length < 60) {
+        // Minor header for short bold lines
+        markdownLines.push(`#### ${blockText}`);
       } else {
         markdownLines.push(blockText);
       }
