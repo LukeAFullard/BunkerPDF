@@ -939,7 +939,6 @@ export function DocumentCard({
       }
     } : null),
     { variant: "separator" },
-    { label: "Share (URL, <64KB only)", onClick: () => onShare?.(doc) },
     {
       label: "Remove File",
       variant: "danger",
@@ -1024,6 +1023,14 @@ export function DocumentCard({
               className="text-green-600 hover:text-green-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 rounded px-1"
             >
               Download
+            </button>
+            <button
+              onClick={() => onShare?.(doc)}
+              disabled={isProcessing}
+              className="text-indigo-600 hover:text-indigo-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded px-1"
+              title="Share (URL, <64KB only)"
+            >
+              Share
             </button>
             <button
               onClick={() => onRemove(doc.id)}
