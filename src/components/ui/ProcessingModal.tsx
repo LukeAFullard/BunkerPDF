@@ -3,7 +3,7 @@ import { useProcessingStore } from '../../store/processingStore';
 import { ShieldCheck, X } from 'lucide-react';
 
 export function ProcessingModal() {
-  const { isActive, stage, canCancel, onCancel } = useProcessingStore();
+  const { isActive, stage, progress, canCancel, onCancel } = useProcessingStore();
   const [showTrustBadge, setShowTrustBadge] = useState(true);
 
   if (!isActive) return null;
@@ -24,9 +24,17 @@ export function ProcessingModal() {
           </svg>
         </div>
 
-        <div className="text-center">
+        <div className="text-center w-full">
           <h3 className="text-lg font-semibold text-gray-900 mb-1">Processing</h3>
           <p className="text-sm text-gray-500" aria-live="polite">{stage}</p>
+          {progress !== null && (
+            <div className="w-full bg-gray-200 rounded-full h-2 mt-4 overflow-hidden">
+              <div
+                className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
+                style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
+              />
+            </div>
+          )}
         </div>
 
         {canCancel && (

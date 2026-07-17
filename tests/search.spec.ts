@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import path from 'path';
+
 
 test('Multi-PDF Search Initialization', async ({ page }) => {
   await page.goto('/BunkerPDF/');
@@ -21,7 +21,7 @@ test('Multi-PDF Search Initialization', async ({ page }) => {
   await page.locator('button[title="Index all documents for search"]').click();
 
   // The modal for Search will open up
-  await expect(page.locator('text=Semantic Multi-PDF Search')).toBeVisible({ timeout: 30000 });
+  await expect(page.locator('h2', { hasText: 'Multi-PDF Search' })).toBeVisible({ timeout: 30000 });
 
   // Search something
   await page.locator('input[placeholder="Search across all open documents..."]').fill('dummy');
