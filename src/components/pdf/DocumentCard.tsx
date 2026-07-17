@@ -1,13 +1,11 @@
 import { useUIStore } from "../../store/uiStore";
-import { useState, useCallback } from "react";
+import React from "react";
 import { PDFThumbnail } from "./PDFThumbnail";
 import { useMobile } from "../../lib/useMobile";
 import { type PDFDocument, useFileStore } from "../../store/fileStore";
-import { useEffect } from "react";
 import { getSmartOutputName } from "../../lib/utils";
 import { ErrorModal } from "../ui/ErrorModal";
 import { useProcessingStore } from "../../store/processingStore";
-import { ContextMenu } from "../ui/ContextMenu";
 import { decodeBarcodesFromPdf } from "../../lib/barcodeDecoder";
 import { useAuditStore } from "../../store/auditStore";
 import { BookmarkModal, type Bookmark } from "../ui/BookmarkModal";
@@ -131,16 +129,12 @@ export function DocumentCard({
 }: DocumentCardProps) {
   const isMobile = useMobile();
   const { activeTool, setActiveTool } = useUIStore();
-  const [detectedEntities, setDetectedEntities] = useState<string[] | null>(
-    null,
-  );
-  const [selectedEntities, setSelectedEntities] = useState<Set<string>>(
-    new Set(),
-  );
-  const [customPatternInput, setCustomPatternInput] = useState("");
-  const [customPatterns, setCustomPatterns] = useState<string[]>([]);
-  const [detectedCodes, setDetectedCodes] = useState<{text: string; page: number}[] | null>(null);
-  const [errorState, setErrorState] = useState<{
+  const [detectedEntities, setDetectedEntities] = React.useState<string[] | null>(null);
+  const [selectedEntities, setSelectedEntities] = React.useState<Set<string>>(new Set());
+  const [customPatternInput, setCustomPatternInput] = React.useState("");
+  const [customPatterns, setCustomPatterns] = React.useState<string[]>([]);
+  const [detectedCodes, setDetectedCodes] = React.useState<{text: string; page: number}[] | null>(null);
+  const [errorState, setErrorState] = React.useState<{
     isOpen: boolean;
     title: string;
     message: React.ReactNode;
@@ -163,14 +157,14 @@ export function DocumentCard({
   const addLog = useAuditStore((state) => state.addLog);
   const isDarkMode = useUIStore((state) => state.isDarkMode);
 
-  const [healthData, setHealthData] = useState<{
+  const [healthData, setHealthData] = React.useState<{
     needsOcr: boolean;
     hasSelectableText: boolean;
     hasForms: boolean;
   } | null>(null);
-  const [analyzedFileKey, setAnalyzedFileKey] = useState<string | null>(null);
+  const [analyzedFileKey, setAnalyzedFileKey] = React.useState<string | null>(null);
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (!isActive) return;
 
     // Create stable key from file metadata
@@ -192,7 +186,7 @@ export function DocumentCard({
     };
   }, [isActive, doc.name, doc.size, doc.lastModified, analyzedFileKey, doc.file]);
 
-  const handleScan = useCallback(async (currentCustomPatterns: string[] = []) => {
+  const handleScan = React.useCallback(async (currentCustomPatterns: string[] = []) => {
     setDetectedEntities(null);
     setSelectedEntities(new Set());
 
@@ -233,7 +227,7 @@ export function DocumentCard({
     }
   }, [doc.file, extractEntities, extractText, startProcessing, stopProcessing, updateStage]);
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (isActive && activeTool) {
       setTimeout(() => {
         switch (activeTool) {
@@ -261,7 +255,7 @@ export function DocumentCard({
 
   }, [isActive, activeTool, setActiveTool, doc, onScanPii, onWatermark, onSplit, extractTables, startProcessing, stopProcessing, addLog, handleScan]);
 
-  useEffect(() => {
+  React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!isActive) return;
 
@@ -292,16 +286,26 @@ export function DocumentCard({
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
-  const [contextMenuState, setContextMenuState] = useState<{
-    x: number;
-    y: number;
-  } | null>(null);
-  const [bookmarkModalState, setBookmarkModalState] = useState<{
+
+  const [isToolsDropdownOpen, setIsToolsDropdownOpen] = React.useState(false);
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsToolsDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const [bookmarkModalState, setBookmarkModalState] = React.useState<{
     isOpen: boolean;
     bookmarks: Bookmark[];
   }>({ isOpen: false, bookmarks: [] });
-  const [isParagraphEditModalOpen, setIsParagraphEditModalOpen] = useState(false);
-  const [isTableExtractionModalOpen, setIsTableExtractionModalOpen] = useState(false);
+  const [isParagraphEditModalOpen, setIsParagraphEditModalOpen] = React.useState(false);
+  const [isTableExtractionModalOpen, setIsTableExtractionModalOpen] = React.useState(false);
 
   const handleEditBookmarks = async () => {
     if (!extractBookmarks) return;
@@ -878,84 +882,75 @@ export function DocumentCard({
     });
   };
 
-  const handleContextMenu = (e: React.MouseEvent) => {
-    e.preventDefault(); // Prevent default browser context menu
-    setContextMenuState({ x: e.clientX, y: e.clientY });
-  };
+  const toolsItems = [
+    { label: "Extract / Split (~Instant)", onClick: () => onSplit(doc) },
+    { label: "Rotate 90° (~Instant)", onClick: () => onRotate?.(doc) },
+    { variant: "separator" },
+    { label: "Add Watermark (~1s)", onClick: () => onWatermark?.(doc) },
+    { label: "Smart Highlight Text (~Instant)", onClick: () => onHighlight?.(doc) },
+    { label: "Sign Document (~2s)", onClick: () => onSign?.(doc) },
+    { label: "Edit Text (Beta) (~3s)", onClick: () => setIsParagraphEditModalOpen(true) },
+    { variant: "separator" },
+    (!isMobile ? { label: "Extract Tables (~10s)", onClick: () => setIsTableExtractionModalOpen(true) } : null),
+    { label: "Extract Notes (MD) (~5s)", onClick: handleExtractMarkdown },
+    { label: "Extract Web (HTML) (~5s)", onClick: handleExtractHtml },
+    (!isMobile ? { label: "Export DOCX (~10s)", onClick: handleExportDocx } : null),
+    { label: "Export True Dark (~10s)", onClick: handleExportDark },
+    (!isMobile ? { label: "Extract Images (~10s)", onClick: handleExtractImages } : null),
+    { label: "Extract Links (CSV) (~2s)", onClick: handleExtractLinks },
+    { label: "Extract Annotations (CSV) (~2s)", onClick: handleExtractAnnotations },
+    { variant: "separator" },
+    { label: "Optimize (Compress) (~5s)", onClick: () => onOptimize?.(doc) },
+    { label: "Delete Pages (~1s)", onClick: () => onDeletePages?.(doc) },
+    { label: "Reorder Pages (~1s)", onClick: () => onReorderPages?.(doc) },
+    { label: "Add Page Numbers (~2s)", onClick: () => onAddPageNumbers?.(doc) },
+    { label: "Bates Numbering (~2s)", onClick: () => onBatesNumbering?.(doc) },
+    { label: "Resize to A4/Letter/Custom (~2s)", onClick: () => onResizePages?.(doc) },
+    { label: "Edit Bookmarks/Outline (~2s)", onClick: handleEditBookmarks },
+    { variant: "separator" },
+    { label: "Protect (Password) (~2s)", onClick: () => onEncrypt?.(doc) },
+    (doc.isEncrypted ? { label: "Unlock (Remove Password)", onClick: () => onUnlock?.(doc) } : null),
+    { label: "Edit Metadata (~2s)", onClick: handleViewMetadataLocal },
+    { label: "Sanitize & Send (~Instant)", onClick: () => onSanitize?.(doc) },
+    { label: "Point & Click Redact (~Instant)", onClick: () => onInteractiveRedact?.(doc) },
+    { label: "Auto-Redact Headers/Footers (~Instant)", onClick: () => onAutoRedactLayout?.(doc) },
+    { label: "Hover to Edit (~Instant)", onClick: () => onInteractiveEdit?.(doc) },
+    { label: "Magic Box Table (~Instant)", onClick: () => onInteractiveTable?.(doc) },
+    { label: "Smart Table Re-flow (~Instant)", onClick: () => onSmartTableReflow?.(doc) },
+    { label: "Magic Copy (~Instant)", onClick: () => onInteractiveCopy?.(doc) },
+    { label: "Knowledge Graph (~Instant)", onClick: () => onInteractiveKnowledgeGraph?.(doc) },
+    { label: "Font-Size Normalizer (~Instant)", onClick: () => onInteractiveFontSizeNormalizer?.(doc) },
+    { label: "Data Dictionary Extraction (~Instant)", onClick: () => onInteractiveDataDictionary?.(doc) },
+    { label: "Auto-Linker (~Instant)", onClick: () => onInteractiveAutoLinker?.(doc) },
+    { label: "Smart Form Generation (~Instant)", onClick: () => onSmartForm?.(doc) },
+    { label: "Smart Crop Warning (~Instant)", onClick: () => onSmartCrop?.(doc) },
+    { label: "Flatten Forms (~1s)", onClick: () => onFlatten?.(doc) },
+    { variant: "separator" },
+    (!isMobile ? { label: "Audit Redactions (~5s)", onClick: () => onAudit?.(doc) } : null),
+    { label: "Verify Signatures (~2s)", onClick: () => onVerifySignature?.(doc) },
+    { label: "Read Aloud (TTS) (~15s/pg)", onClick: () => onReadAloud?.(doc) },
+    (!isMobile ? { label: "Scan PII (~5s)", onClick: handleScan } : null),
+    (!isMobile ? { label: "Scan Codes (~5s)", onClick: handleScanCodes } : null),
+    (!isMobile ? { label: "OCR (~10s)", onClick: () => {
+        if (useUIStore.getState().complexityMode === 'simple') {
+          useUIStore.getState().setComplexityMode('professional');
+        }
+        onOcr?.(doc);
+      }
+    } : null),
+    { variant: "separator" },
+    { label: "Share (URL, <64KB only)", onClick: () => onShare?.(doc) },
+    {
+      label: "Remove File",
+      variant: "danger",
+      onClick: () => onRemove(doc.id),
+    },
+  ].filter(Boolean) as { label?: string; onClick?: () => void; variant?: string }[];
+
+
 
   return (
     <div className={`rounded-xl border shadow-sm flex flex-col hover:shadow-md transition-shadow relative ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-100" : "bg-white border-gray-200 text-gray-900"}`}>
-      {contextMenuState && (
-        <ContextMenu
-          x={contextMenuState.x}
-          y={contextMenuState.y}
-          onClose={() => setContextMenuState(null)}
-items={[
-            { label: "Extract / Split (~Instant)", onClick: () => onSplit(doc) },
-            { label: "Rotate 90° (~Instant)", onClick: () => onRotate?.(doc) },
-            { variant: "separator" },
-            { label: "Add Watermark (~1s)", onClick: () => onWatermark?.(doc) },
-            { label: "Smart Highlight Text (~Instant)", onClick: () => onHighlight?.(doc) },
-            { label: "Sign Document (~2s)", onClick: () => onSign?.(doc) },
-            { label: "Edit Text (Beta) (~3s)", onClick: () => setIsParagraphEditModalOpen(true) },
-            { variant: "separator" },
-            (!isMobile ? { label: "Extract Tables (~10s)", onClick: () => setIsTableExtractionModalOpen(true) } : null),
-            { label: "Extract Notes (MD) (~5s)", onClick: handleExtractMarkdown },
-            { label: "Extract Web (HTML) (~5s)", onClick: handleExtractHtml },
-            (!isMobile ? { label: "Export DOCX (~10s)", onClick: handleExportDocx } : null),
-            { label: "Export True Dark (~10s)", onClick: handleExportDark },
-            (!isMobile ? { label: "Extract Images (~10s)", onClick: handleExtractImages } : null),
-            { label: "Extract Links (CSV) (~2s)", onClick: handleExtractLinks },
-            { label: "Extract Annotations (CSV) (~2s)", onClick: handleExtractAnnotations },
-            { variant: "separator" },
-            { label: "Optimize (Compress) (~5s)", onClick: () => onOptimize?.(doc) },
-            { label: "Delete Pages (~1s)", onClick: () => onDeletePages?.(doc) },
-            { label: "Reorder Pages (~1s)", onClick: () => onReorderPages?.(doc) },
-            { label: "Add Page Numbers (~2s)", onClick: () => onAddPageNumbers?.(doc) },
-            { label: "Bates Numbering (~2s)", onClick: () => onBatesNumbering?.(doc) },
-            { label: "Resize to A4/Letter (~2s)", onClick: () => onResizePages?.(doc) },
-            { label: "Edit Bookmarks/Outline (~2s)", onClick: handleEditBookmarks },
-            { variant: "separator" },
-            { label: "Protect (Password) (~2s)", onClick: () => onEncrypt?.(doc) },
-            (doc.isEncrypted ? { label: "Unlock (Remove Password)", onClick: () => onUnlock?.(doc) } : null),
-            { label: "Edit Metadata (~2s)", onClick: handleViewMetadataLocal },
-            { label: "Sanitize & Send (~Instant)", onClick: () => onSanitize?.(doc) },
-            { label: "Point & Click Redact (~Instant)", onClick: () => onInteractiveRedact?.(doc) },
-            { label: "Auto-Redact Headers/Footers (~Instant)", onClick: () => onAutoRedactLayout?.(doc) },
-            { label: "Hover to Edit (~Instant)", onClick: () => onInteractiveEdit?.(doc) },
-            { label: "Magic Box Table (~Instant)", onClick: () => onInteractiveTable?.(doc) },
-            { label: "Smart Table Re-flow (~Instant)", onClick: () => onSmartTableReflow?.(doc) },
-            { label: "Magic Copy (~Instant)", onClick: () => onInteractiveCopy?.(doc) },
-            { label: "Knowledge Graph (~Instant)", onClick: () => onInteractiveKnowledgeGraph?.(doc) },
-            { label: "Font-Size Normalizer (~Instant)", onClick: () => onInteractiveFontSizeNormalizer?.(doc) },
-            { label: "Data Dictionary Extraction (~Instant)", onClick: () => onInteractiveDataDictionary?.(doc) },
-            { label: "Auto-Linker (~Instant)", onClick: () => onInteractiveAutoLinker?.(doc) },
-            { label: "Smart Form Generation (~Instant)", onClick: () => onSmartForm?.(doc) },
-            { label: "Smart Crop Warning (~Instant)", onClick: () => onSmartCrop?.(doc) },
-            { label: "Flatten Forms (~1s)", onClick: () => onFlatten?.(doc) },
-            { variant: "separator" },
-            (!isMobile ? { label: "Audit Redactions (~5s)", onClick: () => onAudit?.(doc) } : null),
-            { label: "Verify Signatures (~2s)", onClick: () => onVerifySignature?.(doc) },
-            { label: "Read Aloud (TTS) (~15s/pg)", onClick: () => onReadAloud?.(doc) },
-            (!isMobile ? { label: "Scan PII (~5s)", onClick: handleScan } : null),
-            (!isMobile ? { label: "Scan Codes (~5s)", onClick: handleScanCodes } : null),
-            (!isMobile ? { label: "OCR (~10s)", onClick: () => {
-                if (useUIStore.getState().complexityMode === 'simple') {
-                  useUIStore.getState().setComplexityMode('professional');
-                }
-                onOcr?.(doc);
-              }
-            } : null),
-            { variant: "separator" },
-            { label: "Share (URL, <64KB only)", onClick: () => onShare?.(doc) },
-            {
-              label: "Remove File",
-              variant: "danger",
-              onClick: () => onRemove(doc.id),
-            },
-          ].filter(Boolean) as any} // eslint-disable-line @typescript-eslint/no-explicit-any
-        />
-      )}
       <BookmarkModal
         isOpen={bookmarkModalState.isOpen}
         bookmarks={bookmarkModalState.bookmarks}
@@ -970,24 +965,7 @@ items={[
         onClose={() => setErrorState((prev) => ({ ...prev, isOpen: false }))}
       />
       <div className="p-4 flex flex-col justify-between flex-1">
-        <div
-          className="mb-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
-          onContextMenu={handleContextMenu}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              // Trigger context menu manually for keyboard users
-              const rect = e.currentTarget.getBoundingClientRect();
-              setContextMenuState({
-                x: rect.left + rect.width / 2,
-                y: rect.top + rect.height / 2,
-              });
-            }
-          }}
-          tabIndex={0}
-          role="button"
-          aria-label={`Open context menu for ${doc.name}`}
-        >
+        <div className="mb-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded">
           <PDFThumbnail file={doc.file} />
         </div>
 
@@ -1063,16 +1041,34 @@ items={[
             </div>
           )}
 
-          <div className="mt-2 text-sm">
+          <div className="mt-2 text-sm relative" ref={dropdownRef}>
             <button
-              onClick={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                setContextMenuState({ x: rect.left, y: rect.bottom + 5 });
-              }}
+              onClick={() => setIsToolsDropdownOpen(!isToolsDropdownOpen)}
               className="text-indigo-600 hover:text-indigo-800 font-medium focus-visible:outline-none focus-visible:underline"
             >
               More Tools ▼
             </button>
+            {isToolsDropdownOpen && (
+              <div className={`absolute left-0 mt-2 w-64 border rounded-lg shadow-lg py-1 z-50 max-h-96 overflow-y-auto ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                {toolsItems.map((item, index) => {
+                  if (item.variant === "separator") {
+                    return <div key={index} className={`h-px my-1 mx-2 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-200'}`} />;
+                  }
+                  return (
+                    <button
+                      key={index}
+                      onClick={() => {
+                        setIsToolsDropdownOpen(false);
+                        item.onClick?.();
+                      }}
+                      className={`w-full text-left px-4 py-2 text-sm transition-colors focus-visible:outline-none ${item.variant === 'danger' ? 'text-red-500 hover:bg-red-50 hover:text-red-600' : (isDarkMode ? 'text-gray-300 hover:bg-gray-700 hover:text-gray-100 focus-visible:bg-gray-700' : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900 focus-visible:bg-gray-100')}`}
+                    >
+                      {item.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {isMobile && (
