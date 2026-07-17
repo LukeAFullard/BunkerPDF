@@ -288,12 +288,14 @@ export function DocumentCard({
   };
 
   const [isToolsDropdownOpen, setIsToolsDropdownOpen] = React.useState(false);
+  const [toolsSearchQuery, setToolsSearchQuery] = React.useState("");
   const dropdownRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsToolsDropdownOpen(false);
+        setToolsSearchQuery("");
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -883,68 +885,80 @@ export function DocumentCard({
   };
 
   const toolsItems = [
-    { label: "Extract / Split (~Instant)", onClick: () => onSplit(doc) },
-    { label: "Rotate 90° (~Instant)", onClick: () => onRotate?.(doc) },
-    { variant: "separator" },
-    { label: "Add Watermark (~1s)", onClick: () => onWatermark?.(doc) },
-    { label: "Smart Highlight Text (~Instant)", onClick: () => onHighlight?.(doc) },
-    { label: "Sign Document (~2s)", onClick: () => onSign?.(doc) },
-    { label: "Edit Text (Beta) (~3s)", onClick: () => setIsParagraphEditModalOpen(true) },
-    { variant: "separator" },
-    (!isMobile ? { label: "Extract Tables (~10s)", onClick: () => setIsTableExtractionModalOpen(true) } : null),
-    { label: "Extract Notes (MD) (~5s)", onClick: handleExtractMarkdown },
-    { label: "Extract Web (HTML) (~5s)", onClick: handleExtractHtml },
-    (!isMobile ? { label: "Export DOCX (~10s)", onClick: handleExportDocx } : null),
-    { label: "Export True Dark (~10s)", onClick: handleExportDark },
-    (!isMobile ? { label: "Extract Images (~10s)", onClick: handleExtractImages } : null),
-    { label: "Extract Links (CSV) (~2s)", onClick: handleExtractLinks },
-    { label: "Extract Annotations (CSV) (~2s)", onClick: handleExtractAnnotations },
-    { variant: "separator" },
-    { label: "Optimize (Compress) (~5s)", onClick: () => onOptimize?.(doc) },
-    { label: "Delete Pages (~1s)", onClick: () => onDeletePages?.(doc) },
-    { label: "Reorder Pages (~1s)", onClick: () => onReorderPages?.(doc) },
-    { label: "Add Page Numbers (~2s)", onClick: () => onAddPageNumbers?.(doc) },
-    { label: "Bates Numbering (~2s)", onClick: () => onBatesNumbering?.(doc) },
-    { label: "Resize to A4/Letter/Custom (~2s)", onClick: () => onResizePages?.(doc) },
-    { label: "Edit Bookmarks/Outline (~2s)", onClick: handleEditBookmarks },
-    { variant: "separator" },
-    { label: "Protect (Password) (~2s)", onClick: () => onEncrypt?.(doc) },
-    (doc.isEncrypted ? { label: "Unlock (Remove Password)", onClick: () => onUnlock?.(doc) } : null),
-    { label: "Edit Metadata (~2s)", onClick: handleViewMetadataLocal },
-    { label: "Sanitize & Send (~Instant)", onClick: () => onSanitize?.(doc) },
-    { label: "Point & Click Redact (~Instant)", onClick: () => onInteractiveRedact?.(doc) },
-    { label: "Auto-Redact Headers/Footers (~Instant)", onClick: () => onAutoRedactLayout?.(doc) },
-    { label: "Hover to Edit (~Instant)", onClick: () => onInteractiveEdit?.(doc) },
-    { label: "Magic Box Table (~Instant)", onClick: () => onInteractiveTable?.(doc) },
-    { label: "Smart Table Re-flow (~Instant)", onClick: () => onSmartTableReflow?.(doc) },
-    { label: "Magic Copy (~Instant)", onClick: () => onInteractiveCopy?.(doc) },
-    { label: "Knowledge Graph (~Instant)", onClick: () => onInteractiveKnowledgeGraph?.(doc) },
-    { label: "Font-Size Normalizer (~Instant)", onClick: () => onInteractiveFontSizeNormalizer?.(doc) },
-    { label: "Data Dictionary Extraction (~Instant)", onClick: () => onInteractiveDataDictionary?.(doc) },
-    { label: "Auto-Linker (~Instant)", onClick: () => onInteractiveAutoLinker?.(doc) },
-    { label: "Smart Form Generation (~Instant)", onClick: () => onSmartForm?.(doc) },
-    { label: "Smart Crop Warning (~Instant)", onClick: () => onSmartCrop?.(doc) },
-    { label: "Flatten Forms (~1s)", onClick: () => onFlatten?.(doc) },
-    { variant: "separator" },
-    (!isMobile ? { label: "Audit Redactions (~5s)", onClick: () => onAudit?.(doc) } : null),
-    { label: "Verify Signatures (~2s)", onClick: () => onVerifySignature?.(doc) },
-    { label: "Read Aloud (TTS) (~15s/pg)", onClick: () => onReadAloud?.(doc) },
-    (!isMobile ? { label: "Scan PII (~5s)", onClick: handleScan } : null),
-    (!isMobile ? { label: "Scan Codes (~5s)", onClick: handleScanCodes } : null),
-    (!isMobile ? { label: "OCR (~10s)", onClick: () => {
+    { category: "Page Modification", label: "Extract / Split (~Instant)", onClick: () => onSplit(doc) },
+    { category: "Page Modification", label: "Rotate 90° (~Instant)", onClick: () => onRotate?.(doc) },
+    { category: "Page Modification", label: "Delete Pages (~1s)", onClick: () => onDeletePages?.(doc) },
+    { category: "Page Modification", label: "Reorder Pages (~1s)", onClick: () => onReorderPages?.(doc) },
+    { category: "Page Modification", label: "Resize to A4/Letter/Custom (~2s)", onClick: () => onResizePages?.(doc) },
+
+    { category: "Content & Marks", label: "Add Watermark (~1s)", onClick: () => onWatermark?.(doc) },
+    { category: "Content & Marks", label: "Smart Highlight Text (~Instant)", onClick: () => onHighlight?.(doc) },
+    { category: "Content & Marks", label: "Sign Document (~2s)", onClick: () => onSign?.(doc) },
+    { category: "Content & Marks", label: "Edit Text (Beta) (~3s)", onClick: () => setIsParagraphEditModalOpen(true) },
+    { category: "Content & Marks", label: "Add Page Numbers (~2s)", onClick: () => onAddPageNumbers?.(doc) },
+    { category: "Content & Marks", label: "Bates Numbering (~2s)", onClick: () => onBatesNumbering?.(doc) },
+    { category: "Content & Marks", label: "Flatten Forms (~1s)", onClick: () => onFlatten?.(doc) },
+
+    { category: "Extract & Export", ...(!isMobile ? { label: "Extract Tables (~10s)", onClick: () => setIsTableExtractionModalOpen(true) } : {}) },
+    { category: "Extract & Export", label: "Extract Notes (MD) (~5s)", onClick: handleExtractMarkdown },
+    { category: "Extract & Export", label: "Extract Web (HTML) (~5s)", onClick: handleExtractHtml },
+    { category: "Extract & Export", ...(!isMobile ? { label: "Export DOCX (~10s)", onClick: handleExportDocx } : {}) },
+    { category: "Extract & Export", label: "Export True Dark (~10s)", onClick: handleExportDark },
+    { category: "Extract & Export", ...(!isMobile ? { label: "Extract Images (~10s)", onClick: handleExtractImages } : {}) },
+    { category: "Extract & Export", label: "Extract Links (CSV) (~2s)", onClick: handleExtractLinks },
+    { category: "Extract & Export", label: "Extract Annotations (CSV) (~2s)", onClick: handleExtractAnnotations },
+
+    { category: "Interactive Tools", label: "Hover to Edit (~Instant)", onClick: () => onInteractiveEdit?.(doc) },
+    { category: "Interactive Tools", label: "Magic Box Table (~Instant)", onClick: () => onInteractiveTable?.(doc) },
+    { category: "Interactive Tools", label: "Smart Table Re-flow (~Instant)", onClick: () => onSmartTableReflow?.(doc) },
+    { category: "Interactive Tools", label: "Magic Copy (~Instant)", onClick: () => onInteractiveCopy?.(doc) },
+    { category: "Interactive Tools", label: "Knowledge Graph (~Instant)", onClick: () => onInteractiveKnowledgeGraph?.(doc) },
+    { category: "Interactive Tools", label: "Font-Size Normalizer (~Instant)", onClick: () => onInteractiveFontSizeNormalizer?.(doc) },
+    { category: "Interactive Tools", label: "Data Dictionary Extraction (~Instant)", onClick: () => onInteractiveDataDictionary?.(doc) },
+    { category: "Interactive Tools", label: "Auto-Linker (~Instant)", onClick: () => onInteractiveAutoLinker?.(doc) },
+    { category: "Interactive Tools", label: "Smart Form Generation (~Instant)", onClick: () => onSmartForm?.(doc) },
+    { category: "Interactive Tools", label: "Smart Crop Warning (~Instant)", onClick: () => onSmartCrop?.(doc) },
+
+    { category: "Security & Audit", label: "Protect (Password) (~2s)", onClick: () => onEncrypt?.(doc) },
+    ...(doc.isEncrypted ? [{ category: "Security & Audit", label: "Unlock (Remove Password)", onClick: () => onUnlock?.(doc) }] : []),
+    { category: "Security & Audit", label: "Sanitize & Send (~Instant)", onClick: () => onSanitize?.(doc) },
+    { category: "Security & Audit", label: "Point & Click Redact (~Instant)", onClick: () => onInteractiveRedact?.(doc) },
+    { category: "Security & Audit", label: "Auto-Redact Headers/Footers (~Instant)", onClick: () => onAutoRedactLayout?.(doc) },
+    { category: "Security & Audit", ...(!isMobile ? { label: "Audit Redactions (~5s)", onClick: () => onAudit?.(doc) } : {}) },
+    { category: "Security & Audit", label: "Verify Signatures (~2s)", onClick: () => onVerifySignature?.(doc) },
+
+    { category: "Other", label: "Optimize (Compress) (~5s)", onClick: () => onOptimize?.(doc) },
+    { category: "Other", label: "Edit Bookmarks/Outline (~2s)", onClick: handleEditBookmarks },
+    { category: "Other", label: "Edit Metadata (~2s)", onClick: handleViewMetadataLocal },
+    { category: "Other", label: "Read Aloud (TTS) (~15s/pg)", onClick: () => onReadAloud?.(doc) },
+    { category: "Other", ...(!isMobile ? { label: "Scan PII (~5s)", onClick: handleScan } : {}) },
+    { category: "Other", ...(!isMobile ? { label: "Scan Codes (~5s)", onClick: handleScanCodes } : {}) },
+    { category: "Other", ...(!isMobile ? { label: "OCR (~10s)", onClick: () => {
         if (useUIStore.getState().complexityMode === 'simple') {
           useUIStore.getState().setComplexityMode('professional');
         }
         onOcr?.(doc);
       }
-    } : null),
-    { variant: "separator" },
+    } : {}) },
+
     {
+      category: "Danger",
       label: "Remove File",
       variant: "danger",
       onClick: () => onRemove(doc.id),
     },
-  ].filter(Boolean) as { label?: string; onClick?: () => void; variant?: string }[];
+  ].filter(item => item.label) as { category: string; label: string; onClick?: () => void; variant?: string }[];
+
+  const filteredTools = toolsItems.filter(item =>
+    item.label.toLowerCase().includes(toolsSearchQuery.toLowerCase()) ||
+    item.category.toLowerCase().includes(toolsSearchQuery.toLowerCase())
+  );
+
+  const groupedTools = filteredTools.reduce((acc, item) => {
+    if (!acc[item.category]) acc[item.category] = [];
+    acc[item.category].push(item);
+    return acc;
+  }, {} as Record<string, typeof toolsItems>);
 
 
 
@@ -1056,24 +1070,44 @@ export function DocumentCard({
               More Tools ▼
             </button>
             {isToolsDropdownOpen && (
-              <div className={`absolute left-0 mt-2 w-64 border rounded-lg shadow-lg py-1 z-50 max-h-96 overflow-y-auto ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-                {toolsItems.map((item, index) => {
-                  if (item.variant === "separator") {
-                    return <div key={index} className={`h-px my-1 mx-2 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-200'}`} />;
-                  }
-                  return (
-                    <button
-                      key={index}
-                      onClick={() => {
-                        setIsToolsDropdownOpen(false);
-                        item.onClick?.();
-                      }}
-                      className={`w-full text-left px-4 py-2 text-sm transition-colors focus-visible:outline-none ${item.variant === 'danger' ? 'text-red-500 hover:bg-red-50 hover:text-red-600' : (isDarkMode ? 'text-gray-300 hover:bg-gray-700 hover:text-gray-100 focus-visible:bg-gray-700' : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900 focus-visible:bg-gray-100')}`}
-                    >
-                      {item.label}
-                    </button>
-                  );
-                })}
+              <div className={`absolute left-0 mt-2 w-72 border rounded-lg shadow-lg py-2 z-50 max-h-96 overflow-y-auto flex flex-col ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                <div className="sticky top-0 bg-inherit px-3 pb-2 z-10 border-b border-gray-100 dark:border-gray-700">
+                  <input
+                    type="text"
+                    placeholder="Search tools..."
+                    value={toolsSearchQuery}
+                    onChange={(e) => setToolsSearchQuery(e.target.value)}
+                    className={`w-full px-2 py-1.5 text-sm rounded border focus:outline-none focus:ring-1 focus:ring-indigo-500 ${isDarkMode ? 'bg-gray-700 border-gray-600 text-gray-100' : 'bg-gray-50 border-gray-300 text-gray-900'}`}
+                    autoFocus
+                  />
+                </div>
+                {Object.keys(groupedTools).length === 0 ? (
+                  <div className="px-4 py-3 text-sm text-gray-500 text-center">No tools found</div>
+                ) : (
+                  Object.entries(groupedTools).map(([category, items], catIndex) => (
+                    <div key={category} className="py-1">
+                      {catIndex > 0 && <div className={`h-px mb-2 mx-2 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`} />}
+                      {category !== 'Danger' && (
+                        <div className={`px-4 py-1 text-xs font-semibold uppercase tracking-wider ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                          {category}
+                        </div>
+                      )}
+                      {items.map((item, index) => (
+                        <button
+                          key={`${category}-${index}`}
+                          onClick={() => {
+                            setIsToolsDropdownOpen(false);
+                            setToolsSearchQuery("");
+                            item.onClick?.();
+                          }}
+                          className={`w-full text-left px-4 py-1.5 text-sm transition-colors focus-visible:outline-none ${item.variant === 'danger' ? 'text-red-500 hover:bg-red-50 hover:text-red-600' : (isDarkMode ? 'text-gray-300 hover:bg-gray-700 hover:text-gray-100 focus-visible:bg-gray-700' : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900 focus-visible:bg-gray-100')}`}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  ))
+                )}
               </div>
             )}
           </div>

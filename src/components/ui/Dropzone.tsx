@@ -268,27 +268,30 @@ export function Dropzone({ onError, onDocxDropped, onImagesDropped }: DropzonePr
         </div>
       </div>
 
-      {/* Quick Actions Grid (Phase 1 placeholders) */}
+      {/* Quick Actions Grid */}
       <div className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-3 gap-6 mt-12">
         <div className="tour-step-2">
           <ActionCard
             icon={<Lock className="text-red-500" />}
             title="Redact PII"
-            description="True redaction of sensitive info."
+            description="Upload file to true redact sensitive info."
+            onClick={handleClick}
           />
         </div>
         <div className="tour-step-3">
           <ActionCard
             icon={<FileOutput className="text-blue-500" />}
             title="Merge & Split"
-            description="Combine or extract pages instantly."
+            description="Upload file to combine or extract pages instantly."
+            onClick={handleClick}
           />
         </div>
         <div>
           <ActionCard
             icon={<FileText className="text-purple-500" />}
             title="Extract Text"
-            description="Local OCR and text extraction."
+            description="Upload file for local OCR and text extraction."
+            onClick={handleClick}
           />
         </div>
       </div>
@@ -296,9 +299,20 @@ export function Dropzone({ onError, onDocxDropped, onImagesDropped }: DropzonePr
   );
 }
 
-function ActionCard({ icon, title, description }: { icon: React.ReactNode, title: string, description: string }) {
+function ActionCard({ icon, title, description, onClick }: { icon: React.ReactNode, title: string, description: string, onClick?: () => void }) {
   return (
-    <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow flex flex-col items-start gap-3">
+    <div
+      className={`bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow flex flex-col items-start gap-3 ${onClick ? 'cursor-pointer hover:border-blue-300' : ''}`}
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={(e) => {
+        if (onClick && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+    >
       <div className="bg-gray-50 p-3 rounded-lg">
         {icon}
       </div>
