@@ -31,6 +31,7 @@ interface FileStore {
   addDocuments: (docs: PDFDocument[]) => void;
   removeDocument: (id: string) => void;
   setActiveDocument: (id: string) => void;
+  reorderDocuments: (docs: PDFDocument[]) => void;
   updateDocument: (id: string, updates: Partial<PDFDocument>) => void;
   updateDocumentFile: (id: string, newFile: File, newPageCount?: number, operation?: Partial<DocumentOperation>) => Promise<void>;
   undoInProgress: boolean;
@@ -106,6 +107,8 @@ export const useFileStore = create<FileStore>((set, get) => ({
   },
 
   setActiveDocument: (id: string) => set({ activeDocumentId: id }),
+
+  reorderDocuments: (docs: PDFDocument[]) => set({ documents: docs }),
 
   updateDocument: (id: string, updates: Partial<PDFDocument>) => set((state) => ({
     documents: state.documents.map(doc =>

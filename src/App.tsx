@@ -1410,6 +1410,54 @@ function App() {
   };
 
 
+  const handleDownloadAll = async () => {
+    setIsBatchMenuOpen(false);
+    if (documents.length === 0) return;
+
+    let isCancelled = false;
+    startProcessing("Zipping files...", true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
+    try {
+      const JSZip = (await import("jszip")).default;
+      const zip = new JSZip();
+
+      for (const doc of documents) {
+        if (isCancelled) break;
+        useProcessingStore.getState().updateStage(`Adding ${doc.name}...`);
+        const arrayBuffer = await doc.file.arrayBuffer();
+        zip.file(doc.name, arrayBuffer);
+      }
+
+      if (!isCancelled) {
+        useProcessingStore.getState().updateStage("Generating ZIP file...");
+        const blob = await zip.generateAsync({ type: "blob" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `bunkerpdf_export_${Date.now()}.zip`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        addLog("Batch Actions", "Downloaded all documents as ZIP");
+      }
+    } catch (e) {
+      if (!isCancelled) {
+        console.error(e);
+        setErrorState({
+          isOpen: true,
+          title: "Download Error",
+          message: "An error occurred while creating the ZIP file.",
+        });
+      }
+    } finally {
+      if (!isCancelled) stopProcessing();
+    }
+  };
+
   const handleBatchSanitize = () => {
     setIsBatchMenuOpen(false);
     setInputState({
@@ -3712,6 +3760,12 @@ function App() {
                       className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
                     >
                       Extract Notes (Combined)
+                    </button>
+                    <button
+                      onClick={handleDownloadAll}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                    >
+                      Download All (ZIP)
                     </button>
                   </div>
                 )}
