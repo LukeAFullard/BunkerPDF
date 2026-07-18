@@ -13,6 +13,7 @@ import { DocumentHealthPanel } from './DocumentHealthPanel';
 import { analyzeDocumentHealth } from '../../lib/healthChecks';
 import { ParagraphEditModal } from './ParagraphEditModal';
 import { TableExtractionModal } from './TableExtractionModal';
+import { ToolsModal } from './ToolsModal';
 
 interface DocumentCardProps {
   doc: PDFDocument;
@@ -287,20 +288,7 @@ export function DocumentCard({
     URL.revokeObjectURL(url);
   };
 
-  const [isToolsDropdownOpen, setIsToolsDropdownOpen] = React.useState(false);
-  const [toolsSearchQuery, setToolsSearchQuery] = React.useState("");
-  const dropdownRef = React.useRef<HTMLDivElement>(null);
-
-  React.useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsToolsDropdownOpen(false);
-        setToolsSearchQuery("");
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  const [isToolsModalOpen, setIsToolsModalOpen] = React.useState(false);
 
   const [bookmarkModalState, setBookmarkModalState] = React.useState<{
     isOpen: boolean;
@@ -949,19 +937,6 @@ export function DocumentCard({
     },
   ].filter(item => item.label) as { category: string; label: string; onClick?: () => void; variant?: string }[];
 
-  const filteredTools = toolsItems.filter(item =>
-    item.label.toLowerCase().includes(toolsSearchQuery.toLowerCase()) ||
-    item.category.toLowerCase().includes(toolsSearchQuery.toLowerCase())
-  );
-
-  const groupedTools = filteredTools.reduce((acc, item) => {
-    if (!acc[item.category]) acc[item.category] = [];
-    acc[item.category].push(item);
-    return acc;
-  }, {} as Record<string, typeof toolsItems>);
-
-
-
   return (
     <div className={`rounded-xl border shadow-sm flex flex-col hover:shadow-md transition-shadow relative ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-100" : "bg-white border-gray-200 text-gray-900"}`}>
       <BookmarkModal
@@ -1062,54 +1037,16 @@ export function DocumentCard({
             </div>
           )}
 
-          <div className="mt-2 text-sm relative" ref={dropdownRef}>
+          <div className="mt-4">
             <button
-              onClick={() => setIsToolsDropdownOpen(!isToolsDropdownOpen)}
-              className="text-indigo-600 hover:text-indigo-800 font-medium focus-visible:outline-none focus-visible:underline"
+              onClick={() => setIsToolsModalOpen(true)}
+              className="w-full bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50 py-2 px-4 rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 flex items-center justify-center gap-2"
             >
-              More Tools ▼
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+              </svg>
+              Open Tools Menu
             </button>
-            {isToolsDropdownOpen && (
-              <div className={`absolute left-0 mt-2 w-72 border rounded-lg shadow-lg py-2 z-50 max-h-96 overflow-y-auto flex flex-col ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-                <div className="sticky top-0 bg-inherit px-3 pb-2 z-10 border-b border-gray-100 dark:border-gray-700">
-                  <input
-                    type="text"
-                    placeholder="Search tools..."
-                    value={toolsSearchQuery}
-                    onChange={(e) => setToolsSearchQuery(e.target.value)}
-                    className={`w-full px-2 py-1.5 text-sm rounded border focus:outline-none focus:ring-1 focus:ring-indigo-500 ${isDarkMode ? 'bg-gray-700 border-gray-600 text-gray-100' : 'bg-gray-50 border-gray-300 text-gray-900'}`}
-                    autoFocus
-                  />
-                </div>
-                {Object.keys(groupedTools).length === 0 ? (
-                  <div className="px-4 py-3 text-sm text-gray-500 text-center">No tools found</div>
-                ) : (
-                  Object.entries(groupedTools).map(([category, items], catIndex) => (
-                    <div key={category} className="py-1">
-                      {catIndex > 0 && <div className={`h-px mb-2 mx-2 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`} />}
-                      {category !== 'Danger' && (
-                        <div className={`px-4 py-1 text-xs font-semibold uppercase tracking-wider ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                          {category}
-                        </div>
-                      )}
-                      {items.map((item, index) => (
-                        <button
-                          key={`${category}-${index}`}
-                          onClick={() => {
-                            setIsToolsDropdownOpen(false);
-                            setToolsSearchQuery("");
-                            item.onClick?.();
-                          }}
-                          className={`w-full text-left px-4 py-1.5 text-sm transition-colors focus-visible:outline-none ${item.variant === 'danger' ? 'text-red-500 hover:bg-red-50 hover:text-red-600' : (isDarkMode ? 'text-gray-300 hover:bg-gray-700 hover:text-gray-100 focus-visible:bg-gray-700' : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900 focus-visible:bg-gray-100')}`}
-                        >
-                          {item.label}
-                        </button>
-                      ))}
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
           </div>
 
           {isMobile && (
@@ -1266,6 +1203,13 @@ export function DocumentCard({
         doc={doc}
         onClose={() => setIsTableExtractionModalOpen(false)}
         onExtract={handleExtractTables}
+      />
+
+      <ToolsModal
+        isOpen={isToolsModalOpen}
+        onClose={() => setIsToolsModalOpen(false)}
+        tools={toolsItems}
+        documentName={doc.name}
       />
     </div>
   );
