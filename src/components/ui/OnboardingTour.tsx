@@ -19,6 +19,17 @@ export function OnboardingTour() {
       if (!seen) {
         setTimeout(() => setRun(true), 0);
       }
+
+      const handleReplayTour = () => {
+        localStorage.removeItem('bunkerpdf-tour-seen');
+        setRun(true);
+      };
+
+      window.addEventListener('replay-tour', handleReplayTour);
+
+      return () => {
+        window.removeEventListener('replay-tour', handleReplayTour);
+      };
     }
   }, []);
 
