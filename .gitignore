@@ -24,3 +24,5 @@ dist-ssr
 *.sw?
 __pycache__/
 public/pdfjs-dist/
+playwright-report/
+test-results/

@@ -66,6 +66,21 @@ export function SettingsDropdown() {
                 : 'Better layout preservation for complex documents.'}
             </p>
 
+            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+              <button
+                onClick={() => {
+                  window.dispatchEvent(new Event('replay-tour'));
+                  setIsOpen(false);
+                }}
+                className={twMerge(
+                  clsx(
+                    "w-full text-left text-sm py-2 px-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  )
+                )}
+              >
+                Replay Welcome Tour
+              </button>
+            </div>
           </div>
         </div>
       )}
