@@ -807,10 +807,11 @@ function App() {
     pyodideWorkerRef.current.onmessage = (
       e: MessageEvent<PyodideWorkerResponse>,
     ) => {
-      const { type, jobId, result, error, stage } = e.data;
+      const { type, jobId, result, error, stage, progress } = e.data;
       if (type === "PROGRESS") {
         console.log("Pyodide Worker Progress:", stage);
         if (stage) setPyodideStatus("loading", null, stage);
+        if (progress !== undefined) useProcessingStore.getState().updateProgress(progress);
       } else if (type === "READY") {
         console.log("Pyodide Worker is ready.");
         setPyodideStatus("ready");
@@ -867,6 +868,7 @@ function App() {
       const endPage = Math.min(startPage + CHUNK_SIZE, totalPages);
 
       useProcessingStore.getState().updateStage(`Extracting tables: pages ${startPage + 1}-${endPage}...`);
+      useProcessingStore.getState().updateProgress((startPage / totalPages) * 100);
 
       const chunkDoc = await PDFLibDocument.create();
       const copiedPages = await chunkDoc.copyPages(pdfDoc, Array.from({ length: endPage - startPage }, (_, i) => startPage + i));
@@ -886,6 +888,8 @@ function App() {
             } else if (res.type === "ERROR") {
               pyodideWorkerRef.current?.removeEventListener("message", handler);
               reject(new Error(res.error));
+            } else if (res.type === "PROGRESS" && res.progress !== undefined) {
+              useProcessingStore.getState().updateProgress(res.progress);
             }
           }
         };
@@ -936,6 +940,7 @@ function App() {
       });
     });
 
+    useProcessingStore.getState().updateProgress(100);
     return { data: excelBytes, extension: '.xlsx' };
   };
 
@@ -1024,6 +1029,7 @@ function App() {
             reject(new Error(e.data.error));
           } else if (e.data.type === "PROGRESS") {
             useEngineStore.getState().setPyodideStatus("loading", null, e.data.stage);
+            if (e.data.progress !== undefined) useProcessingStore.getState().updateProgress(e.data.progress);
           }
         }
       };
@@ -1050,6 +1056,7 @@ function App() {
             reject(new Error(e.data.error));
           } else if (e.data.type === "PROGRESS") {
             useEngineStore.getState().setPyodideStatus("loading", null, e.data.stage);
+            if (e.data.progress !== undefined) useProcessingStore.getState().updateProgress(e.data.progress);
           }
         }
       };
@@ -3710,7 +3717,11 @@ function App() {
                 <button
                   onClick={() => setIsBatchMenuOpen(!isBatchMenuOpen)}
                   disabled={documents.length < 1 || isGlobalProcessing}
-                  className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium disabled:opacity-50 hover:bg-indigo-700 transition-colors flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+                  className={`text-white px-4 py-2 rounded-lg font-medium disabled:opacity-50 transition-colors flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+                    documents.length > 1 && !isGlobalProcessing
+                      ? "bg-emerald-600 hover:bg-emerald-700 focus-visible:ring-emerald-500 ring-2 ring-emerald-400 ring-offset-2 shadow-lg"
+                      : "bg-indigo-600 hover:bg-indigo-700 focus-visible:ring-indigo-500"
+                  }`}
                 >
                   Batch Actions
                   <ChevronDown size={16} />
