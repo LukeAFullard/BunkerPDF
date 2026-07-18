@@ -56,6 +56,7 @@ export type PyodideWorkerResponse = {
   result?: any; // eslint-disable-line @typescript-eslint/no-explicit-any
   error?: string;
   stage?: string;
+  progress?: number;
 };
 
 const initializePyodide = async () => {
@@ -63,6 +64,7 @@ const initializePyodide = async () => {
   self.postMessage({
     type: "PROGRESS",
     stage: "Downloading base environment...",
+    progress: 10,
   } satisfies PyodideWorkerResponse);
 
   pyodide = await loadPyodide({
@@ -72,6 +74,7 @@ const initializePyodide = async () => {
   self.postMessage({
     type: "PROGRESS",
     stage: "Installing document processor (pymupdf)...",
+    progress: 50,
   } satisfies PyodideWorkerResponse);
 
   await pyodide.loadPackage("micropip");
@@ -82,6 +85,7 @@ const initializePyodide = async () => {
   self.postMessage({
     type: "PROGRESS",
     stage: "Setting up...",
+    progress: 90,
   } satisfies PyodideWorkerResponse);
 };
 

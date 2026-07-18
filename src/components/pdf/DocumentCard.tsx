@@ -187,6 +187,8 @@ export function DocumentCard({
     };
   }, [isActive, doc.name, doc.size, doc.lastModified, analyzedFileKey, doc.file]);
 
+  const [isTableExtractionModalOpen, setIsTableExtractionModalOpen] = React.useState(false);
+
   const handleScan = React.useCallback(async (currentCustomPatterns: string[] = []) => {
     setDetectedEntities(null);
     setSelectedEntities(new Set());
@@ -206,6 +208,11 @@ export function DocumentCard({
 
       if (!text || text.trim() === "") {
         setDetectedEntities([]);
+        setErrorState({
+          isOpen: true,
+          title: "No Text Found",
+          message: "No readable text found in this document. If this is a scanned image, please run OCR first.",
+        });
         return;
       }
 
@@ -295,7 +302,6 @@ export function DocumentCard({
     bookmarks: Bookmark[];
   }>({ isOpen: false, bookmarks: [] });
   const [isParagraphEditModalOpen, setIsParagraphEditModalOpen] = React.useState(false);
-  const [isTableExtractionModalOpen, setIsTableExtractionModalOpen] = React.useState(false);
 
   const handleEditBookmarks = async () => {
     if (!extractBookmarks) return;
@@ -406,6 +412,15 @@ export function DocumentCard({
       const pdfBytes = new Uint8Array(buffer);
       const markdown = await extractMarkdown(pdfBytes);
       if (isCancelled) return;
+
+      if (!markdown || markdown.trim() === "") {
+        setErrorState({
+          isOpen: true,
+          title: "No Text Found",
+          message: "No readable text found in this document. If this is a scanned image, please run OCR first.",
+        });
+        return;
+      }
 
       const blob = new Blob([markdown], { type: "text/markdown" });
       const url = URL.createObjectURL(blob);
@@ -530,6 +545,15 @@ export function DocumentCard({
       const pdfBytes = new Uint8Array(buffer);
       const html = await extractHtml(pdfBytes);
       if (isCancelled) return;
+
+      if (!html || html.trim() === "") {
+        setErrorState({
+          isOpen: true,
+          title: "No Text Found",
+          message: "No readable text found in this document. If this is a scanned image, please run OCR first.",
+        });
+        return;
+      }
 
       const blob = new Blob([html], { type: "text/html" });
       const url = URL.createObjectURL(blob);
