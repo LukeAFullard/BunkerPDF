@@ -74,6 +74,30 @@ interface DocumentCardProps {
   onSmartCrop?: (doc: PDFDocument) => void;
 }
 
+
+function PreviewModal({ isOpen, content, format, onClose, onDownload }: { isOpen: boolean, content: string, format: string, onClose: () => void, onDownload: () => void }) {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
+          <h2 className="text-xl font-bold">Preview {format}</h2>
+          <button onClick={onClose} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+        <div className="p-4 flex-1 overflow-auto bg-gray-50 dark:bg-gray-900">
+          <pre className="text-sm whitespace-pre-wrap">{content}</pre>
+        </div>
+        <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600">Cancel</button>
+          <button onClick={() => { onDownload(); onClose(); }} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Download</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function DocumentCard({
   doc,
   onRemove,
@@ -297,6 +321,7 @@ export function DocumentCard({
 
   const [isToolsModalOpen, setIsToolsModalOpen] = React.useState(false);
 
+  const [previewState, setPreviewState] = React.useState<{ isOpen: boolean; content: string; format: string; onDownload: () => void }>({ isOpen: false, content: '', format: '', onDownload: () => {} });
   const [bookmarkModalState, setBookmarkModalState] = React.useState<{
     isOpen: boolean;
     bookmarks: Bookmark[];
@@ -422,18 +447,24 @@ export function DocumentCard({
         return;
       }
 
-      const blob = new Blob([markdown], { type: "text/markdown" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = doc.name.replace(/\.pdf$/i, ".md");
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      addLog("Extract Markdown", "Extracted document to structured Markdown notes.", doc.name);
-      useUIStore.getState().showFeedbackPrompt("Extract Notes");
+      setPreviewState({
+        isOpen: true,
+        content: markdown,
+        format: "Markdown",
+        onDownload: () => {
+          const blob = new Blob([markdown], { type: "text/markdown" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = doc.name.replace(/\.pdf$/i, ".md");
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          addLog("Extract Markdown", "Extracted document to structured Markdown notes.", doc.name);
+          useUIStore.getState().showFeedbackPrompt("Extract Notes");
+        }
+      });
     } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
       if (isCancelled) return;
       console.error(err);
@@ -451,8 +482,15 @@ export function DocumentCard({
   const handleExportDark = async () => {
     if (!exportPdfToDark) return;
     let isCancelled = false;
+    let simProgress = 0;
+    const progressInterval = setInterval(() => {
+      simProgress = Math.min(simProgress + 5, 90);
+      useProcessingStore.getState().updateProgress(simProgress);
+    }, 500);
+
     startProcessing("Exporting to True Dark PDF...", true, () => {
       isCancelled = true;
+      clearInterval(progressInterval);
       stopProcessing();
     });
 
@@ -460,6 +498,8 @@ export function DocumentCard({
       const buffer = await doc.file.arrayBuffer();
       const pdfBytes = new Uint8Array(buffer);
       const newPdfBytes = await exportPdfToDark(pdfBytes);
+      clearInterval(progressInterval);
+      useProcessingStore.getState().updateProgress(100);
       if (isCancelled) return;
 
       const standardBuffer = new Uint8Array(newPdfBytes.length);
@@ -486,6 +526,7 @@ export function DocumentCard({
         message: err.message || "An error occurred while exporting Dark PDF.",
       });
     } finally {
+      clearInterval(progressInterval);
       if (!isCancelled) stopProcessing();
     }
   };
@@ -493,8 +534,15 @@ export function DocumentCard({
   const handleExportDocx = async () => {
     if (!convertPdfToDocx) return;
     let isCancelled = false;
+    let simProgress = 0;
+    const progressInterval = setInterval(() => {
+      simProgress = Math.min(simProgress + 5, 90);
+      useProcessingStore.getState().updateProgress(simProgress);
+    }, 500);
+
     startProcessing("Exporting to DOCX...", true, () => {
       isCancelled = true;
+      clearInterval(progressInterval);
       stopProcessing();
     });
 
@@ -502,6 +550,8 @@ export function DocumentCard({
       const buffer = await doc.file.arrayBuffer();
       const pdfBytes = new Uint8Array(buffer);
       const docxBytes = await convertPdfToDocx(pdfBytes);
+      clearInterval(progressInterval);
+      useProcessingStore.getState().updateProgress(100);
       if (isCancelled) return;
 
       const standardBuffer = new Uint8Array(docxBytes.length);
@@ -528,6 +578,7 @@ export function DocumentCard({
         message: err.message || "An error occurred while exporting DOCX.",
       });
     } finally {
+      clearInterval(progressInterval);
       if (!isCancelled) stopProcessing();
     }
   };
@@ -555,18 +606,24 @@ export function DocumentCard({
         return;
       }
 
-      const blob = new Blob([html], { type: "text/html" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = doc.name.replace(/\.pdf$/i, ".html");
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      addLog("Extract HTML", "Extracted document to HTML format.", doc.name);
-      useUIStore.getState().showFeedbackPrompt("Extract Web");
+      setPreviewState({
+        isOpen: true,
+        content: html,
+        format: "HTML",
+        onDownload: () => {
+          const blob = new Blob([html], { type: "text/html" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = doc.name.replace(/\.pdf$/i, ".html");
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          addLog("Extract HTML", "Extracted document to HTML format.", doc.name);
+          useUIStore.getState().showFeedbackPrompt("Extract Web");
+        }
+      });
     } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
       if (isCancelled) return;
       console.error(err);
@@ -897,7 +954,7 @@ export function DocumentCard({
   };
 
   const toolsItems = [
-    { category: "Page Modification", label: "Extract / Split (~Instant)", onClick: () => onSplit(doc), complexity: "simple" },
+
     { category: "Page Modification", label: "Rotate 90° (~Instant)", onClick: () => onRotate?.(doc), complexity: "simple" },
     { category: "Page Modification", label: "Delete Pages (~1s)", onClick: () => onDeletePages?.(doc), complexity: "simple" },
     { category: "Page Modification", label: "Reorder Pages (~1s)", onClick: () => onReorderPages?.(doc), complexity: "professional" },
@@ -948,17 +1005,19 @@ export function DocumentCard({
     { category: "Other", ...(!isMobile ? { label: "Scan Codes (~5s)", onClick: handleScanCodes, complexity: "professional" } : {}) },
     { category: "Other", ...(!isMobile ? { label: "OCR (~10s)", onClick: () => onOcr?.(doc), complexity: "professional" } : {}) },
 
-    {
-      category: "Danger",
-      label: "Remove File",
-      variant: "danger",
-      onClick: () => onRemove(doc.id),
-      complexity: "simple"
-    },
+
   ].filter(item => item.label) as { category: string; label: string; onClick?: () => void; variant?: string; complexity?: 'simple'|'professional' }[];
 
   return (
     <div className={`rounded-xl border shadow-sm flex flex-col hover:shadow-md transition-shadow relative ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-100" : "bg-white border-gray-200 text-gray-900"}`}>
+
+      <PreviewModal
+        isOpen={previewState.isOpen}
+        content={previewState.content}
+        format={previewState.format}
+        onClose={() => setPreviewState((prev: any) => ({ ...prev, isOpen: false }))}
+        onDownload={previewState.onDownload}
+      />
       <BookmarkModal
         isOpen={bookmarkModalState.isOpen}
         bookmarks={bookmarkModalState.bookmarks}
@@ -1040,15 +1099,31 @@ export function DocumentCard({
           )}
 
           <div className="mt-4">
-            <button
-              onClick={() => setIsToolsModalOpen(true)}
-              className="w-full bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50 py-2 px-4 rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 flex items-center justify-center gap-2"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-              </svg>
-              Open Tools Menu
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => onSplit(doc)}
+                className="flex-1 bg-gray-50 text-gray-700 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 py-2 px-2 rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 flex items-center justify-center gap-1 text-sm"
+                title="Extract / Split"
+              >
+                Split
+              </button>
+              <button
+                onClick={() => setIsToolsModalOpen(true)}
+                className="flex-[2] bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50 py-2 px-2 rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 flex items-center justify-center gap-1 text-sm"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                </svg>
+                Tools
+              </button>
+              <button
+                onClick={() => onRemove(doc.id)}
+                className="flex-1 bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/40 py-2 px-2 rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 flex items-center justify-center gap-1 text-sm"
+                title="Remove File"
+              >
+                Remove
+              </button>
+            </div>
           </div>
 
           {isMobile && (

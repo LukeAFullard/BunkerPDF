@@ -12,7 +12,7 @@ import { useUIStore } from "./store/uiStore";
 import { SignatureModal } from "./components/ui/SignatureModal";
 import { SearchModal } from "./components/ui/SearchModal";
 import { generateEmbedding } from "./lib/searchEngine";
-import { Sun, Moon, ChevronDown, FileDiff, Plus } from "lucide-react";
+import { ChevronDown, FileDiff, Plus } from "lucide-react";
 import {
   mergePdfs,
   splitPdf,
@@ -75,7 +75,7 @@ import { extractParagraphsLiteparse, extractTextLiteparse, extractAllPagesTextLi
 function App() {
   const documents = useFileStore((state) => state.documents);
   const activeDocumentId = useFileStore((state) => state.activeDocumentId);
-  const { isDarkMode, toggleDarkMode } = useUIStore();
+  const { isDarkMode } = useUIStore();
 
   const handleWorkspaceFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
@@ -3709,6 +3709,11 @@ function App() {
                   }`}
                 >
                   Workspace Actions
+                  {documents.length > 1 && (
+                    <span className="bg-white text-emerald-700 text-xs font-bold px-1.5 py-0.5 rounded-full ml-1">
+                      {documents.length}
+                    </span>
+                  )}
                   <ChevronDown size={16} />
                 </button>
                 {isBatchMenuOpen && (
