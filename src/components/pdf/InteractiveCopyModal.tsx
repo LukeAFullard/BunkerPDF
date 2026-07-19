@@ -2,7 +2,7 @@ import { loadPdfDocument } from "../../lib/pdfHelper";
 import { useState, useEffect, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import 'pdfjs-dist/web/pdf_viewer.css';
-import { X, Type, ZoomIn, ZoomOut, Loader2, Copy, Check, Image as ImageIcon, ScanText } from 'lucide-react';
+import { X, Type, ZoomIn, ZoomOut, Loader2, Copy, Check, Image as ImageIcon, ScanText, PenTool } from 'lucide-react';
 import { useFileStore } from '../../store/fileStore';
 import { cleanupPdfResources } from '../../lib/pdfCleanup';
 import { getConfiguredLiteParse, formatParagraphFromItems, formatMarkdownFromItems } from '../../lib/liteparseEngine';
@@ -43,6 +43,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
   const [selectWholeLine, setSelectWholeLine] = useState(false);
   const [copyFormat, setCopyFormat] = useState<'text' | 'markdown'>('text');
   const [isOcrRunning, setIsOcrRunning] = useState(false);
+  const [isHandwritingRunning, setIsHandwritingRunning] = useState(false);
 
   const renderTaskRef = useRef<pdfjsLib.RenderTask | null>(null);
   const pdfDocRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
@@ -50,6 +51,10 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
   const tesseractWorkerRef = useRef<any>(null);
   const isInitializingWorkerRef = useRef<boolean>(false);
   const ocrRunIdRef = useRef<number>(0);
+
+  const handwritingWorkerRef = useRef<Worker | null>(null);
+  const isInitializingHandwritingRef = useRef<boolean>(false);
+  const handwritingRunIdRef = useRef<number>(0);
 
 
   useEffect(() => {
@@ -111,6 +116,10 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
           tesseractWorkerRef.current.terminate();
           tesseractWorkerRef.current = null;
        }
+       if (handwritingWorkerRef.current) {
+          handwritingWorkerRef.current.terminate();
+          handwritingWorkerRef.current = null;
+       }
     };
   }, []);
 
@@ -166,6 +175,106 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
         console.error("Error rendering page:", err);
         setError("Error rendering PDF page.");
         setIsLoading(false);
+      }
+    }
+  };
+
+  const runHandwritingOnRegion = async (x: number, y: number, w: number, h: number) => {
+    if (!canvasRef.current) return;
+    setIsHandwritingRunning(true);
+    setExtractedText(null);
+    const runId = ++handwritingRunIdRef.current;
+
+    try {
+      // Create a temporary canvas to extract the specific region
+      const tempCanvas = document.createElement('canvas');
+      const tempCtx = tempCanvas.getContext('2d');
+      if (!tempCtx) throw new Error('Could not get 2d context for temporary canvas');
+
+      const scaleX = canvasRef.current.width / (canvasRef.current.clientWidth || 1);
+      const scaleY = canvasRef.current.height / (canvasRef.current.clientHeight || 1);
+
+      // Set canvas size to the native resolution of the selection region
+      tempCanvas.width = w * scaleX;
+      tempCanvas.height = h * scaleY;
+
+      // Draw the selected region from the main canvas onto the temp canvas
+      tempCtx.drawImage(
+        canvasRef.current,
+        x * scaleX, y * scaleY, w * scaleX, h * scaleY,
+        0, 0, w * scaleX, h * scaleY
+      );
+
+      const dataUrl = tempCanvas.toDataURL('image/png');
+
+      // Initialize worker if not cached
+      if (!handwritingWorkerRef.current && !isInitializingHandwritingRef.current) {
+        isInitializingHandwritingRef.current = true;
+        try {
+          const worker = new Worker(new URL('../../workers/handwritingWorker.ts', import.meta.url), { type: 'module' });
+          worker.postMessage({ type: 'INIT', jobId: 'init' });
+
+          await new Promise<void>((resolve, reject) => {
+            const handleInit = (e: MessageEvent) => {
+              if (e.data.jobId === 'init') {
+                if (e.data.type === 'READY') {
+                  worker.removeEventListener('message', handleInit);
+                  resolve();
+                } else if (e.data.type === 'ERROR') {
+                  worker.removeEventListener('message', handleInit);
+                  reject(new Error(e.data.error));
+                }
+              }
+            };
+            worker.addEventListener('message', handleInit);
+          });
+
+          // Check if unmounted during initialization
+          if (!document.body.contains(canvasRef.current)) {
+              worker.terminate();
+          } else {
+              handwritingWorkerRef.current = worker;
+          }
+        } finally {
+          isInitializingHandwritingRef.current = false;
+        }
+      }
+
+      // Wait for initialization if another call triggered it
+      while (isInitializingHandwritingRef.current) {
+         await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      if (!handwritingWorkerRef.current) {
+          throw new Error('Failed to initialize Handwriting worker');
+      }
+
+      const jobId = `handwriting-${Date.now()}`;
+
+      const result = await new Promise<string>((resolve, reject) => {
+        const handleResult = (e: MessageEvent) => {
+          if (e.data.jobId === jobId) {
+            handwritingWorkerRef.current?.removeEventListener('message', handleResult);
+            if (e.data.type === 'RESULT') {
+              resolve(e.data.text);
+            } else if (e.data.type === 'ERROR') {
+              reject(new Error(e.data.error));
+            }
+          }
+        };
+        handwritingWorkerRef.current!.addEventListener('message', handleResult);
+        handwritingWorkerRef.current!.postMessage({ type: 'RECOGNIZE', image: dataUrl, jobId });
+      });
+
+      // Only process result if this is the most recent run and component is mounted
+      if (runId === handwritingRunIdRef.current && canvasRef.current) {
+        setExtractedText(result.trim());
+      }
+    } catch (err) {
+      console.error("Handwriting recognition failed for the region:", err);
+    } finally {
+      if (runId === handwritingRunIdRef.current) {
+         setIsHandwritingRunning(false);
       }
     }
   };
@@ -621,11 +730,11 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
                 <Type className="w-8 h-8 text-gray-400 mx-auto mb-3" />
                 <p className="text-sm text-gray-500">Draw a box around a paragraph to copy it perfectly flowed, avoiding broken lines.</p>
               </div>
-            ) : isOcrRunning ? (
+            ) : isOcrRunning || isHandwritingRunning ? (
               <div className="text-center py-12 px-4 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 h-full flex flex-col justify-center items-center">
                  <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mb-3" />
                  <p className="text-sm text-gray-500">
-                    No text detected. Running OCR on selected region...
+                    {isHandwritingRunning ? 'Recognizing handwriting...' : 'No text detected. Running OCR on selected region...'}
                  </p>
               </div>
             ) : !extractedText ? (
@@ -640,18 +749,32 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
           </div>
 
           <div className="p-4 bg-white border-t border-gray-200 flex flex-col gap-3">
-             <button
-               onClick={() => {
-                 if (selectionBox) {
-                   runOcrOnRegion(selectionBox.x, selectionBox.y, selectionBox.w, selectionBox.h);
-                 }
-               }}
-               disabled={!selectionBox || isOcrRunning}
-               className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-gray-100 text-gray-700 border border-gray-300 rounded-xl font-medium hover:bg-gray-200 disabled:opacity-50 transition-colors shadow-sm text-sm"
-             >
-               <ScanText className="w-4 h-4" />
-               Force OCR on Selection
-             </button>
+             <div className="flex gap-3">
+               <button
+                 onClick={() => {
+                   if (selectionBox) {
+                     runOcrOnRegion(selectionBox.x, selectionBox.y, selectionBox.w, selectionBox.h);
+                   }
+                 }}
+                 disabled={!selectionBox || isOcrRunning || isHandwritingRunning}
+                 className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-gray-100 text-gray-700 border border-gray-300 rounded-xl font-medium hover:bg-gray-200 disabled:opacity-50 transition-colors shadow-sm text-sm"
+               >
+                 <ScanText className="w-4 h-4" />
+                 Force OCR on Selection
+               </button>
+               <button
+                 onClick={() => {
+                   if (selectionBox) {
+                     runHandwritingOnRegion(selectionBox.x, selectionBox.y, selectionBox.w, selectionBox.h);
+                   }
+                 }}
+                 disabled={!selectionBox || isOcrRunning || isHandwritingRunning}
+                 className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-gray-100 text-gray-700 border border-gray-300 rounded-xl font-medium hover:bg-gray-200 disabled:opacity-50 transition-colors shadow-sm text-sm"
+               >
+                 <PenTool className="w-4 h-4" />
+                 Recognize Handwriting
+               </button>
+             </div>
              <div className="flex gap-3">
                <button
                  onClick={handleCopy}
