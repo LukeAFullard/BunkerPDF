@@ -7,7 +7,7 @@ import { twMerge } from 'tailwind-merge';
 export function SettingsDropdown() {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const { extractionMethod, setExtractionMethod, isDarkMode } = useUIStore();
+  const { extractionMethod, setExtractionMethod, isDarkMode, complexityMode, setComplexityMode, toggleDarkMode } = useUIStore();
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -65,6 +65,45 @@ export function SettingsDropdown() {
                 ? 'Faster initial loads, but may lose multi-column layouts.'
                 : 'Better layout preservation for complex documents.'}
             </p>
+
+            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+              <label className="block text-sm font-medium mb-2">Complexity Mode</label>
+              <select
+                value={complexityMode}
+                onChange={(e) => setComplexityMode(e.target.value as 'simple' | 'enhanced' | 'professional')}
+                className={twMerge(
+                  clsx(
+                    "w-full rounded-md border text-sm py-1.5 px-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
+                    isDarkMode ? "bg-gray-700 border-gray-600" : "bg-gray-50 border-gray-300"
+                  )
+                )}
+              >
+                <option value="simple">Simple</option>
+                <option value="professional">Professional</option>
+              </select>
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
+              <label className="block text-sm font-medium">Dark Mode</label>
+              <button
+                onClick={toggleDarkMode}
+                className={twMerge(
+                  clsx(
+                    "relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
+                    isDarkMode ? "bg-blue-600" : "bg-gray-200"
+                  )
+                )}
+              >
+                <span
+                  className={twMerge(
+                    clsx(
+                      "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                      isDarkMode ? "translate-x-6" : "translate-x-1"
+                    )
+                  )}
+                />
+              </button>
+            </div>
 
             <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
               <button
