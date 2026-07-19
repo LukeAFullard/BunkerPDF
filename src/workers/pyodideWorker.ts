@@ -19,6 +19,7 @@ export type PyodideWorkerMessage = {
     | "EXTRACT_MARKDOWN"
     | "EXTRACT_HTML"
     | "EXTRACT_IMAGES"
+    | "EXTRACT_INTERSECTING_IMAGES"
     | "EXTRACT_LINKS"
     | "EXTRACT_ANNOTATIONS"
     | "EXTRACT_METADATA"
@@ -682,6 +683,69 @@ bytes(excel_bytes)
         jobId,
         result: resultBytes,
       } satisfies PyodideWorkerResponse);
+
+    } else if (type === "EXTRACT_INTERSECTING_IMAGES") {
+      if (!initPromise) initPromise = initializePyodide();
+      await initPromise;
+      if (!pyodide) throw new Error("Pyodide not initialized");
+      const { pdfBytes: isectPdfBytes, pageNum: isectPageNum, box: isectBox } = msg;
+
+      pyodide.globals.set("doc_bytes", isectPdfBytes);
+      pyodide.globals.set("target_page", isectPageNum);
+      pyodide.globals.set("box_x", isectBox.x);
+      pyodide.globals.set("box_y", isectBox.y);
+      pyodide.globals.set("box_w", isectBox.w);
+      pyodide.globals.set("box_h", isectBox.h);
+
+      const isectPythonCode = `
+import fitz
+import json
+import base64
+
+doc = fitz.open(stream=bytes(doc_bytes), filetype="pdf")
+page = doc[target_page]
+image_info_list = page.get_image_info(xrefs=True)
+
+sx0 = box_x
+sy0 = box_y
+sx1 = box_x + box_w
+sy1 = box_y + box_h
+
+results = []
+
+for img_info in image_info_list:
+    bbox = img_info["bbox"]
+    ix0, iy0, ix1, iy1 = bbox[0], bbox[1], bbox[2], bbox[3]
+
+    if not (ix1 < sx0 or ix0 > sx1 or iy1 < sy0 or iy0 > sy1):
+        xref = img_info["xref"]
+        if xref > 0:
+            try:
+                base_image = doc.extract_image(xref)
+                image_bytes = base_image["image"]
+                image_ext = base_image["ext"]
+                b64_str = base64.b64encode(image_bytes).decode('utf-8')
+                data_uri = f"data:image/{image_ext};base64,{b64_str}"
+
+                results.append({
+                    "y": iy0,
+                    "data": data_uri
+                })
+            except Exception as e:
+                pass
+
+doc.close()
+del doc, doc_bytes
+json.dumps(results)
+`;
+      const isectResultJson = await pyodide.runPythonAsync(isectPythonCode);
+      const isectImages = JSON.parse(isectResultJson);
+
+      self.postMessage({
+        type: "EXTRACT_INTERSECTING_IMAGES_COMPLETE",
+        jobId,
+        data: isectImages
+      });
 
     } else if (type === "EXTRACT_IMAGES") {
       if (!initPromise) initPromise = initializePyodide();

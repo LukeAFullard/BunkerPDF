@@ -1294,40 +1294,42 @@ export const formatMarkdownFromItems = (textItems: any[]): string => {
   }
 
   // Not a grid, or grid formatting failed. Proceed with column-aware reading order.
-  // Separate items into columns.
-  const sortedByX = [...textItems].sort((a, b) => a.x - b.x);
-  const columns: { items: any[], x: number, maxX: number }[] = [];
-  const GUTTER_THRESHOLD = 20;
+  // We identify true vertical gutters by computing the union of all horizontal intervals.
+  const intervals = textItems.map(item => ({ start: item.x, end: item.x + item.width }));
+  intervals.sort((a, b) => a.start - b.start);
 
-  let currentColumnItems = [];
-  let lastItemRight = -Infinity;
+  const mergedIntervals = [];
+  let currentInterval = intervals[0];
 
-  for (const item of sortedByX) {
-    if (currentColumnItems.length === 0) {
-      currentColumnItems.push(item);
-      lastItemRight = item.x + item.width;
-    } else {
-      if (item.x - lastItemRight > GUTTER_THRESHOLD) {
-        // Gutter found, start a new column
-        columns.push({
-           items: currentColumnItems,
-           x: Math.min(...currentColumnItems.map(it => it.x)),
-           maxX: Math.max(...currentColumnItems.map(it => it.x + it.width))
-        });
-        currentColumnItems = [item];
-      } else {
-        currentColumnItems.push(item);
-      }
-      lastItemRight = Math.max(lastItemRight, item.x + item.width);
-    }
+  for (let i = 1; i < intervals.length; i++) {
+     const nextInterval = intervals[i];
+     // A GUTTER_THRESHOLD determines how large an empty gap must be to split a column.
+     // If the gap is smaller than the threshold, we merge them into a single column interval.
+     const GUTTER_THRESHOLD = 20;
+     if (nextInterval.start - currentInterval.end <= GUTTER_THRESHOLD) {
+         currentInterval.end = Math.max(currentInterval.end, nextInterval.end);
+     } else {
+         mergedIntervals.push(currentInterval);
+         currentInterval = nextInterval;
+     }
   }
+  mergedIntervals.push(currentInterval);
 
-  if (currentColumnItems.length > 0) {
-     columns.push({
-        items: currentColumnItems,
-        x: Math.min(...currentColumnItems.map(it => it.x)),
-        maxX: Math.max(...currentColumnItems.map(it => it.x + it.width))
-     });
+  // Group items into the identified column intervals
+  const columns: { items: any[], x: number, maxX: number }[] = mergedIntervals.map(inv => ({
+      items: [],
+      x: inv.start,
+      maxX: inv.end
+  }));
+
+  for (const item of textItems) {
+      const itemMidX = item.x + (item.width / 2);
+      for (const col of columns) {
+          if (itemMidX >= col.x - 5 && itemMidX <= col.maxX + 5) {
+              col.items.push(item);
+              break;
+          }
+      }
   }
 
   columns.sort((a, b) => a.x - b.x);

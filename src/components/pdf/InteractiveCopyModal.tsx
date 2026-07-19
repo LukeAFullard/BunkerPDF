@@ -52,6 +52,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
   const tesseractWorkerRef = useRef<any>(null);
   const isInitializingWorkerRef = useRef<boolean>(false);
   const ocrRunIdRef = useRef<number>(0);
+  const pyWorkerRef = useRef<Worker | null>(null);
 
   const handwritingWorkerRef = useRef<Worker | null>(null);
   const isInitializingHandwritingRef = useRef<boolean>(false);
@@ -120,6 +121,10 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
        if (handwritingWorkerRef.current) {
           handwritingWorkerRef.current.terminate();
           handwritingWorkerRef.current = null;
+       }
+       if (pyWorkerRef.current) {
+          pyWorkerRef.current.terminate();
+          pyWorkerRef.current = null;
        }
     };
   }, []);
@@ -403,7 +408,60 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
       const textStr = currentFormat === 'markdown'
         ? formatMarkdownFromItems(intersectingItems)
         : formatParagraphFromItems(intersectingItems);
+
+      // Show text immediately so UX is not blocked
       setExtractedText(textStr);
+
+      // Extract intersecting images using Pyodide
+      const startTime = performance.now();
+
+      const doc = useFileStore.getState().documents.find((d: any) => d.id === docId);
+      if (doc) {
+         try {
+             // Use existing engine worker mechanism or at least handle errors and cleanup properly
+             // For this proof-of-concept, we'll use a temporary worker but add error handling
+             if (!pyWorkerRef.current) {
+                 pyWorkerRef.current = new Worker(new URL('../../workers/pyodideWorker.ts', import.meta.url), { type: 'module' });
+             }
+             const pyWorker = pyWorkerRef.current;
+             const jobId = Math.random().toString(36).substring(7);
+
+             pyWorker.onmessage = (e) => {
+                 if (e.data.type === "EXTRACT_INTERSECTING_IMAGES_COMPLETE" && e.data.jobId === jobId) {
+                     const images = e.data.data;
+                     const endTime = performance.now();
+                     console.log(`[Image Extraction Timer] PyMuPDF took ${(endTime - startTime).toFixed(2)}ms to find and extract ${images.length} intersecting images.`);
+
+                     if (images.length > 0) {
+                         let updatedText = textStr;
+                         for (let i = 0; i < images.length; i++) {
+                             const img = images[i];
+                             const mdImage = `\n\n![Extracted Figure ${i+1}](${img.data})\n\n`;
+                             updatedText += mdImage;
+                         }
+                         setExtractedText(updatedText);
+                     }
+                     // Do not terminate, keep the worker cached for next selection
+                 }
+             };
+
+             pyWorker.onerror = (err) => {
+                 console.error("Pyodide worker failed:", err);
+             };
+
+             pyWorker.postMessage({
+                 type: "EXTRACT_INTERSECTING_IMAGES",
+                 jobId,
+                 pdfBytes: doc.data,
+                 pageNum: pageIdx,
+                 box: { x: lpX, y: lpY, w: lpRight - lpX, h: lpBottom - lpY }
+             });
+
+         } catch (err) {
+             console.error("Failed to query Pyodide for images:", err);
+         }
+      }
+
     } else {
       setExtractedText(null);
       // Run OCR on the highlighted area
