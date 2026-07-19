@@ -3705,14 +3705,6 @@ function App() {
               >
                 {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
               </button>
-              <button
-                onClick={() => setIsCrossReorderOpen(true)}
-                disabled={documents.length < 1 || isGlobalProcessing}
-                className="bg-purple-600 text-white px-4 py-2 rounded-lg font-medium disabled:opacity-50 hover:bg-purple-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2"
-              >
-                Cross-Document Reorder
-              </button>
-
               <div className="relative" ref={batchMenuRef}>
                 <button
                   onClick={() => setIsBatchMenuOpen(!isBatchMenuOpen)}
@@ -3723,12 +3715,18 @@ function App() {
                       : "bg-indigo-600 hover:bg-indigo-700 focus-visible:ring-indigo-500"
                   }`}
                 >
-                  Batch Actions
+                  Workspace Actions
                   <ChevronDown size={16} />
                 </button>
                 {isBatchMenuOpen && (
                   <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50">
 
+                    <button
+                      onClick={() => { setIsBatchMenuOpen(false); setIsCrossReorderOpen(true); }}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                    >
+                      Cross-Document Reorder
+                    </button>
                     <button
                       onClick={handleBatchRename}
                       className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
@@ -3778,6 +3776,13 @@ function App() {
                     >
                       Download All (ZIP)
                     </button>
+                    <div className="border-t border-gray-100 my-1"></div>
+                    <button
+                      onClick={() => { setIsBatchMenuOpen(false); clearAll(); }}
+                      className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors"
+                    >
+                      Clear All
+                    </button>
                   </div>
                 )}
               </div>
@@ -3788,12 +3793,6 @@ function App() {
                 className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium disabled:opacity-50 hover:bg-blue-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
               >
                 {isGlobalProcessing ? "Processing..." : "Merge All"}
-              </button>
-              <button
-                onClick={clearAll}
-                className="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-medium hover:bg-gray-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:ring-offset-2"
-              >
-                Clear All
               </button>
             </div>
           </div>

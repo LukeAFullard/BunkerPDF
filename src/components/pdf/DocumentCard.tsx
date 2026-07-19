@@ -897,60 +897,61 @@ export function DocumentCard({
   };
 
   const toolsItems = [
-    { category: "Page Modification", label: "Extract / Split (~Instant)", onClick: () => onSplit(doc) },
-    { category: "Page Modification", label: "Rotate 90° (~Instant)", onClick: () => onRotate?.(doc) },
-    { category: "Page Modification", label: "Delete Pages (~1s)", onClick: () => onDeletePages?.(doc) },
-    { category: "Page Modification", label: "Reorder Pages (~1s)", onClick: () => onReorderPages?.(doc) },
-    { category: "Page Modification", label: "Resize to A4/Letter/Custom (~2s)", onClick: () => onResizePages?.(doc) },
+    { category: "Page Modification", label: "Extract / Split (~Instant)", onClick: () => onSplit(doc), complexity: "simple" },
+    { category: "Page Modification", label: "Rotate 90° (~Instant)", onClick: () => onRotate?.(doc), complexity: "simple" },
+    { category: "Page Modification", label: "Delete Pages (~1s)", onClick: () => onDeletePages?.(doc), complexity: "simple" },
+    { category: "Page Modification", label: "Reorder Pages (~1s)", onClick: () => onReorderPages?.(doc), complexity: "professional" },
+    { category: "Page Modification", label: "Resize to A4/Letter/Custom (~2s)", onClick: () => onResizePages?.(doc), complexity: "simple" },
 
-    { category: "Content & Marks", label: "Add Watermark (~1s)", onClick: () => onWatermark?.(doc) },
-    { category: "Content & Marks", label: "Smart Highlight Text (~Instant)", onClick: () => onHighlight?.(doc) },
-    { category: "Content & Marks", label: "Sign Document (~2s)", onClick: () => onSign?.(doc) },
-    { category: "Content & Marks", label: "Edit Text (Beta) (~3s)", onClick: () => setIsParagraphEditModalOpen(true) },
-    { category: "Content & Marks", label: "Add Page Numbers (~2s)", onClick: () => onAddPageNumbers?.(doc) },
-    { category: "Content & Marks", label: "Bates Numbering (~2s)", onClick: () => onBatesNumbering?.(doc) },
-    { category: "Content & Marks", label: "Flatten Forms (~1s)", onClick: () => onFlatten?.(doc) },
+    { category: "Content & Marks", label: "Add Watermark (~1s)", onClick: () => onWatermark?.(doc), complexity: "simple" },
+    { category: "Content & Marks", label: "Smart Highlight Text (~Instant)", onClick: () => onHighlight?.(doc), complexity: "professional" },
+    { category: "Content & Marks", label: "Sign Document (~2s)", onClick: () => onSign?.(doc), complexity: "professional" },
+    { category: "Content & Marks", label: "Edit Text (Beta) (~3s)", onClick: () => setIsParagraphEditModalOpen(true), complexity: "professional" },
+    { category: "Content & Marks", label: "Add Page Numbers (~2s)", onClick: () => onAddPageNumbers?.(doc), complexity: "professional" },
+    { category: "Content & Marks", label: "Bates Numbering (~2s)", onClick: () => onBatesNumbering?.(doc), complexity: "professional" },
+    { category: "Content & Marks", label: "Flatten Forms (~1s)", onClick: () => onFlatten?.(doc), complexity: "professional" },
 
-    { category: "Extract & Export", ...(!isMobile ? { label: "Extract Tables (~10s)", onClick: () => setIsTableExtractionModalOpen(true) } : {}) },
-    { category: "Extract & Export", label: "Extract Notes (MD) (~5s)", onClick: handleExtractMarkdown },
-    { category: "Extract & Export", label: "Extract Web (HTML) (~5s)", onClick: handleExtractHtml },
-    { category: "Extract & Export", ...(!isMobile ? { label: "Export DOCX (~10s)", onClick: handleExportDocx } : {}) },
-    { category: "Extract & Export", label: "Export True Dark (~10s)", onClick: handleExportDark },
-    { category: "Extract & Export", ...(!isMobile ? { label: "Extract Images (~10s)", onClick: handleExtractImages } : {}) },
-    { category: "Extract & Export", label: "Extract Links (CSV) (~2s)", onClick: handleExtractLinks },
-    { category: "Extract & Export", label: "Extract Annotations (CSV) (~2s)", onClick: handleExtractAnnotations },
+    { category: "Extract & Export", ...(!isMobile ? { label: "Extract Tables (~10s)", onClick: () => setIsTableExtractionModalOpen(true), complexity: "professional" } : {}) },
+    { category: "Extract & Export", label: "Extract Notes (MD) (~5s)", onClick: handleExtractMarkdown, complexity: "simple" },
+    { category: "Extract & Export", label: "Extract Web (HTML) (~5s)", onClick: handleExtractHtml, complexity: "professional" },
+    { category: "Extract & Export", ...(!isMobile ? { label: "Export DOCX (~10s)", onClick: handleExportDocx, complexity: "professional" } : {}) },
+    { category: "Extract & Export", label: "Export True Dark (~10s)", onClick: handleExportDark, complexity: "professional" },
+    { category: "Extract & Export", ...(!isMobile ? { label: "Extract Images (~10s)", onClick: handleExtractImages, complexity: "simple" } : {}) },
+    { category: "Extract & Export", label: "Extract Links (CSV) (~2s)", onClick: handleExtractLinks, complexity: "professional" },
+    { category: "Extract & Export", label: "Extract Annotations (CSV) (~2s)", onClick: handleExtractAnnotations, complexity: "professional" },
+    { category: "Extract & Export", label: "Share (URL, <64KB only)", onClick: () => onShare?.(doc), complexity: "simple" },
 
-    { category: "Interactive Tools", label: "Hover to Edit (~Instant)", onClick: () => onInteractiveEdit?.(doc) },
-    { category: "Interactive Tools", label: "Magic Box Table (~Instant)", onClick: () => onInteractiveTable?.(doc) },
-    { category: "Interactive Tools", label: "Smart Table Re-flow (~Instant)", onClick: () => onSmartTableReflow?.(doc) },
-    { category: "Interactive Tools", label: "Magic Copy (~Instant)", onClick: () => onInteractiveCopy?.(doc) },
-    { category: "Interactive Tools", label: "Knowledge Graph (~Instant)", onClick: () => onInteractiveKnowledgeGraph?.(doc) },
-    { category: "Interactive Tools", label: "Font-Size Normalizer (~Instant)", onClick: () => onInteractiveFontSizeNormalizer?.(doc) },
-    { category: "Interactive Tools", label: "Data Dictionary Extraction (~Instant)", onClick: () => onInteractiveDataDictionary?.(doc) },
-    { category: "Interactive Tools", label: "Auto-Linker (~Instant)", onClick: () => onInteractiveAutoLinker?.(doc) },
-    { category: "Interactive Tools", label: "Smart Form Generation (~Instant)", onClick: () => onSmartForm?.(doc) },
-    { category: "Interactive Tools", label: "Smart Crop Warning (~Instant)", onClick: () => onSmartCrop?.(doc) },
+    { category: "Interactive Tools", label: "Hover to Edit (~Instant)", onClick: () => onInteractiveEdit?.(doc), complexity: "professional" },
+    { category: "Interactive Tools", label: "Magic Box Table (~Instant)", onClick: () => onInteractiveTable?.(doc), complexity: "professional" },
+    { category: "Interactive Tools", label: "Smart Table Re-flow (~Instant)", onClick: () => onSmartTableReflow?.(doc), complexity: "professional" },
+    { category: "Interactive Tools", label: "Magic Copy (~Instant)", onClick: () => onInteractiveCopy?.(doc), complexity: "professional" },
+    { category: "Interactive Tools", label: "Knowledge Graph (~Instant)", onClick: () => onInteractiveKnowledgeGraph?.(doc), complexity: "professional" },
+    { category: "Interactive Tools", label: "Font-Size Normalizer (~Instant)", onClick: () => onInteractiveFontSizeNormalizer?.(doc), complexity: "professional" },
+    { category: "Interactive Tools", label: "Data Dictionary Extraction (~Instant)", onClick: () => onInteractiveDataDictionary?.(doc), complexity: "professional" },
+    { category: "Interactive Tools", label: "Auto-Linker (~Instant)", onClick: () => onInteractiveAutoLinker?.(doc), complexity: "professional" },
+    { category: "Interactive Tools", label: "Smart Form Generation (~Instant)", onClick: () => onSmartForm?.(doc), complexity: "professional" },
+    { category: "Interactive Tools", label: "Smart Crop Warning (~Instant)", onClick: () => onSmartCrop?.(doc), complexity: "professional" },
 
-    { category: "Security & Audit", label: "Protect (Password) (~2s)", onClick: () => onEncrypt?.(doc) },
-    ...(doc.isEncrypted ? [{ category: "Security & Audit", label: "Unlock (Remove Password)", onClick: () => onUnlock?.(doc) }] : []),
-    { category: "Security & Audit", label: "Sanitize & Send (~Instant)", onClick: () => onSanitize?.(doc) },
-    { category: "Security & Audit", label: "Point & Click Redact (~Instant)", onClick: () => onInteractiveRedact?.(doc) },
-    { category: "Security & Audit", label: "Auto-Redact Headers/Footers (~Instant)", onClick: () => onAutoRedactLayout?.(doc) },
-    { category: "Security & Audit", ...(!isMobile ? { label: "Audit Redactions (~5s)", onClick: () => onAudit?.(doc) } : {}) },
-    { category: "Security & Audit", label: "Verify Signatures (~2s)", onClick: () => onVerifySignature?.(doc) },
+    { category: "Security & Audit", label: "Protect (Password) (~2s)", onClick: () => onEncrypt?.(doc), complexity: "simple" },
+    ...(doc.isEncrypted ? [{ category: "Security & Audit", label: "Unlock (Remove Password)", onClick: () => onUnlock?.(doc), complexity: "simple" }] : []),
+    { category: "Security & Audit", label: "Sanitize & Send (~Instant)", onClick: () => onSanitize?.(doc), complexity: "simple" },
+    { category: "Security & Audit", label: "Point & Click Redact (~Instant)", onClick: () => onInteractiveRedact?.(doc), complexity: "professional" },
+    { category: "Security & Audit", label: "Auto-Redact Headers/Footers (~Instant)", onClick: () => onAutoRedactLayout?.(doc), complexity: "professional" },
+    { category: "Security & Audit", ...(!isMobile ? { label: "Audit Redactions (~5s)", onClick: () => onAudit?.(doc), complexity: "professional" } : {}) },
+    { category: "Security & Audit", label: "Verify Signatures (~2s)", onClick: () => onVerifySignature?.(doc), complexity: "professional" },
 
-    { category: "Other", label: "Optimize (Compress) (~5s)", onClick: () => onOptimize?.(doc) },
-    { category: "Other", label: "Edit Bookmarks/Outline (~2s)", onClick: handleEditBookmarks },
-    { category: "Other", label: "Edit Metadata (~2s)", onClick: handleViewMetadataLocal },
-    { category: "Other", label: "Read Aloud (TTS) (~15s/pg)", onClick: () => onReadAloud?.(doc) },
-    { category: "Other", ...(!isMobile ? { label: "Scan PII (~5s)", onClick: handleScan } : {}) },
-    { category: "Other", ...(!isMobile ? { label: "Scan Codes (~5s)", onClick: handleScanCodes } : {}) },
+    { category: "Other", label: "Optimize (Compress) (~5s)", onClick: () => onOptimize?.(doc), complexity: "simple" },
+    { category: "Other", label: "Edit Bookmarks/Outline (~2s)", onClick: handleEditBookmarks, complexity: "simple" },
+    { category: "Other", label: "Edit Metadata (~2s)", onClick: handleViewMetadataLocal, complexity: "professional" },
+    { category: "Other", label: "Read Aloud (TTS) (~15s/pg)", onClick: () => onReadAloud?.(doc), complexity: "professional" },
+    { category: "Other", ...(!isMobile ? { label: "Scan PII (~5s)", onClick: handleScan, complexity: "professional" } : {}) },
+    { category: "Other", ...(!isMobile ? { label: "Scan Codes (~5s)", onClick: handleScanCodes, complexity: "professional" } : {}) },
     { category: "Other", ...(!isMobile ? { label: "OCR (~10s)", onClick: () => {
         if (useUIStore.getState().complexityMode === 'simple') {
           useUIStore.getState().setComplexityMode('professional');
         }
         onOcr?.(doc);
-      }
+      }, complexity: "professional"
     } : {}) },
 
     {
@@ -958,8 +959,9 @@ export function DocumentCard({
       label: "Remove File",
       variant: "danger",
       onClick: () => onRemove(doc.id),
+      complexity: "simple"
     },
-  ].filter(item => item.label) as { category: string; label: string; onClick?: () => void; variant?: string }[];
+  ].filter(item => item.label) as { category: string; label: string; onClick?: () => void; variant?: string; complexity?: 'simple'|'professional' }[];
 
   return (
     <div className={`rounded-xl border shadow-sm flex flex-col hover:shadow-md transition-shadow relative ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-100" : "bg-white border-gray-200 text-gray-900"}`}>
@@ -1007,50 +1009,32 @@ export function DocumentCard({
 
         <div className="mt-4 pt-4 border-t border-gray-100">
           <div className="flex gap-2 mb-2">
-            <button
-              onClick={() => undo(doc.id)}
-              disabled={isProcessing || !canUndo}
-              className="text-gray-600 hover:text-gray-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 rounded px-1"
-              title="Undo (Cmd+Z)"
-            >
-              Undo
-            </button>
-            <button
-              onClick={() => redo(doc.id)}
-              disabled={isProcessing || !canRedo}
-              className="text-gray-600 hover:text-gray-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 rounded px-1"
-              title="Redo (Cmd+Shift+Z)"
-            >
-              Redo
-            </button>
-            <button
-              onClick={() => onSplit(doc)}
-              disabled={isProcessing}
-              className="text-blue-600 hover:text-blue-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded px-1 ml-auto"
-            >
-              Split
-            </button>
+            {canUndo && (
+              <button
+                onClick={() => undo(doc.id)}
+                disabled={isProcessing}
+                className="text-gray-600 hover:text-gray-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 rounded px-1"
+                title="Undo (Cmd+Z)"
+              >
+                Undo
+              </button>
+            )}
+            {canRedo && (
+              <button
+                onClick={() => redo(doc.id)}
+                disabled={isProcessing}
+                className="text-gray-600 hover:text-gray-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 rounded px-1"
+                title="Redo (Cmd+Shift+Z)"
+              >
+                Redo
+              </button>
+            )}
             <button
               onClick={handleDownload}
               disabled={isProcessing}
-              className="text-green-600 hover:text-green-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 rounded px-1"
+              className="text-green-600 hover:text-green-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 rounded px-1 ml-auto"
             >
               Download
-            </button>
-            <button
-              onClick={() => onShare?.(doc)}
-              disabled={isProcessing}
-              className="text-indigo-600 hover:text-indigo-800 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded px-1"
-              title="Share (URL, <64KB only)"
-            >
-              Share
-            </button>
-            <button
-              onClick={() => onRemove(doc.id)}
-              disabled={isProcessing}
-              className="text-red-500 hover:text-red-700 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 rounded px-1"
-            >
-              Remove
             </button>
           </div>
 
