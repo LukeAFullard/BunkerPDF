@@ -43,6 +43,7 @@ export type PyodideWorkerMessage = {
   pageCount?: number;
   highlights?: string[];
   color?: [number, number, number];
+  box?: { x: number; y: number; w: number; h: number };
   removedHighlights?: string[];
   addedHighlights?: string[];
   password?: string;
@@ -688,14 +689,14 @@ bytes(excel_bytes)
       if (!initPromise) initPromise = initializePyodide();
       await initPromise;
       if (!pyodide) throw new Error("Pyodide not initialized");
-      const { pdfBytes: isectPdfBytes, pageNum: isectPageNum, box: isectBox } = msg;
+      const { pdfBytes: isectPdfBytes, pageNum: isectPageNum, box: isectBox } = e.data;
 
       pyodide.globals.set("doc_bytes", isectPdfBytes);
       pyodide.globals.set("target_page", isectPageNum);
-      pyodide.globals.set("box_x", isectBox.x);
-      pyodide.globals.set("box_y", isectBox.y);
-      pyodide.globals.set("box_w", isectBox.w);
-      pyodide.globals.set("box_h", isectBox.h);
+      pyodide.globals.set("box_x", isectBox!.x);
+      pyodide.globals.set("box_y", isectBox!.y);
+      pyodide.globals.set("box_w", isectBox!.w);
+      pyodide.globals.set("box_h", isectBox!.h);
 
       const isectPythonCode = `
 import fitz
