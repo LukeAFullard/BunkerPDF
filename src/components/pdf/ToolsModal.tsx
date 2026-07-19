@@ -7,6 +7,7 @@ export interface ToolItem {
   label: string;
   onClick?: () => void;
   variant?: string;
+  complexity?: 'simple' | 'professional';
 }
 
 interface ToolsModalProps {
@@ -18,14 +19,28 @@ interface ToolsModalProps {
 
 export function ToolsModal({ isOpen, onClose, tools, documentName }: ToolsModalProps) {
   const isDarkMode = useUIStore((state) => state.isDarkMode);
+  const complexityMode = useUIStore((state) => state.complexityMode);
+  const setComplexityMode = useUIStore((state) => state.setComplexityMode);
   const [searchQuery, setSearchQuery] = React.useState("");
 
   if (!isOpen) return null;
 
   const filteredTools = tools.filter(
-    (item) =>
-      item.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.category.toLowerCase().includes(searchQuery.toLowerCase())
+    (item) => {
+      const matchesSearch = item.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                            item.category.toLowerCase().includes(searchQuery.toLowerCase());
+
+      // If there is a search query, ignore complexity filter to allow finding everything.
+      if (searchQuery) return matchesSearch;
+
+      // Otherwise, filter based on complexity mode
+      if (complexityMode === 'simple') {
+        return item.complexity === 'simple';
+      }
+
+      // If professional or enhanced, show all tools.
+      return true;
+    }
   );
 
   const groupedTools = filteredTools.reduce((acc, item) => {
@@ -47,7 +62,32 @@ export function ToolsModal({ isOpen, onClose, tools, documentName }: ToolsModalP
       >
         <div className="flex justify-between items-center p-6 border-b border-gray-200 dark:border-gray-700">
           <div>
-            <h2 className="text-2xl font-bold">Document Tools</h2>
+            <div className="flex items-center gap-4">
+              <h2 className="text-2xl font-bold">Document Tools</h2>
+
+              <div className={`flex items-center rounded-lg p-1 ${isDarkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
+                <button
+                  onClick={() => setComplexityMode('simple')}
+                  className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+                    complexityMode === 'simple'
+                      ? (isDarkMode ? 'bg-gray-700 text-white shadow' : 'bg-white text-gray-900 shadow')
+                      : (isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700')
+                  }`}
+                >
+                  Simple
+                </button>
+                <button
+                  onClick={() => setComplexityMode('professional')}
+                  className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+                    complexityMode === 'professional' || complexityMode === 'enhanced'
+                      ? (isDarkMode ? 'bg-gray-700 text-white shadow' : 'bg-white text-gray-900 shadow')
+                      : (isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700')
+                  }`}
+                >
+                  All Tools
+                </button>
+              </div>
+            </div>
             <p className={`text-sm mt-1 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
               {documentName}
             </p>
