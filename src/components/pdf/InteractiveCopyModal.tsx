@@ -42,6 +42,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
   const [marginThresholdPercent, setMarginThresholdPercent] = useState(12);
   const [selectWholeLine, setSelectWholeLine] = useState(false);
   const [copyFormat, setCopyFormat] = useState<'text' | 'markdown'>('text');
+  const [showBoundingBoxes, setShowBoundingBoxes] = useState(false);
   const [isOcrRunning, setIsOcrRunning] = useState(false);
   const [isHandwritingRunning, setIsHandwritingRunning] = useState(false);
 
@@ -617,6 +618,19 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
                         }}
                       />
                     )}
+
+                    {showBoundingBoxes && liteparseData?.pages[currentPage - 1]?.textItems?.map((item: any, idx: number) => (
+                      <div
+                        key={idx}
+                        className="absolute border border-blue-400 bg-blue-400/10 pointer-events-none"
+                        style={{
+                          left: item.x * overlayScale,
+                          top: item.y * overlayScale,
+                          width: item.width * overlayScale,
+                          height: item.height * overlayScale
+                        }}
+                      />
+                    ))}
                   </div>
                </div>
             )}
@@ -720,6 +734,18 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
                 />
                 <label htmlFor="markdownToggle" className="text-xs font-medium text-gray-600 cursor-pointer">
                   Copy as Markdown
+                </label>
+             </div>
+             <div className="flex items-center gap-2 mt-1">
+                <input
+                  type="checkbox"
+                  id="boundingBoxesToggle"
+                  checked={showBoundingBoxes}
+                  onChange={(e) => setShowBoundingBoxes(e.target.checked)}
+                  className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                />
+                <label htmlFor="boundingBoxesToggle" className="text-xs font-medium text-gray-600 cursor-pointer">
+                  Show Bounding Boxes
                 </label>
              </div>
           </div>
