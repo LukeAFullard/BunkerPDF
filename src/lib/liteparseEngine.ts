@@ -1223,14 +1223,13 @@ export const formatMarkdownFromItems = (textItems: any[]): string => {
   const fontSizes = textItems.map(it => it.fontSize || 12).sort((a, b) => a - b);
   const baseFontSize = fontSizes[Math.floor(fontSizes.length / 2)];
 
-  // 2. Group into rows
-  const rowTolerance = 5; // pixels
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const rows: { items: any[], y: number }[] = [];
-
+  // First, check if this is a table/grid layout overall.
+  // We can do this by creating a quick row map and checking alignments.
+  const tempRows: { items: any[], y: number }[] = [];
+  const rowTolerance = 5;
   for (const item of textItems) {
     let foundRow = false;
-    for (const row of rows) {
+    for (const row of tempRows) {
       if (Math.abs(row.y - item.y) < rowTolerance) {
         row.items.push(item);
         foundRow = true;
@@ -1238,144 +1237,240 @@ export const formatMarkdownFromItems = (textItems: any[]): string => {
       }
     }
     if (!foundRow) {
-      rows.push({ items: [item], y: item.y });
+      tempRows.push({ items: [item], y: item.y });
     }
   }
 
-  rows.sort((a, b) => a.y - b.y);
+    // Improved Table Detection Heuristic:
+  // We need to ensure we don't accidentally turn regular paragraphs into tables.
+  // A table has multiple rows where the items strictly align into vertical columns.
+  // We check if there are well-defined common X-coordinates (columns) shared across rows.
+  let multiItemRowCount = 0;
+  const allXPositions = [];
 
-  // 3. Create row strings
-  const formattedRows = rows.map((row) => {
-    row.items.sort((a, b) => a.x - b.x);
-    let rowString = "";
-    let rowMaxFontSize = 0;
-    let rowHasBold = false;
-
-    for (let j = 0; j < row.items.length; j++) {
-       const item = row.items[j];
-       rowString += item.text;
-       if ((item.fontSize || 12) > rowMaxFontSize) {
-         rowMaxFontSize = item.fontSize || 12;
-       }
-       if (item.fontName?.toLowerCase().includes("bold")) {
-         rowHasBold = true;
-       }
-       if (j < row.items.length - 1) {
-          if (row.items[j+1].x - (item.x + item.width) > 3) {
-             rowString += " ";
-          }
-       }
-    }
-
-    return {
-      text: rowString.trim(),
-      maxFontSize: rowMaxFontSize,
-      y: row.y,
-      bottom: row.y + Math.max(...row.items.map(it => it.height || 12)),
-      averageHeight: row.items.reduce((acc, it) => acc + (it.height || 12), 0) / row.items.length,
-      isBold: rowHasBold
-    };
-  });
-
-  // 4. Group rows into blocks
-  const blocks: { rows: typeof formattedRows, maxFontSize: number }[] = [];
-  let currentBlock: { rows: typeof formattedRows, maxFontSize: number } = { rows: [], maxFontSize: 0 };
-
-  for (let i = 0; i < formattedRows.length; i++) {
-    const row = formattedRows[i];
-
-    // Add row to current block
-    currentBlock.rows.push(row);
-    if (row.maxFontSize > currentBlock.maxFontSize) {
-      currentBlock.maxFontSize = row.maxFontSize;
-    }
-
-    // Determine if next row starts a new block
-    if (i < formattedRows.length - 1) {
-      const nextRow = formattedRows[i + 1];
-      const gap = nextRow.y - row.bottom;
-
-      // If gap is significant, start a new block
-      if (gap > row.averageHeight * 0.5) {
-        blocks.push(currentBlock);
-        currentBlock = { rows: [], maxFontSize: 0 };
+  for (const row of tempRows) {
+    if (row.items.length >= 2) {
+      multiItemRowCount++;
+      for (const item of row.items) {
+          allXPositions.push(item.x);
       }
-    } else {
-      blocks.push(currentBlock);
     }
   }
 
-  // 5. Format each block
+  // Cluster X positions to find distinct columns
+  const columnsX = [];
+  allXPositions.sort((a, b) => a - b);
+  for (const x of allXPositions) {
+     if (columnsX.length === 0 || Math.abs(x - columnsX[columnsX.length - 1]) > 10) {
+         columnsX.push(x);
+     }
+  }
+
+  // If we have at least 2 distinct aligned columns and most rows conform to these columns
+  let alignedRowsCount = 0;
+  if (columnsX.length >= 2) {
+      for (const row of tempRows) {
+         if (row.items.length >= 2) {
+            let alignedItems = 0;
+            for (const item of row.items) {
+                if (columnsX.some(colX => Math.abs(item.x - colX) <= 15)) {
+                   alignedItems++;
+                }
+            }
+            if (alignedItems >= 2) {
+               alignedRowsCount++;
+            }
+         }
+      }
+  }
+
+  // A strict heuristic: Needs at least 2 distinct columns, at least 3 rows,
+  // and the aligned rows must make up the majority of the multi-item rows.
+  if (columnsX.length >= 2 && tempRows.length >= 3 && alignedRowsCount >= 2 && alignedRowsCount / tempRows.length >= 0.5) {
+      const tableMarkdown = formatTableFromItems(textItems, 'markdown', true);
+      if (tableMarkdown.trim()) {
+        return tableMarkdown.trim();
+      }
+  }
+
+  // Not a grid, or grid formatting failed. Proceed with column-aware reading order.
+  // Separate items into columns.
+  const sortedByX = [...textItems].sort((a, b) => a.x - b.x);
+  const columns: { items: any[], x: number, maxX: number }[] = [];
+  const GUTTER_THRESHOLD = 20;
+
+  let currentColumnItems = [];
+  let lastItemRight = -Infinity;
+
+  for (const item of sortedByX) {
+    if (currentColumnItems.length === 0) {
+      currentColumnItems.push(item);
+      lastItemRight = item.x + item.width;
+    } else {
+      if (item.x - lastItemRight > GUTTER_THRESHOLD) {
+        // Gutter found, start a new column
+        columns.push({
+           items: currentColumnItems,
+           x: Math.min(...currentColumnItems.map(it => it.x)),
+           maxX: Math.max(...currentColumnItems.map(it => it.x + it.width))
+        });
+        currentColumnItems = [item];
+      } else {
+        currentColumnItems.push(item);
+      }
+      lastItemRight = Math.max(lastItemRight, item.x + item.width);
+    }
+  }
+
+  if (currentColumnItems.length > 0) {
+     columns.push({
+        items: currentColumnItems,
+        x: Math.min(...currentColumnItems.map(it => it.x)),
+        maxX: Math.max(...currentColumnItems.map(it => it.x + it.width))
+     });
+  }
+
+  columns.sort((a, b) => a.x - b.x);
+
   const markdownLines: string[] = [];
 
-  for (const block of blocks) {
-    if (block.rows.length === 0) continue;
-
-    // Join rows into a single block text
-    let blockText = "";
-    for (let i = 0; i < block.rows.length; i++) {
-       const row = block.rows[i];
-       blockText += row.text;
-
-       if (i < block.rows.length - 1) {
-          if (!blockText.endsWith(" ") && !blockText.endsWith("-")) {
-            blockText += " ";
-          } else if (blockText.endsWith("-")) {
-            blockText = blockText.slice(0, -1);
-          }
-       }
+  for (const col of columns) {
+    // Group into rows WITHIN the column
+    const colRows: { items: any[], y: number }[] = [];
+    for (const item of col.items) {
+      let foundRow = false;
+      for (const row of colRows) {
+        if (Math.abs(row.y - item.y) < rowTolerance) {
+          row.items.push(item);
+          foundRow = true;
+          break;
+        }
+      }
+      if (!foundRow) {
+        colRows.push({ items: [item], y: item.y });
+      }
     }
 
-    // Check for lists
-    let isList = false;
+    colRows.sort((a, b) => a.y - b.y);
 
-    const listMatch = blockText.match(/^([•\-*o]|\d+\.)\s+/i);
-    if (listMatch) {
-       isList = true;
-       const bullet = listMatch[1];
-       if (['•', 'o'].includes(bullet)) {
-          blockText = "- " + blockText.substring(listMatch[0].length);
-       }
-    } else if (blockText.match(/^[•\-*o]/)) {
-       const bullet = blockText[0];
-       if (['•', 'o', '-', '*'].includes(bullet)) {
-          blockText = "- " + blockText.substring(1).trim();
-          isList = true;
-       }
+    // Create row strings
+    const formattedRows = colRows.map((row) => {
+      row.items.sort((a, b) => a.x - b.x);
+      let rowString = "";
+      let rowMaxFontSize = 0;
+      let rowHasBold = false;
+
+      for (let j = 0; j < row.items.length; j++) {
+         const item = row.items[j];
+         rowString += item.text;
+         if ((item.fontSize || 12) > rowMaxFontSize) {
+           rowMaxFontSize = item.fontSize || 12;
+         }
+         if (item.fontName?.toLowerCase().includes("bold")) {
+           rowHasBold = true;
+         }
+         if (j < row.items.length - 1) {
+            if (row.items[j+1].x - (item.x + item.width) > 3) {
+               rowString += " ";
+            }
+         }
+      }
+
+      return {
+        text: rowString.trim(),
+        maxFontSize: rowMaxFontSize,
+        y: row.y,
+        bottom: row.y + Math.max(...row.items.map(it => it.height || 12)),
+        averageHeight: row.items.reduce((acc, it) => acc + (it.height || 12), 0) / row.items.length,
+        isBold: rowHasBold
+      };
+    });
+
+    // Group rows into blocks WITHIN the column
+    const blocks: { rows: typeof formattedRows, maxFontSize: number }[] = [];
+    let currentBlock: { rows: typeof formattedRows, maxFontSize: number } = { rows: [], maxFontSize: 0 };
+
+    for (let i = 0; i < formattedRows.length; i++) {
+      const row = formattedRows[i];
+
+      currentBlock.rows.push(row);
+      if (row.maxFontSize > currentBlock.maxFontSize) {
+        currentBlock.maxFontSize = row.maxFontSize;
+      }
+
+      if (i < formattedRows.length - 1) {
+        const nextRow = formattedRows[i + 1];
+        const gap = nextRow.y - row.bottom;
+
+        if (gap > row.averageHeight * 0.5) {
+          blocks.push(currentBlock);
+          currentBlock = { rows: [], maxFontSize: 0 };
+        }
+      } else {
+        blocks.push(currentBlock);
+      }
     }
 
-    if (isList) {
-       markdownLines.push(blockText);
-       continue;
-    }
+    // Format each block
+    for (const block of blocks) {
+      if (block.rows.length === 0) continue;
 
-    // Apply header formatting
-    // We refine these to better match the native Grid Projection Algorithm
-    // which is more sensitive to font-weight and relative differences.
-    const relativeSize = block.maxFontSize / baseFontSize;
-    const sizeDiff = block.maxFontSize - baseFontSize;
+      let blockText = "";
+      for (let i = 0; i < block.rows.length; i++) {
+         const row = block.rows[i];
+         blockText += row.text;
 
-    // Check if the block is bold (heuristic: Helvetica-Bold or similar in fontName)
-    // Optimized by using pre-calculated row-level bold status.
-    const isBold = block.rows.some(row => row.text.length > 0 && row.text.toUpperCase() === row.text) ||
-                   block.rows.some(row => row.isBold);
+         if (i < block.rows.length - 1) {
+            if (!blockText.endsWith(" ") && !blockText.endsWith("-")) {
+              blockText += " ";
+            } else if (blockText.endsWith("-")) {
+              blockText = blockText.slice(0, -1);
+            }
+         }
+      }
 
-    // Don't format as header if it's a long paragraph
-    if (block.rows.length <= 3) {
-      if (relativeSize >= 1.5 || sizeDiff >= 6 || (block.maxFontSize >= 20)) {
-        markdownLines.push(`# ${blockText}`);
-      } else if (relativeSize >= 1.3 || sizeDiff >= 4 || (block.maxFontSize >= 16)) {
-        markdownLines.push(`## ${blockText}`);
-      } else if (relativeSize >= 1.15 || sizeDiff >= 2 || (block.maxFontSize >= 14 && isBold)) {
-        markdownLines.push(`### ${blockText}`);
-      } else if (isBold && block.rows.length === 1 && blockText.length < 60) {
-        // Minor header for short bold lines
-        markdownLines.push(`#### ${blockText}`);
+      let isList = false;
+      const listMatch = blockText.match(/^([•\-*o]|\d+\.)\s+/i);
+      if (listMatch) {
+         isList = true;
+         const bullet = listMatch[1];
+         if (['•', 'o'].includes(bullet)) {
+            blockText = "- " + blockText.substring(listMatch[0].length);
+         }
+      } else if (blockText.match(/^[•\-*o]/)) {
+         const bullet = blockText[0];
+         if (['•', 'o', '-', '*'].includes(bullet)) {
+            blockText = "- " + blockText.substring(1).trim();
+            isList = true;
+         }
+      }
+
+      if (isList) {
+         markdownLines.push(blockText);
+         continue;
+      }
+
+      const relativeSize = block.maxFontSize / baseFontSize;
+      const sizeDiff = block.maxFontSize - baseFontSize;
+
+      const isBold = block.rows.some(row => row.text.length > 0 && row.text.toUpperCase() === row.text) ||
+                     block.rows.some(row => row.isBold);
+
+      if (block.rows.length <= 3) {
+        if (relativeSize >= 1.5 || sizeDiff >= 6 || (block.maxFontSize >= 20)) {
+          markdownLines.push(`# ${blockText}`);
+        } else if (relativeSize >= 1.3 || sizeDiff >= 4 || (block.maxFontSize >= 16)) {
+          markdownLines.push(`## ${blockText}`);
+        } else if (relativeSize >= 1.15 || sizeDiff >= 2 || (block.maxFontSize >= 14 && isBold)) {
+          markdownLines.push(`### ${blockText}`);
+        } else if (isBold && block.rows.length === 1 && blockText.length < 60) {
+          markdownLines.push(`#### ${blockText}`);
+        } else {
+          markdownLines.push(blockText);
+        }
       } else {
         markdownLines.push(blockText);
       }
-    } else {
-      markdownLines.push(blockText);
     }
   }
 
