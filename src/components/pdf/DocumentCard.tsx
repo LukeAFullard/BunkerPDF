@@ -946,13 +946,7 @@ export function DocumentCard({
     { category: "Other", label: "Read Aloud (TTS) (~15s/pg)", onClick: () => onReadAloud?.(doc), complexity: "professional" },
     { category: "Other", ...(!isMobile ? { label: "Scan PII (~5s)", onClick: handleScan, complexity: "professional" } : {}) },
     { category: "Other", ...(!isMobile ? { label: "Scan Codes (~5s)", onClick: handleScanCodes, complexity: "professional" } : {}) },
-    { category: "Other", ...(!isMobile ? { label: "OCR (~10s)", onClick: () => {
-        if (useUIStore.getState().complexityMode === 'simple') {
-          useUIStore.getState().setComplexityMode('professional');
-        }
-        onOcr?.(doc);
-      }, complexity: "professional"
-    } : {}) },
+    { category: "Other", ...(!isMobile ? { label: "OCR (~10s)", onClick: () => onOcr?.(doc), complexity: "professional" } : {}) },
 
     {
       category: "Danger",

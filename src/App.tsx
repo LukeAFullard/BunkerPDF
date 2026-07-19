@@ -3698,13 +3698,6 @@ function App() {
               >
                 <Plus size={16} /> Add Files
               </button>
-              <button
-                onClick={toggleDarkMode}
-                className={`p-2 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 ${isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-600 hover:bg-gray-200"}`}
-                title="Toggle Dark Mode"
-              >
-                {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
-              </button>
               <div className="relative" ref={batchMenuRef}>
                 <button
                   onClick={() => setIsBatchMenuOpen(!isBatchMenuOpen)}

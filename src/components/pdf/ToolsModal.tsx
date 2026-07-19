@@ -20,7 +20,6 @@ interface ToolsModalProps {
 export function ToolsModal({ isOpen, onClose, tools, documentName }: ToolsModalProps) {
   const isDarkMode = useUIStore((state) => state.isDarkMode);
   const complexityMode = useUIStore((state) => state.complexityMode);
-  const setComplexityMode = useUIStore((state) => state.setComplexityMode);
   const [searchQuery, setSearchQuery] = React.useState("");
 
   if (!isOpen) return null;
@@ -64,29 +63,6 @@ export function ToolsModal({ isOpen, onClose, tools, documentName }: ToolsModalP
           <div>
             <div className="flex items-center gap-4">
               <h2 className="text-2xl font-bold">Document Tools</h2>
-
-              <div className={`flex items-center rounded-lg p-1 ${isDarkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
-                <button
-                  onClick={() => setComplexityMode('simple')}
-                  className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
-                    complexityMode === 'simple'
-                      ? (isDarkMode ? 'bg-gray-700 text-white shadow' : 'bg-white text-gray-900 shadow')
-                      : (isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700')
-                  }`}
-                >
-                  Simple
-                </button>
-                <button
-                  onClick={() => setComplexityMode('professional')}
-                  className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
-                    complexityMode === 'professional' || complexityMode === 'enhanced'
-                      ? (isDarkMode ? 'bg-gray-700 text-white shadow' : 'bg-white text-gray-900 shadow')
-                      : (isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700')
-                  }`}
-                >
-                  All Tools
-                </button>
-              </div>
             </div>
             <p className={`text-sm mt-1 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
               {documentName}
