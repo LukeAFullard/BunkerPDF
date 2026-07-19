@@ -170,39 +170,72 @@ export const extractMarkdownLiteparse = async (bytes: Uint8Array): Promise<strin
 
 export const extractHtmlLiteparse = async (bytes: Uint8Array): Promise<string> => {
   const processedBytes = await preprocessWithOcr(bytes);
-  const engine = await getConfiguredLiteParse({ outputFormat: "json" });
+
+  // Use the native markdown engine which creates semantic structure
+  const engine = await getConfiguredLiteParse({ outputFormat: "markdown" });
   const result = await engine.parse(processedBytes);
 
-  if (!result || !result.pages) return "";
+  if (!result || !result.text) return "";
 
-  const htmlLines: string[] = [];
+  const { marked } = await import('marked');
+  const DOMPurify = (await import('dompurify')).default;
 
-  for (let i = 0; i < result.pages.length; i++) {
-    const page = result.pages[i];
+  // Parse the semantic markdown into HTML
+  const rawHtml = await marked.parse(result.text);
 
-    htmlLines.push(`<div id="page-${i + 1}" style="position: relative; width: ${page.width}px; height: ${page.height}px; background-color: white; margin-bottom: 20px; overflow: hidden;">`);
-
-    if (page.textItems) {
-      for (const item of page.textItems) {
-        const text = item.text
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;');
-
-        const fontSize = item.fontSize || 12;
-        const fontName = item.fontName || 'sans-serif';
-        // HTML elements need bottom Y mapped to top Y if LiteParse gives bottom,
-        // but LiteParse y is usually top or baseline. We'll use y as top.
-        // If it's baseline, we might need to adjust. We'll stick to a direct style mapping.
-
-        htmlLines.push(`<span style="position: absolute; left: ${item.x}px; top: ${item.y}px; font-size: ${fontSize}px; font-family: '${fontName}', sans-serif; white-space: nowrap;">${text}</span>`);
-      }
+  // Define a basic CSS template for accessibility and reading
+  const css = `
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.6;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 2rem;
+      color: #333;
     }
+    h1, h2, h3, h4, h5, h6 {
+      color: #111;
+      margin-top: 1.5em;
+      margin-bottom: 0.5em;
+    }
+    p {
+      margin-bottom: 1em;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-bottom: 1em;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: left;
+    }
+    th {
+      background-color: #f2f2f2;
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+    }
+  `;
 
-    htmlLines.push(`</div>`);
-  }
+  // Sanitize the HTML to prevent XSS issues
+  const cleanHtml = DOMPurify.sanitize(rawHtml);
 
-  return htmlLines.join("\n<hr>\n");
+  // Wrap in a full HTML document structure
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Extracted Document</title>
+  <style>${css}</style>
+</head>
+<body>
+${cleanHtml}
+</body>
+</html>`;
 };
 
 export const editParagraphLiteparse = async (bytes: Uint8Array, searchText: string, replacementText: string): Promise<Uint8Array> => {
@@ -421,6 +454,7 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
  * Unified layout analysis function that returns JSON structure with optional native link extraction.
  * Handles OCR pre-processing automatically.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const analyzeLayoutLiteparse = async (bytes: Uint8Array, options: { extractLinks?: boolean } = {}): Promise<any> => {
   const processedBytes = await preprocessWithOcr(bytes);
   const engine = await getConfiguredLiteParse({
@@ -430,14 +464,18 @@ export const analyzeLayoutLiteparse = async (bytes: Uint8Array, options: { extra
   return await engine.parse(processedBytes);
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const extractLinksLiteparse = async (bytes: Uint8Array): Promise<any[]> => {
   const result = await analyzeLayoutLiteparse(bytes, { extractLinks: true });
 
   if (!result || !result.pages) return [];
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const allLinks: any[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   result.pages.forEach((page: any, pageIdx: number) => {
     if (page.textItems) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       page.textItems.forEach((item: any) => {
         if (item.url || item.link) {
           allLinks.push({
@@ -829,6 +867,7 @@ export const diffHighlightPdfLiteparse = async (
   return await pdfDoc.save();
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const formatParagraphFromItems = (textItems: any[]): string => {
   if (!textItems || textItems.length === 0) return "";
 
@@ -1006,6 +1045,7 @@ export const cropPdfLiteparse = async (
   const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
   const pages = pdfDoc.getPages();
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const applyCrop = (pdfPage: any) => {
     const { height } = pdfPage.getSize();
     const pdfLibY = height - cropBox.y - cropBox.height;
@@ -1175,6 +1215,7 @@ export const normalizeFontsLiteparse = async (
 };
 
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const formatMarkdownFromItems = (textItems: any[]): string => {
   if (!textItems || textItems.length === 0) return "";
 
@@ -1184,6 +1225,7 @@ export const formatMarkdownFromItems = (textItems: any[]): string => {
 
   // 2. Group into rows
   const rowTolerance = 5; // pixels
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rows: { items: any[], y: number }[] = [];
 
   for (const item of textItems) {
