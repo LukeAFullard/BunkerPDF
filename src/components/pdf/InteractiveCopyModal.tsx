@@ -329,7 +329,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
     setCurrentPos({ x, y });
   };
 
-  const handleMouseUp = () => {
+  const handleMouseUp = async () => {
     if (!isDrawing) return;
     setIsDrawing(false);
 
@@ -347,7 +347,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
     }
   };
 
-  const extractRegion = (x: number, y: number, w: number, h: number, customThreshold?: number, overrideWholeLine?: boolean, overrideFormat?: 'text' | 'markdown') => {
+  const extractRegion = async (x: number, y: number, w: number, h: number, customThreshold?: number, overrideWholeLine?: boolean, overrideFormat?: 'text' | 'markdown') => {
     if (!liteparseData || overlayScale <= 0) return;
 
     // Convert overlay pixels to LiteParse units (which are native PDF points usually)
@@ -452,7 +452,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
              pyWorker.postMessage({
                  type: "EXTRACT_INTERSECTING_IMAGES",
                  jobId,
-                 pdfBytes: doc.data,
+                 pdfBytes: new Uint8Array(await doc.file.arrayBuffer()),
                  pageNum: pageIdx,
                  box: { x: lpX, y: lpY, w: lpRight - lpX, h: lpBottom - lpY }
              });
