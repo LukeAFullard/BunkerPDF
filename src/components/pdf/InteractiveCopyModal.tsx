@@ -2,7 +2,7 @@ import { loadPdfDocument } from "../../lib/pdfHelper";
 import { useState, useEffect, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import 'pdfjs-dist/web/pdf_viewer.css';
-import { X, Type, ZoomIn, ZoomOut, Loader2, Copy, Check, Image as ImageIcon, ScanText, PenTool, Sigma } from 'lucide-react';
+import { X, Type, ZoomIn, ZoomOut, Loader2, Copy, Check, Image as ImageIcon, ScanText, PenTool } from 'lucide-react';
 import { useFileStore } from '../../store/fileStore';
 import { cleanupPdfResources } from '../../lib/pdfCleanup';
 import { getConfiguredLiteParse, formatParagraphFromItems, formatMarkdownFromItems } from '../../lib/liteparseEngine';
@@ -45,7 +45,6 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
   const [showBoundingBoxes, setShowBoundingBoxes] = useState(false);
   const [isOcrRunning, setIsOcrRunning] = useState(false);
   const [isHandwritingRunning, setIsHandwritingRunning] = useState(false);
-  const [isNougatRunning, setIsNougatRunning] = useState(false);
 
   const renderTaskRef = useRef<pdfjsLib.RenderTask | null>(null);
   const pdfDocRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
@@ -58,10 +57,6 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
   const handwritingWorkerRef = useRef<Worker | null>(null);
   const isInitializingHandwritingRef = useRef<boolean>(false);
   const handwritingRunIdRef = useRef<number>(0);
-
-  const nougatWorkerRef = useRef<Worker | null>(null);
-  const isInitializingNougatRef = useRef<boolean>(false);
-  const nougatRunIdRef = useRef<number>(0);
 
 
   useEffect(() => {
@@ -130,10 +125,6 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
        if (pyWorkerRef.current) {
           pyWorkerRef.current.terminate();
           pyWorkerRef.current = null;
-       }
-       if (nougatWorkerRef.current) {
-          nougatWorkerRef.current.terminate();
-          nougatWorkerRef.current = null;
        }
     };
   }, []);
@@ -293,107 +284,6 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
       }
     }
   };
-
-  const runNougatOnRegion = async (x: number, y: number, w: number, h: number) => {
-    if (!canvasRef.current) return;
-    setIsNougatRunning(true);
-    setExtractedText(null);
-    const runId = ++nougatRunIdRef.current;
-
-    try {
-      // Create a temporary canvas to extract the specific region
-      const tempCanvas = document.createElement('canvas');
-      const tempCtx = tempCanvas.getContext('2d');
-      if (!tempCtx) throw new Error('Could not get 2d context for temporary canvas');
-
-      const scaleX = canvasRef.current.width / (canvasRef.current.clientWidth || 1);
-      const scaleY = canvasRef.current.height / (canvasRef.current.clientHeight || 1);
-
-      // Set canvas size to the native resolution of the selection region
-      tempCanvas.width = w * scaleX;
-      tempCanvas.height = h * scaleY;
-
-      // Draw the selected region from the main canvas onto the temp canvas
-      tempCtx.drawImage(
-        canvasRef.current,
-        x * scaleX, y * scaleY, w * scaleX, h * scaleY,
-        0, 0, w * scaleX, h * scaleY
-      );
-
-      const dataUrl = tempCanvas.toDataURL('image/png');
-
-      // Initialize worker if not cached
-      if (!nougatWorkerRef.current && !isInitializingNougatRef.current) {
-        isInitializingNougatRef.current = true;
-        try {
-          const worker = new Worker(new URL('../../workers/nougatWorker.ts', import.meta.url), { type: 'module' });
-          worker.postMessage({ type: 'INIT', jobId: 'init' });
-
-          await new Promise<void>((resolve, reject) => {
-            const handleInit = (e: MessageEvent) => {
-              if (e.data.jobId === 'init') {
-                if (e.data.type === 'READY') {
-                  worker.removeEventListener('message', handleInit);
-                  resolve();
-                } else if (e.data.type === 'ERROR') {
-                  worker.removeEventListener('message', handleInit);
-                  reject(new Error(e.data.error));
-                }
-              }
-            };
-            worker.addEventListener('message', handleInit);
-          });
-
-          // Check if unmounted during initialization
-          if (!document.body.contains(canvasRef.current)) {
-              worker.terminate();
-          } else {
-              nougatWorkerRef.current = worker;
-          }
-        } finally {
-          isInitializingNougatRef.current = false;
-        }
-      }
-
-      // Wait for initialization if another call triggered it
-      while (isInitializingNougatRef.current) {
-         await new Promise(resolve => setTimeout(resolve, 100));
-      }
-
-      if (!nougatWorkerRef.current) {
-          throw new Error('Failed to initialize Nougat worker');
-      }
-
-      const jobId = `nougat-${Date.now()}`;
-
-      const result = await new Promise<string>((resolve, reject) => {
-        const handleResult = (e: MessageEvent) => {
-          if (e.data.jobId === jobId) {
-            nougatWorkerRef.current?.removeEventListener('message', handleResult);
-            if (e.data.type === 'RESULT') {
-              resolve(e.data.text);
-            } else if (e.data.type === 'ERROR') {
-              reject(new Error(e.data.error));
-            }
-          }
-        };
-        nougatWorkerRef.current!.addEventListener('message', handleResult);
-        nougatWorkerRef.current!.postMessage({ type: 'RECOGNIZE', image: dataUrl, jobId });
-      });
-
-      // Only process result if this is the most recent run and component is mounted
-      if (runId === nougatRunIdRef.current && canvasRef.current) {
-        setExtractedText(result.trim());
-      }
-    } catch (err) {
-      console.error("Equation extraction failed for the region:", err);
-    } finally {
-      if (runId === nougatRunIdRef.current) {
-         setIsNougatRunning(false);
-      }
-    }
-  };
-
 
   useEffect(() => {
     if (isOpen && pdfDocRef.current && liteparseData) {
@@ -924,11 +814,11 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
                 <Type className="w-8 h-8 text-gray-400 mx-auto mb-3" />
                 <p className="text-sm text-gray-500">Draw a box around a paragraph to copy it perfectly flowed, avoiding broken lines.</p>
               </div>
-            ) : isOcrRunning || isHandwritingRunning || isNougatRunning ? (
+            ) : isOcrRunning || isHandwritingRunning ? (
               <div className="text-center py-12 px-4 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 h-full flex flex-col justify-center items-center">
                  <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mb-3" />
                  <p className="text-sm text-gray-500">
-                    {isHandwritingRunning ? 'Recognizing handwriting...' : isNougatRunning ? 'Extracting equations...' : 'No text detected. Running OCR on selected region...'}
+                    {isHandwritingRunning ? 'Recognizing handwriting...' : 'No text detected. Running OCR on selected region...'}
                  </p>
               </div>
             ) : !extractedText ? (
@@ -950,7 +840,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
                      runOcrOnRegion(selectionBox.x, selectionBox.y, selectionBox.w, selectionBox.h);
                    }
                  }}
-                 disabled={!selectionBox || isOcrRunning || isHandwritingRunning || isNougatRunning}
+                 disabled={!selectionBox || isOcrRunning || isHandwritingRunning}
                  className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-gray-100 text-gray-700 border border-gray-300 rounded-xl font-medium hover:bg-gray-200 disabled:opacity-50 transition-colors shadow-sm text-sm"
                >
                  <ScanText className="w-4 h-4" />
@@ -962,23 +852,11 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
                      runHandwritingOnRegion(selectionBox.x, selectionBox.y, selectionBox.w, selectionBox.h);
                    }
                  }}
-                 disabled={!selectionBox || isOcrRunning || isHandwritingRunning || isNougatRunning}
+                 disabled={!selectionBox || isOcrRunning || isHandwritingRunning}
                  className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-gray-100 text-gray-700 border border-gray-300 rounded-xl font-medium hover:bg-gray-200 disabled:opacity-50 transition-colors shadow-sm text-sm"
                >
                  <PenTool className="w-4 h-4" />
                  Recognize Handwriting
-               </button>
-               <button
-                 onClick={() => {
-                   if (selectionBox) {
-                     runNougatOnRegion(selectionBox.x, selectionBox.y, selectionBox.w, selectionBox.h);
-                   }
-                 }}
-                 disabled={!selectionBox || isOcrRunning || isHandwritingRunning || isNougatRunning}
-                 className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-gray-100 text-gray-700 border border-gray-300 rounded-xl font-medium hover:bg-gray-200 disabled:opacity-50 transition-colors shadow-sm text-sm"
-               >
-                 <Sigma className="w-4 h-4" />
-                 Extract Equations
                </button>
              </div>
              <div className="flex gap-3">
