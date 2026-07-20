@@ -1,6 +1,7 @@
 import init, { LiteParse } from "@llamaindex/liteparse-wasm";
 import { useUIStore } from '../store/uiStore';
 import { ocrPdf } from './ocrEngine';
+import wasmUrl from '@llamaindex/liteparse-wasm/liteparse_wasm_bg.wasm?url';
 
 let initPromise: Promise<void> | null = null;
 let hasInit = false;
@@ -58,7 +59,8 @@ export const initLiteParse = async (): Promise<void> => {
 
   initPromise = (async () => {
     try {
-      await init();
+      // Use Vite's ?url import to get the correct hashed path in production
+      await init(wasmUrl);
       hasInit = true;
     } catch (error) {
       console.error("Failed to initialize LiteParse WASM:", error);
