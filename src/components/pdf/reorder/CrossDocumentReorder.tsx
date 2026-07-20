@@ -416,16 +416,6 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
     setLastSelectedColId(docId);
   };
 
-  const handleRotateSingle = (id: string, degrees: number) => {
-    setColumns(prev => prev.map(col => ({
-      ...col,
-      items: col.items.map(item =>
-        (selectedIds.has(id) ? selectedIds.has(item.id) : item.id === id)
-          ? { ...item, rotation: ((item.rotation || 0) + degrees) % 360 }
-          : item
-      )
-    })));
-  };
 
   const handleDeleteSingle = (id: string) => {
     const isSelected = selectedIds.has(id);
@@ -790,7 +780,6 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
                             setThumbnailCache={setThumbnailCache}
                             onMoveToFront={() => handleMoveToFront(item.id, col.docId)}
                             onMoveToEnd={() => handleMoveToEnd(item.id, col.docId)}
-                            onRotate={(degrees) => handleRotateSingle(item.id, degrees)}
                             onDelete={() => handleDeleteSingle(item.id)}
                             onExpand={() => setPreviewItem(item)}
                             onSplit={() => handleSplit(item.id, col.docId)}

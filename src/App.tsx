@@ -15,7 +15,6 @@ import { ChevronDown, FileDiff, Plus } from "lucide-react";
 import {
   mergePdfs,
   splitPdf,
-  rotatePdf,
   watermarkPdf, addPageNumbers, addBatesNumbers, resizePages,
   crossDocumentReorderPages,
 } from "./lib/engineA";
@@ -26,7 +25,6 @@ import { highlightBoxesLiteparse } from "./lib/liteparseEngine";
 import { InteractiveRedactModal, type RedactBox } from "./components/pdf/InteractiveRedactModal";
 import { InteractiveTableModal } from "./components/pdf/InteractiveTableModal";
 import { InteractiveCopyModal } from "./components/pdf/InteractiveCopyModal";
-import { InteractiveKnowledgeGraphModal } from "./components/pdf/InteractiveKnowledgeGraphModal";
 import { InteractiveAutoLinkerModal } from "./components/pdf/InteractiveAutoLinkerModal";
 import { SmartTableReflowModal } from "./components/pdf/SmartTableReflowModal";
 import { autoLinkBoxesLiteparse } from "./lib/liteparseEngine";
@@ -51,7 +49,6 @@ import type { WorkflowRecipe } from "./store/recipeStore";
 import { ErrorModal } from "./components/ui/ErrorModal";
 import { InputModal } from "./components/ui/InputModal";
 import { PageSelectorModal } from "./components/ui/PageSelectorModal";
-import { RotateModal } from "./components/ui/RotateModal";
 import { ProcessingModal } from "./components/ui/ProcessingModal";
 import { FeedbackPrompt } from "./components/ui/FeedbackPrompt";
 import { PWAInstallPrompt } from "./components/ui/PWAInstallPrompt";
@@ -524,10 +521,6 @@ function App() {
     isOpen: boolean;
     docId: string | null;
   }>({ isOpen: false, docId: null });
-  const [interactiveKnowledgeGraphState, setInteractiveKnowledgeGraphState] = useState<{
-    isOpen: boolean;
-    docId: string | null;
-  }>({ isOpen: false, docId: null });
 
   const [interactiveRedactState, setInteractiveRedactState] = useState<{
     isOpen: boolean;
@@ -561,13 +554,6 @@ function App() {
     onConfirm: () => {},
   });
 
-  const [rotateModalState, setRotateModalState] = useState<{
-    isOpen: boolean;
-    title: string;
-    docId: string | null;
-    pageCount: number;
-    onConfirm: (rotations: Record<number, number>) => void;
-  }>({ isOpen: false, title: "", docId: null, pageCount: 0, onConfirm: () => {} });
 
   const [thumbnailCache, setThumbnailCache] = useState<Record<string, string>>({});
 
@@ -1760,49 +1746,6 @@ function App() {
     }
   };
 
-  const handleRotate = (doc: PDFDocument) => {
-    setRotateModalState({
-      isOpen: true,
-      title: "Rotate Pages",
-      docId: doc.id,
-      pageCount: doc.pageCount || 0,
-      onConfirm: async (pageRotations) => {
-        setRotateModalState((prev) => ({ ...prev, isOpen: false }));
-
-        const rotatedPagesCount = Object.values(pageRotations).filter(r => r !== 0).length;
-        if (rotatedPagesCount === 0) return;
-
-        let isCancelled = false;
-        startProcessing("Rotating pages...", true, () => {
-          isCancelled = true;
-          stopProcessing();
-        });
-
-        try {
-          const rotatedBytes = await rotatePdf(doc.file, pageRotations);
-          if (isCancelled) return;
-
-          const standardBuffer = new Uint8Array(rotatedBytes.length);
-          standardBuffer.set(rotatedBytes);
-          const newFile = new File([standardBuffer], doc.name, {
-            type: "application/pdf",
-          });
-          await updateDocumentFile(doc.id, newFile);
-          addLog("Rotate", `Rotated ${rotatedPagesCount} pages.`, doc.name);
-        } catch (e) {
-          if (isCancelled) return;
-          console.error(e);
-          setErrorState({
-            isOpen: true,
-            title: "Rotate Error",
-            message: "An error occurred while rotating the PDF.",
-          });
-        } finally {
-          if (!isCancelled) stopProcessing();
-        }
-      }
-    });
-  };
 
   const handleWatermark = (doc: PDFDocument) => {
     setVisualWatermarkState({ isOpen: true, docId: doc.id });
@@ -1932,96 +1875,6 @@ function App() {
     } finally {
       if (!isCancelled) stopProcessing();
     }
-  };
-  const handleSanitize = async (doc: PDFDocument) => {
-    let author = "";
-    let creator = "";
-    let fieldCount = 0;
-    try {
-      const buffer = await doc.file.arrayBuffer();
-      const pdfDoc = await PDFLibDocument.load(buffer);
-      author = pdfDoc.getAuthor() || "";
-      creator = pdfDoc.getCreator() || "";
-      const form = pdfDoc.getForm();
-      if (form) {
-        fieldCount = form.getFields().length;
-      }
-    } catch (e) {
-      console.warn("Failed to read metadata for sanitize summary", e);
-    }
-
-    const hasSpecifics = author || creator || fieldCount > 0;
-
-    setInputState({
-      isOpen: true,
-      title: "Sanitize PDF",
-      message: (
-        <div className="space-y-2 text-sm text-gray-700">
-          <p>This action will permanently remove metadata, flatten annotations, and scrub hidden data.</p>
-          {hasSpecifics ? (
-            <div className="bg-yellow-50 p-3 rounded-md border border-yellow-200">
-              <p className="font-semibold text-yellow-800 mb-1">Found the following items:</p>
-              <ul className="list-disc pl-5 text-yellow-800">
-                {author && <li>Author: {author}</li>}
-                {creator && <li>Creator: {creator}</li>}
-                {fieldCount > 0 && <li>Interactive Form Fields: {fieldCount}</li>}
-              </ul>
-            </div>
-          ) : (
-            <p className="text-gray-500 italic">No explicit metadata found, but standard flattening and sanitization will still be applied.</p>
-          )}
-        </div>
-      ),
-      type: "confirm",
-      onConfirm: async () => {
-        setInputState((prev) => ({ ...prev, isOpen: false }));
-        let isCancelled = false;
-        startProcessing("Sanitizing PDF...", true, () => {
-          isCancelled = true;
-          stopProcessing();
-        });
-
-        try {
-          const arrayBuffer = await doc.file.arrayBuffer();
-          const pdfBytes = new Uint8Array(arrayBuffer);
-
-          const { fakeRedactions, bytes } = await sanitizePdf(pdfBytes);
-          if (isCancelled) return;
-
-          const standardBuffer = new Uint8Array(bytes.length);
-          standardBuffer.set(bytes);
-          const newFile = new File([standardBuffer], doc.name, {
-            type: "application/pdf",
-          });
-          await updateDocumentFile(doc.id, newFile);
-          addLog("Sanitize", "Sanitized document by removing metadata and scripts.", doc.name);
-
-          setErrorState({
-            isOpen: true,
-            title: "Sanitize Complete",
-            message: (
-              <ul className="list-disc pl-5 text-sm text-gray-700">
-                <li>Metadata stripped (author, history)</li>
-                <li>Annotations and interactive elements flattened</li>
-                <li>Hidden text/scripts removed</li>
-                <li>Fake redactions verified: {fakeRedactions} found</li>
-              </ul>
-            ),
-          });
-        } catch (e) {
-          if (isCancelled) return;
-          console.error(e);
-          setErrorState({
-            isOpen: true,
-            title: "Sanitize Error",
-            message: "An error occurred while sanitizing the PDF.",
-          });
-        } finally {
-          if (!isCancelled) stopProcessing();
-        }
-      },
-      onCancel: () => setInputState((prev) => ({ ...prev, isOpen: false })),
-    });
   };
 
   const handleDocxDropped = async (files: File[]) => {
@@ -2390,9 +2243,6 @@ function App() {
 
   const handleInteractiveDataDictionary = (doc: PDFDocument) => {
     setInteractiveDataDictionaryState({ isOpen: true, docId: doc.id });
-  };
-  const handleInteractiveKnowledgeGraph = (doc: PDFDocument) => {
-    setInteractiveKnowledgeGraphState({ isOpen: true, docId: doc.id });
   };
 
   const handleInteractiveAutoLinker = (doc: PDFDocument) => {
@@ -2773,16 +2623,6 @@ function App() {
         onConfirm={pageSelectorState.onConfirm}
         onCancel={() => setPageSelectorState(prev => ({ ...prev, isOpen: false }))}
       />
-      <RotateModal
-        isOpen={rotateModalState.isOpen}
-        title={rotateModalState.title}
-        docId={rotateModalState.docId || ""}
-        pageCount={rotateModalState.pageCount}
-        thumbnailCache={thumbnailCache}
-        setThumbnailCache={setThumbnailCache}
-        onConfirm={rotateModalState.onConfirm}
-        onCancel={() => setRotateModalState(prev => ({ ...prev, isOpen: false }))}
-      />
       <ErrorModal
         isOpen={errorState.isOpen}
         title={errorState.title}
@@ -2916,31 +2756,6 @@ function App() {
         isOpen={interactiveDataDictionaryState.isOpen}
         docId={interactiveDataDictionaryState.docId}
         onClose={() => setInteractiveDataDictionaryState({ isOpen: false, docId: null })}
-      />
-<InteractiveKnowledgeGraphModal
-        isOpen={interactiveKnowledgeGraphState.isOpen}
-        docId={interactiveKnowledgeGraphState.docId}
-        onClose={() => setInteractiveKnowledgeGraphState({ isOpen: false, docId: null })}
-        onRedact={async (boxes) => {
-          const docId = interactiveKnowledgeGraphState.docId;
-          setInteractiveKnowledgeGraphState({ isOpen: false, docId: null });
-          if (docId) {
-             const doc = documents.find(d => d.id === docId);
-             if (!doc) return;
-             try {
-               const arrayBuffer = await doc.file.arrayBuffer();
-               const bytes = new Uint8Array(arrayBuffer);
-               const redactBoxesLiteparse = (await import("./lib/liteparseEngine")).redactBoxesLiteparse;
-               const newBytes = await redactBoxesLiteparse(bytes, boxes);
-
-               const newFile = new File([new Uint8Array(newBytes)], doc.name, { type: "application/pdf" });
-               await useFileStore.getState().updateDocumentFile(doc.id, newFile);
-               // toast is not imported in this file and currently unused except here. Reverting to console messages.
-             } catch (error) {
-               console.error(error);
-             }
-          }
-        }}
       />
       <SmartCropModal
         isOpen={smartCropState.isOpen}
@@ -3238,14 +3053,12 @@ function App() {
                       doc={activeDoc}
                       onRemove={removeDocument}
                       onSplit={handleSplitRequest}
-                      onRotate={handleRotate}
                       onWatermark={handleWatermark}
                       onAddPageNumbers={handleAddPageNumbers}
                       onBatesNumbering={handleBatesNumbering}
                       onResizePages={handleResizePages}
                       onEncrypt={handleEncrypt}
                       onUnlock={handleUnlock}
-                      onSanitize={handleSanitize}
                       onHighlight={handleHighlight}
                       onAudit={handleAudit}
                       onReadAloud={handleReadAloud}
@@ -3255,7 +3068,6 @@ function App() {
                       onInteractiveTable={handleInteractiveTable}
                       onSmartTableReflow={handleSmartTableReflow}
                       onInteractiveCopy={handleInteractiveCopy}
-                      onInteractiveKnowledgeGraph={handleInteractiveKnowledgeGraph}
                       onInteractiveFontSizeNormalizer={handleInteractiveFontSizeNormalizer}
                       onInteractiveDataDictionary={handleInteractiveDataDictionary}
                       onInteractiveAutoLinker={handleInteractiveAutoLinker}

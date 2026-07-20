@@ -20,13 +20,11 @@ interface DocumentCardProps {
   onRemove: (id: string) => void;
   onSplit: (doc: PDFDocument) => void;
   onOcr?: (doc: PDFDocument) => void;
-  onRotate?: (doc: PDFDocument) => void;
   onWatermark?: (doc: PDFDocument) => void;
   onAddPageNumbers?: (doc: PDFDocument) => void;
   onBatesNumbering?: (doc: PDFDocument) => void;
   onEncrypt?: (doc: PDFDocument) => void;
   onUnlock?: (doc: PDFDocument) => void;
-  onSanitize?: (doc: PDFDocument) => void;
   onHighlight?: (doc: PDFDocument) => void;
   onAudit?: (doc: PDFDocument) => void;
   onReadAloud?: (doc: PDFDocument) => void;
@@ -57,7 +55,6 @@ interface DocumentCardProps {
   onInteractiveTable?: (doc: PDFDocument) => void;
   onSmartTableReflow?: (doc: PDFDocument) => void;
   onInteractiveCopy?: (doc: PDFDocument) => void;
-  onInteractiveKnowledgeGraph?: (doc: PDFDocument) => void;
   onInteractiveFontSizeNormalizer?: (doc: PDFDocument) => void;
   onInteractiveDataDictionary?: (doc: PDFDocument) => void;
   onInteractiveAutoLinker?: (doc: PDFDocument) => void;
@@ -99,13 +96,11 @@ export function DocumentCard({
   onRemove,
   onSplit,
   onOcr,
-  onRotate,
   onWatermark,
   onAddPageNumbers,
   onBatesNumbering,
   onEncrypt,
   onUnlock,
-  onSanitize,
   onHighlight,
   onAudit,
   onReadAloud,
@@ -132,7 +127,6 @@ export function DocumentCard({
   onInteractiveTable,
   onSmartTableReflow,
   onInteractiveCopy,
-  onInteractiveKnowledgeGraph,
   onInteractiveFontSizeNormalizer,
   onInteractiveDataDictionary,
   onInteractiveAutoLinker,
@@ -915,7 +909,6 @@ export function DocumentCard({
 
   const toolsItems = [
 
-    { category: "Page Modification", label: "Rotate 90° (~Instant)", onClick: () => onRotate?.(doc), complexity: "simple" },
     { category: "Page Modification", label: "Resize to A4/Letter/Custom (~2s)", onClick: () => onResizePages?.(doc), complexity: "simple" },
 
     { category: "Content & Marks", label: "Add Watermark (~1s)", onClick: () => onWatermark?.(doc), complexity: "simple" },
@@ -934,7 +927,6 @@ export function DocumentCard({
     { category: "Interactive Tools", label: "Magic Box Table (~Instant)", onClick: () => onInteractiveTable?.(doc), complexity: "professional" },
     { category: "Interactive Tools", label: "Smart Table Re-flow (~Instant)", onClick: () => onSmartTableReflow?.(doc), complexity: "professional" },
     { category: "Interactive Tools", label: "Magic Copy (~Instant)", onClick: () => onInteractiveCopy?.(doc), complexity: "professional" },
-    { category: "Interactive Tools", label: "Knowledge Graph (~Instant)", onClick: () => onInteractiveKnowledgeGraph?.(doc), complexity: "professional" },
     { category: "Interactive Tools", label: "Font-Size Normalizer (~Instant)", onClick: () => onInteractiveFontSizeNormalizer?.(doc), complexity: "professional" },
     { category: "Interactive Tools", label: "Data Dictionary Extraction (~Instant)", onClick: () => onInteractiveDataDictionary?.(doc), complexity: "professional" },
     { category: "Interactive Tools", label: "Auto-Linker (~Instant)", onClick: () => onInteractiveAutoLinker?.(doc), complexity: "professional" },
@@ -943,7 +935,6 @@ export function DocumentCard({
 
     { category: "Security & Audit", label: "Protect (Password) (~2s)", onClick: () => onEncrypt?.(doc), complexity: "simple" },
     ...(doc.isEncrypted ? [{ category: "Security & Audit", label: "Unlock (Remove Password)", onClick: () => onUnlock?.(doc), complexity: "simple" }] : []),
-    { category: "Security & Audit", label: "Sanitize & Send (~Instant)", onClick: () => onSanitize?.(doc), complexity: "simple" },
     { category: "Security & Audit", label: "Point & Click Redact (~Instant)", onClick: () => onInteractiveRedact?.(doc), complexity: "professional" },
     { category: "Security & Audit", label: "Auto-Redact Headers/Footers (~Instant)", onClick: () => onAutoRedactLayout?.(doc), complexity: "professional" },
     { category: "Security & Audit", ...(!isMobile ? { label: "Audit Redactions (~5s)", onClick: () => onAudit?.(doc), complexity: "professional" } : {}) },
@@ -991,7 +982,6 @@ export function DocumentCard({
             healthData={healthData}
             onOcr={() => onOcr?.(doc)}
             onUnlock={() => onUnlock?.(doc)}
-            onSanitize={() => onSanitize?.(doc)}
           />
         </div>
 
