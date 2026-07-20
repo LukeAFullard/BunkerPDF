@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle, FileSearch, Lock, Zap } from 'lucide-react';
+import { AlertCircle, CheckCircle, FileSearch, Lock, } from 'lucide-react';
 import type { PDFDocument } from '../../store/fileStore';
 
 interface HealthCheck {
@@ -19,7 +19,6 @@ interface DocumentHealthPanelProps {
   onOcr: () => void;
   onUnlock: () => void;
   onSanitize: () => void;
-  onOptimize: () => void;
 }
 
 export function DocumentHealthPanel({
@@ -28,7 +27,6 @@ export function DocumentHealthPanel({
   onOcr,
   onUnlock,
   onSanitize,
-  onOptimize
 }: DocumentHealthPanelProps) {
   const checks: HealthCheck[] = [];
 
@@ -47,20 +45,6 @@ export function DocumentHealthPanel({
     });
   }
 
-  // Check 2: File size optimization
-  if (doc.size > 10 * 1024 * 1024) { // > 10MB
-    checks.push({
-      id: 'large',
-      status: 'action',
-      icon: <Zap className="w-5 h-5" />,
-      title: 'Large File Size',
-      description: `${(doc.size / 1024 / 1024).toFixed(1)}MB - Consider optimizing to reduce size.`,
-      action: {
-        label: 'Optimize',
-        onClick: onOptimize
-      }
-    });
-  }
 
   // Check 3: Needs OCR
   if (healthData?.needsOcr) {

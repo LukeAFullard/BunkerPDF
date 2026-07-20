@@ -1,6 +1,6 @@
 import { useAuditStore } from "./store/auditStore";
 import { PrivacyAuditLogModal } from "./components/ui/PrivacyAuditLogModal";
-import { loadSession, saveSession, clearSession } from "./lib/sessionSync";
+import { saveSession, clearSession } from "./lib/sessionSync";
 import { useState, useEffect, useRef } from "react";
 import { Dropzone } from "./components/ui/Dropzone";
 import { useFileStore, type PDFDocument } from "./store/fileStore";
@@ -9,7 +9,6 @@ import { useEngineStore } from "./store/engineStore";
 import { useProcessingStore } from "./store/processingStore";
 import { useSearchStore, type DocumentSegment } from "./store/searchStore";
 import { useUIStore } from "./store/uiStore";
-import { SignatureModal } from "./components/ui/SignatureModal";
 import { SearchModal } from "./components/ui/SearchModal";
 import { generateEmbedding } from "./lib/searchEngine";
 import { ChevronDown, FileDiff, Plus } from "lucide-react";
@@ -17,20 +16,14 @@ import {
   mergePdfs,
   splitPdf,
   rotatePdf,
-  watermarkPdf,
-  optimizePdf,
-  deletePages,
-  reorderPages, addPageNumbers, addBatesNumbers, resizePages,
-  flattenForms,
+  watermarkPdf, addPageNumbers, addBatesNumbers, resizePages,
   crossDocumentReorderPages,
 } from "./lib/engineA";
 import { EngineStatusPill } from "./components/ui/EngineStatusPill";
 import { CrossDocumentReorder } from "./components/pdf/reorder/CrossDocumentReorder";
-import { SingleDocumentReorder } from "./components/pdf/reorder/SingleDocumentReorder";
 import { InteractiveSmartHighlightModal, type HighlightBox } from "./components/pdf/InteractiveSmartHighlightModal";
 import { highlightBoxesLiteparse } from "./lib/liteparseEngine";
 import { InteractiveRedactModal, type RedactBox } from "./components/pdf/InteractiveRedactModal";
-import { InteractiveEditModal, type EditBox } from "./components/pdf/InteractiveEditModal";
 import { InteractiveTableModal } from "./components/pdf/InteractiveTableModal";
 import { InteractiveCopyModal } from "./components/pdf/InteractiveCopyModal";
 import { InteractiveKnowledgeGraphModal } from "./components/pdf/InteractiveKnowledgeGraphModal";
@@ -70,7 +63,7 @@ import type {
 import { ImageReorderRail, type ImageItem } from "./components/ui/ImageReorderRail";
 import { convertImagesToPdf } from "./lib/engineA";
 import { SettingsDropdown } from "./components/ui/SettingsDropdown";
-import { extractParagraphsLiteparse, extractTextLiteparse, extractAllPagesTextLiteparse, extractMarkdownLiteparse, extractHtmlLiteparse, editParagraphLiteparse, extractTablesLiteparse, redactDocumentLiteparse, redactBoxesLiteparse, editBoxesLiteparse, diffMergedHighlightPdfLiteparse, diffHighlightPdfLiteparse, autoRedactLayoutLiteparse } from "./lib/liteparseEngine";
+import { extractParagraphsLiteparse, extractTextLiteparse, extractAllPagesTextLiteparse, extractMarkdownLiteparse, extractHtmlLiteparse, editParagraphLiteparse, extractTablesLiteparse, redactDocumentLiteparse, redactBoxesLiteparse, diffMergedHighlightPdfLiteparse, diffHighlightPdfLiteparse, autoRedactLayoutLiteparse } from "./lib/liteparseEngine";
 
 function App() {
   const documents = useFileStore((state) => state.documents);
@@ -336,23 +329,7 @@ function App() {
 
         try {
           // Perform the step
-          if (step === 'optimize') {
-            const optimizedBytes = await optimizePdf(currentDoc.file);
-            if (isCancelled) break;
-            const standardBuffer = new Uint8Array(optimizedBytes.length);
-            standardBuffer.set(optimizedBytes);
-            const newFile = new File([standardBuffer], currentDoc.name, { type: "application/pdf" });
-            await useFileStore.getState().updateDocumentFile(currentDoc.id, newFile);
-            addLog("Recipe", `Applied Optimize`, currentDoc.name);
-          } else if (step === 'flatten') {
-            const flattenedBytes = await flattenForms(currentDoc.file);
-            if (isCancelled) break;
-            const standardBuffer = new Uint8Array(flattenedBytes.length);
-            standardBuffer.set(flattenedBytes);
-            const newFile = new File([standardBuffer], currentDoc.name, { type: "application/pdf" });
-            await useFileStore.getState().updateDocumentFile(currentDoc.id, newFile);
-            addLog("Recipe", `Applied Flatten`, currentDoc.name);
-          } else if (step === 'sanitize') {
+          if (step === 'sanitize') {
             const arrayBuffer = await currentDoc.file.arrayBuffer();
             const { bytes } = await sanitizePdf(new Uint8Array(arrayBuffer));
             if (isCancelled) break;
@@ -510,10 +487,6 @@ function App() {
     text: string;
     title: string;
   }>({ isOpen: false, text: "", title: "Read Aloud" });
-  const [signatureModalState, setSignatureModalState] = useState<{
-    isOpen: boolean;
-    activeDocId: string | null;
-  }>({ isOpen: false, activeDocId: null });
 
   const [splitModalState, setSplitModalState] = useState<{
     isOpen: boolean;
@@ -561,10 +534,6 @@ function App() {
     docId: string | null;
   }>({ isOpen: false, docId: null });
 
-  const [interactiveEditState, setInteractiveEditState] = useState<{
-    isOpen: boolean;
-    docId: string | null;
-  }>({ isOpen: false, docId: null });
 
   const [interactiveTableState, setInteractiveTableState] = useState<{
     isOpen: boolean;
@@ -576,10 +545,6 @@ function App() {
     docId: string | null;
   }>({ isOpen: false, docId: null });
 
-  const [singleReorderState, setSingleReorderState] = useState<{
-    isOpen: boolean;
-    docId: string | null;
-  }>({ isOpen: false, docId: null });
 
   const [pageSelectorState, setPageSelectorState] = useState<{
     isOpen: boolean;
@@ -661,88 +626,22 @@ function App() {
       const tool = hash.replace('#tool=', '');
       window.location.hash = ''; // Clear it out so it doesn't stay in URL
       setActiveTool(tool);
-    } else if (hash.startsWith('#share=')) {
-      const base64 = hash.replace('#share=', '');
-      window.location.hash = ''; // Clear it out so it doesn't stay in URL
-
-      const loadSharedFile = async () => {
-        try {
-          const { base64ToArrayBuffer } = await import('./lib/shareUtils');
-          const buffer = base64ToArrayBuffer(base64);
-          const file = new File([buffer], "shared_document.pdf", { type: 'application/pdf' });
-
-          let pageCount;
-          let isEncrypted = false;
-          let isCorrupt = false;
-
-          try {
-            const { getPdfInfo } = await import('./lib/pdfProcessing');
-            const info = await getPdfInfo(file);
-            pageCount = info.pageCount;
-            isEncrypted = info.isEncrypted;
-          } catch (e: unknown) {
-            console.error(`Failed to parse shared PDF info`, e);
-            if (e instanceof Error && e.message === 'CORRUPT_PDF') {
-              isCorrupt = true;
-            }
-          }
-
-          if (isCorrupt) {
-            setErrorState({
-              isOpen: true,
-              title: 'Corrupt Shared PDF',
-              message: `The shared file appears to be corrupted or invalid.`
-            });
-            return;
-          }
-
-          if (isEncrypted) {
-            setErrorState({
-              isOpen: true,
-              title: 'Password-Protected PDF',
-              message: `The shared file is password-protected.`
-            });
-          }
-
-          useFileStore.getState().addDocuments([{
-            id: crypto.randomUUID(),
-            file,
-            name: file.name,
-            size: file.size,
-            lastModified: file.lastModified,
-            pageCount,
-            isEncrypted,
-            isCorrupt
-          }]);
-
-        } catch (e) {
-          console.error("Failed to load shared file", e);
-          setErrorState({
-            isOpen: true,
-            title: "Share Load Error",
-            message: "Failed to load the shared document. The link might be invalid or corrupted.",
-          });
-        }
-      };
-
-      loadSharedFile().finally(() => {
-        isInitialized.current = true;
-      });
-    } else {
-      // Session Sync
-      const restoreSession = async () => {
-        const sessionData = await loadSession();
-        if (sessionData && sessionData.documents.length > 0) {
-          useFileStore.setState({
-            documents: sessionData.documents,
-            activeDocumentId: sessionData.activeId || sessionData.documents[0].id
-          });
-        }
-        isInitialized.current = true;
-      };
-      restoreSession();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    // Session Sync
+    const restoreSession = async () => {
+      const { loadSession } = await import('./lib/sessionSync');
+      const sessionData = await loadSession();
+      if (sessionData && sessionData.documents.length > 0) {
+        useFileStore.setState({
+          documents: sessionData.documents,
+          activeDocumentId: sessionData.activeId || sessionData.documents[0].id
+        });
+      }
+      isInitialized.current = true;
+    };
+    restoreSession();
+
   }, []);
 
   useEffect(() => {
@@ -1133,21 +1032,6 @@ function App() {
     });
   };
 
-  const verifySignature = (
-    bytes: Uint8Array,
-  ): Promise<{ has_signatures: boolean; signatures: { field_name: string; is_signed: boolean }[] }> => {
-    return new Promise((resolve, reject) => {
-      if (!pyodideWorkerRef.current)
-        return reject(new Error("Pyodide worker not ready"));
-      const jobId = crypto.randomUUID();
-      pyodideResolvers.current.set(jobId, { resolve, reject });
-      pyodideWorkerRef.current.postMessage({
-        type: "VERIFY_SIGNATURE",
-        jobId,
-        pdfBytes: bytes,
-      } satisfies PyodideWorkerMessage);
-    });
-  };
 
   const auditPdf = (
     bytes: Uint8Array,
@@ -1591,62 +1475,6 @@ function App() {
       },
     });
   };
-
-  const handleBatchOptimize = () => {
-    setIsBatchMenuOpen(false);
-    setInputState({
-      isOpen: true,
-      title: "Batch Optimize (Compress)",
-      message: "Select compression level for all documents:",
-      type: "select",
-      options: [
-        { label: "Low (Better Quality)", value: "low" },
-        { label: "Medium (Balanced)", value: "medium" },
-        { label: "High (Smaller Size)", value: "high" },
-      ],
-      defaultValue: "medium",
-      onConfirm: async (level) => {
-        setInputState((prev) => ({ ...prev, isOpen: false }));
-        let isCancelled = false;
-        startProcessing(`Batch Optimizing (${level} compression)...`, true, () => {
-          isCancelled = true;
-          stopProcessing();
-        });
-
-        try {
-          for (const doc of documents) {
-            if (isCancelled) break;
-            useProcessingStore.getState().updateStage(`Optimizing ${doc.name}...`);
-            const optimizedBytes = await optimizePdf(doc.file);
-            if (isCancelled) return;
-            const standardBuffer = new Uint8Array(optimizedBytes.length);
-            standardBuffer.set(optimizedBytes);
-            const newFile = new File([standardBuffer], doc.name, {
-              type: "application/pdf",
-            });
-            await updateDocumentFile(doc.id, newFile);
-            addLog("Batch Optimize", `Optimized PDF to reduce file size (${level} compression)`, doc.name);
-          }
-          if (!isCancelled) {
-            useUIStore.getState().showFeedbackPrompt("Batch Optimize");
-          }
-        } catch (e) {
-          if (!isCancelled) {
-            console.error(e);
-            setErrorState({
-              isOpen: true,
-              title: "Batch Optimize Error",
-              message: "An error occurred during batch optimization.",
-            });
-          }
-        } finally {
-          if (!isCancelled) stopProcessing();
-        }
-      },
-      onCancel: () => setInputState((prev) => ({ ...prev, isOpen: false })),
-    });
-  };
-
   const handleBatchWatermark = () => {
     setIsBatchMenuOpen(false);
     setInputState({
@@ -2020,190 +1848,6 @@ function App() {
       if (!isCancelled) stopProcessing();
     }
   };
-
-  const handleOptimize = async (doc: PDFDocument) => {
-    setInputState({
-      isOpen: true,
-      title: "Optimize (Compress) PDF",
-      message: "Select compression level (Higher compression may lower quality):",
-      type: "select",
-      options: [
-        { label: "Low (Better Quality)", value: "low" },
-        { label: "Medium (Balanced)", value: "medium" },
-        { label: "High (Smaller Size)", value: "high" },
-      ],
-      defaultValue: "medium",
-      onConfirm: async (level) => {
-        setInputState((prev) => ({ ...prev, isOpen: false }));
-        let isCancelled = false;
-        startProcessing(`Optimizing PDF (${level} compression)...`, true, () => {
-          isCancelled = true;
-          stopProcessing();
-        });
-
-        try {
-          const optimizedBytes = await optimizePdf(doc.file);
-          if (isCancelled) return;
-
-          const standardBuffer = new Uint8Array(optimizedBytes.length);
-          standardBuffer.set(optimizedBytes);
-          const newFile = new File([standardBuffer], doc.name, {
-            type: "application/pdf",
-          });
-          // Pass operation metadata
-          updateDocumentFile(doc.id, newFile, undefined, {
-            type: 'optimize',
-            params: { originalSize: doc.size, newSize: newFile.size }
-          });
-          addLog("Optimize", `Compressed and optimized document (${level} compression).`, doc.name);
-        } catch (e) {
-          if (isCancelled) return;
-          console.error(e);
-          setErrorState({
-            isOpen: true,
-            title: "Optimize Error",
-            message: "An error occurred while optimizing the PDF.",
-          });
-        } finally {
-          if (!isCancelled) stopProcessing();
-        }
-      },
-      onCancel: () => setInputState((prev) => ({ ...prev, isOpen: false })),
-    });
-  };
-
-  const handleDeletePages = (doc: PDFDocument) => {
-    setPageSelectorState({
-      isOpen: true,
-      title: "Delete Pages",
-      docId: doc.id,
-      pageCount: doc.pageCount || 0,
-      onConfirm: async (selectedPages) => {
-        setPageSelectorState((prev) => ({ ...prev, isOpen: false }));
-        if (selectedPages.length === 0) return;
-
-        // Convert to 0-based indices for PDFLib
-        const indices = selectedPages.map(p => p - 1);
-
-        let isCancelled = false;
-        startProcessing("Deleting pages...", true, () => {
-          isCancelled = true;
-          stopProcessing();
-        });
-
-        try {
-          const deletedBytes = await deletePages(doc.file, indices);
-          if (isCancelled) return;
-
-          const standardBuffer = new Uint8Array(deletedBytes.length);
-          standardBuffer.set(deletedBytes);
-          const newFile = new File([standardBuffer], doc.name, {
-            type: "application/pdf",
-          });
-          const newPageCount = (doc.pageCount || 0) - indices.length;
-          await updateDocumentFile(
-            doc.id,
-            newFile,
-            newPageCount > 0 ? newPageCount : undefined,
-            {
-              type: 'delete_pages',
-              params: { description: `Deleted ${indices.length} pages` }
-            }
-          );
-          addLog("Delete Pages", `Deleted pages: ${selectedPages.join(", ")}`, doc.name);
-        } catch (e) {
-          if (isCancelled) return;
-          console.error(e);
-          setErrorState({
-            isOpen: true,
-            title: "Delete Error",
-            message: "An error occurred while deleting pages.",
-          });
-        } finally {
-          if (!isCancelled) stopProcessing();
-        }
-      }
-    });
-  };
-
-
-  const handleShare = async (doc: PDFDocument) => {
-    try {
-      const buffer = await doc.file.arrayBuffer();
-      // Import dynamically or ensure arrayBufferToBase64 is imported at top
-      const { arrayBufferToBase64 } = await import('./lib/shareUtils');
-      const base64 = await arrayBufferToBase64(buffer);
-
-      const baseUrl = window.location.href.split('#')[0];
-      const shareUrl = `${baseUrl}#share=${base64}`;
-
-      if (shareUrl.length > 64 * 1024) {
-        setErrorState({
-          isOpen: true,
-          title: "Share Error",
-          message: "This file is too large to share via URL (limit is ~64KB). Please use alternative sharing methods for larger files.",
-        });
-        return;
-      }
-
-      await navigator.clipboard.writeText(shareUrl);
-
-      setErrorState({
-        isOpen: true,
-        title: "Share Link Copied",
-        message: "A shareable link has been copied to your clipboard. Note that the entire file is encoded in the URL.",
-      });
-    } catch (e) {
-      console.error(e);
-      setErrorState({
-        isOpen: true,
-        title: "Share Error",
-        message: "Failed to generate shareable link.",
-      });
-    }
-  };
-
-
-  const handleFlatten = async (doc: PDFDocument) => {
-    let isCancelled = false;
-    startProcessing("Flattening forms...", true, () => {
-      isCancelled = true;
-      stopProcessing();
-    });
-
-    try {
-      const flattenedBytes = await flattenForms(doc.file);
-      if (isCancelled) return;
-
-      const standardBuffer = new Uint8Array(flattenedBytes.length);
-      standardBuffer.set(flattenedBytes);
-      const newFile = new File([standardBuffer], doc.name, {
-        type: "application/pdf",
-      });
-      await updateDocumentFile(doc.id, newFile);
-      addLog("Flatten Forms", "Flattened interactive form fields.", doc.name);
-
-      setErrorState({
-        isOpen: true,
-        title: "Forms Flattened",
-        message: "Interactive form fields have been flattened and burned into the document.",
-      });
-    } catch (e) {
-      if (isCancelled) return;
-      console.error(e);
-      setErrorState({
-        isOpen: true,
-        title: "Flatten Error",
-        message: "An error occurred while flattening the forms.",
-      });
-    } finally {
-      if (!isCancelled) {
-        stopProcessing();
-      }
-    }
-  };
-
-
   const handleViewMetadata = (doc: PDFDocument, metadata: { standard: Record<string, string>; xmp: string }) => {
     setMetadataModalState({ isOpen: true, metadata, doc });
   };
@@ -2249,74 +1893,6 @@ function App() {
       if (!isCancelled) stopProcessing();
     }
   };
-
-  const handleVerifySignature = async (doc: PDFDocument) => {
-    let isCancelled = false;
-    startProcessing("Verifying digital signatures...", true, () => {
-      isCancelled = true;
-    });
-
-    try {
-      const arrayBuffer = await doc.file.arrayBuffer();
-      const pdfBytes = new Uint8Array(arrayBuffer);
-
-      const result = await verifySignature(pdfBytes);
-      if (isCancelled) return;
-
-      addLog("Security", `Verified signatures. Found ${result.signatures.length}.`, doc.name);
-
-      if (!result.has_signatures) {
-        setErrorState({
-          isOpen: true,
-          title: "Signature Verification",
-          message: "No digital signatures were found in this document.",
-        });
-      } else {
-        const allSigned = result.signatures.every(sig => sig.is_signed);
-        setErrorState({
-          isOpen: true,
-          title: "Signature Verification Complete",
-          message: (
-            <div>
-              <p className={`mb-2 font-semibold ${allSigned ? 'text-green-700' : 'text-orange-700'}`}>
-                {allSigned
-                  ? "All signatures are Valid and match their respective fields."
-                  : "Some signature fields are incomplete or unsigned."}
-              </p>
-              <p className="mb-2 text-gray-800 font-semibold">
-                Found {result.signatures.length} signature field(s):
-              </p>
-              <ul className="list-disc pl-5 text-sm text-gray-700 max-h-40 overflow-y-auto">
-                {result.signatures.map((sig, idx) => (
-                  <li key={idx} className="break-all">
-                    <span className="font-medium">{sig.field_name}:</span>{" "}
-                    {sig.is_signed ? (
-                      <span className="text-green-600 font-semibold">Valid Signature</span>
-                    ) : (
-                      <span className="text-orange-600 font-semibold">Missing Signature</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ),
-        });
-      }
-    } catch (e) {
-      if (isCancelled) return;
-      console.error(e);
-      setErrorState({
-        isOpen: true,
-        title: "Verification Error",
-        message: "An error occurred while verifying signatures.",
-      });
-    } finally {
-      if (!isCancelled) {
-        stopProcessing();
-      }
-    }
-  };
-
   const executeInteractiveRedact = async (boxes: RedactBox[]) => {
     const docId = interactiveRedactState.docId;
     if (!docId) return;
@@ -2357,47 +1933,6 @@ function App() {
       if (!isCancelled) stopProcessing();
     }
   };
-
-  const executeInteractiveEdit = async (edits: EditBox[]) => {
-    const docId = interactiveEditState.docId;
-    if (!docId) return;
-    setInteractiveEditState({ isOpen: false, docId: null });
-    const doc = documents.find(d => d.id === docId);
-    if (!doc) return;
-
-    let isCancelled = false;
-    startProcessing("Applying edits...", true, () => {
-      isCancelled = true;
-      stopProcessing();
-    });
-
-    try {
-      const buffer = await doc.file.arrayBuffer();
-      const pdfBytes = new Uint8Array(buffer);
-
-      const updatedBytes = await editBoxesLiteparse(pdfBytes, edits);
-
-      if (isCancelled) return;
-
-      const standardBuffer = new Uint8Array(updatedBytes.length);
-      standardBuffer.set(updatedBytes);
-      const newFile = new File([standardBuffer], doc.name, { type: "application/pdf" });
-      updateDocumentFile(doc.id, newFile);
-      addLog("Manual Action", `Applied ${edits.length} inline edits`, doc.name);
-
-    } catch (e) {
-      if (isCancelled) return;
-      console.error(e);
-      setErrorState({
-        isOpen: true,
-        title: "Edit Error",
-        message: "An error occurred while editing the document.",
-      });
-    } finally {
-      if (!isCancelled) stopProcessing();
-    }
-  };
-
   const handleSanitize = async (doc: PDFDocument) => {
     let author = "";
     let creator = "";
@@ -2831,50 +2366,6 @@ function App() {
       },
     });
   };
-
-  const handleSign = (doc: PDFDocument) => {
-    setSignatureModalState({ isOpen: true, activeDocId: doc.id });
-  };
-
-  const onSignatureConfirm = async (signatureImageBytes: Uint8Array) => {
-    const { activeDocId } = signatureModalState;
-    setSignatureModalState({ isOpen: false, activeDocId: null });
-    if (!activeDocId) return;
-
-    const doc = documents.find((d) => d.id === activeDocId);
-    if (!doc) return;
-
-    let isCancelled = false;
-    startProcessing("Signing document...", true, () => {
-      isCancelled = true;
-      stopProcessing();
-    });
-
-    try {
-      const { signPdf } = await import("./lib/engineA");
-      const signedBytes = await signPdf(doc.file, signatureImageBytes);
-      if (isCancelled) return;
-
-      const standardBuffer = new Uint8Array(signedBytes.length);
-      standardBuffer.set(signedBytes);
-      const newFile = new File([standardBuffer], doc.name, {
-        type: "application/pdf",
-      });
-      await updateDocumentFile(doc.id, newFile);
-      addLog("Sign", "Added signature to document.", doc.name);
-    } catch (e) {
-      if (isCancelled) return;
-      console.error(e);
-      setErrorState({
-        isOpen: true,
-        title: "Signature Error",
-        message: "An error occurred while signing the PDF.",
-      });
-    } finally {
-      if (!isCancelled) stopProcessing();
-    }
-  };
-
   const handleHighlight = (doc: PDFDocument) => {
     setInteractiveHighlightState({ isOpen: true, docId: doc.id });
   };
@@ -2882,11 +2373,6 @@ function App() {
   const handleInteractiveRedact = (doc: PDFDocument) => {
     setInteractiveRedactState({ isOpen: true, docId: doc.id });
   };
-
-  const handleInteractiveEdit = (doc: PDFDocument) => {
-    setInteractiveEditState({ isOpen: true, docId: doc.id });
-  };
-
   const handleInteractiveTable = (doc: PDFDocument) => {
     setInteractiveTableState({ isOpen: true, docId: doc.id });
   };
@@ -3234,55 +2720,6 @@ function App() {
       },
     });
   };
-
-  const handleReorderPages = (doc: PDFDocument) => {
-    setSingleReorderState({ isOpen: true, docId: doc.id });
-  };
-
-  const executeSingleReorder = async (newOrder: number[]) => {
-    const docId = singleReorderState.docId;
-    setSingleReorderState({ isOpen: false, docId: null });
-    if (!docId) return;
-
-    const doc = documents.find(d => d.id === docId);
-    if (!doc) return;
-
-    // Convert to 0-based indices
-    const indices = newOrder.map(n => n - 1);
-
-    let isCancelled = false;
-    startProcessing("Reordering pages...", true, () => {
-      isCancelled = true;
-      stopProcessing();
-    });
-
-    try {
-      const reorderedBytes = await reorderPages(doc.file, indices);
-      if (isCancelled) return;
-
-      const standardBuffer = new Uint8Array(reorderedBytes.length);
-      standardBuffer.set(reorderedBytes);
-      const newFile = new File([standardBuffer], doc.name, {
-        type: "application/pdf",
-      });
-      await updateDocumentFile(doc.id, newFile, undefined, {
-        type: 'reorder',
-        params: { description: `Reordered pages` }
-      });
-      addLog("Reorder Pages", `Reordered pages to: ${newOrder.join(", ")}`, doc.name);
-    } catch (e) {
-      if (isCancelled) return;
-      console.error(e);
-      setErrorState({
-        isOpen: true,
-        title: "Reorder Error",
-        message: "Failed to reorder pages.",
-      });
-    } finally {
-      if (!isCancelled) stopProcessing();
-    }
-  };
-
   return (
     <div className={`App font-sans min-h-screen flex flex-col ${isDarkMode ? "dark bg-gray-900 text-gray-100" : "bg-gray-50 text-gray-900"}`}>
       <MetadataModal
@@ -3301,11 +2738,6 @@ function App() {
       <ProcessingModal />
       <FeedbackPrompt />
       <PWAInstallPrompt />
-      <SignatureModal
-        isOpen={signatureModalState.isOpen}
-        onClose={() => setSignatureModalState({ isOpen: false, activeDocId: null })}
-        onConfirm={onSignatureConfirm}
-      />
       <InputModal
         isOpen={inputState.isOpen}
         title={inputState.title}
@@ -3368,14 +2800,6 @@ function App() {
         onClose={() => setIsCrossReorderOpen(false)}
         onApply={handleCrossReorderApply}
       />
-      <SingleDocumentReorder
-        isOpen={singleReorderState.isOpen}
-        docId={singleReorderState.docId}
-        onClose={() => setSingleReorderState({ isOpen: false, docId: null })}
-        onApply={executeSingleReorder}
-        thumbnailCache={thumbnailCache}
-        setThumbnailCache={setThumbnailCache}
-      />
       <InteractiveSmartHighlightModal
         isOpen={interactiveHighlightState.isOpen}
         docId={interactiveHighlightState.docId}
@@ -3387,12 +2811,6 @@ function App() {
         docId={interactiveRedactState.docId}
         onClose={() => setInteractiveRedactState({ isOpen: false, docId: null })}
         onApply={executeInteractiveRedact}
-      />
-      <InteractiveEditModal
-        isOpen={interactiveEditState.isOpen}
-        docId={interactiveEditState.docId}
-        onClose={() => setInteractiveEditState({ isOpen: false, docId: null })}
-        onApply={executeInteractiveEdit}
       />
       <InteractiveTableModal
         isOpen={interactiveTableState.isOpen}
@@ -3732,12 +3150,6 @@ function App() {
                       Rename All
                     </button>
                     <button
-                      onClick={handleBatchOptimize}
-                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
-                    >
-                      Optimize All
-                    </button>
-                    <button
                       onClick={handleBatchWatermark}
                       className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
                     >
@@ -3828,26 +3240,18 @@ function App() {
                       onSplit={handleSplitRequest}
                       onRotate={handleRotate}
                       onWatermark={handleWatermark}
-                      onOptimize={handleOptimize}
-                      onDeletePages={handleDeletePages}
-                      onReorderPages={handleReorderPages}
                       onAddPageNumbers={handleAddPageNumbers}
                       onBatesNumbering={handleBatesNumbering}
                       onResizePages={handleResizePages}
                       onEncrypt={handleEncrypt}
                       onUnlock={handleUnlock}
                       onSanitize={handleSanitize}
-                      onFlatten={handleFlatten}
-                      onShare={handleShare}
                       onHighlight={handleHighlight}
-                      onSign={handleSign}
                       onAudit={handleAudit}
-                      onVerifySignature={handleVerifySignature}
                       onReadAloud={handleReadAloud}
                       onOcr={handleOcr}
                       onInteractiveRedact={handleInteractiveRedact}
                       onAutoRedactLayout={autoRedactLayout}
-                      onInteractiveEdit={handleInteractiveEdit}
                       onInteractiveTable={handleInteractiveTable}
                       onSmartTableReflow={handleSmartTableReflow}
                       onInteractiveCopy={handleInteractiveCopy}
