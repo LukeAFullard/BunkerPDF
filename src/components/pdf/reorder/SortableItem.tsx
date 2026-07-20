@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ArrowUpToLine, ArrowDownToLine, MoreVertical, Maximize2, RotateCw, RotateCcw, Trash2, Scissors } from 'lucide-react';
+import { ArrowUpToLine, ArrowDownToLine, MoreVertical, Maximize2, Trash2, Scissors } from 'lucide-react';
 import { PDFPageThumbnail } from './PDFPageThumbnail';
 import { ContextMenu } from '../../ui/ContextMenu';
 import type { ContextMenuItem } from '../../ui/ContextMenu';
@@ -21,7 +21,6 @@ interface SortableItemProps {
   thumbnailSize?: number;
   rotation?: number;
   fade?: boolean;
-  onRotate?: (degrees: number) => void;
   onDelete?: () => void;
   onExpand?: () => void;
   onSplit?: () => void;
@@ -42,7 +41,6 @@ export function SortableItem({
   thumbnailSize = 120,
   rotation = 0,
   fade = false,
-  onRotate,
   onDelete,
   onExpand,
   onSplit,
@@ -106,16 +104,6 @@ export function SortableItem({
       label: 'Expand (Zoom)',
       icon: <Maximize2 size={16} />,
       onClick: onExpand
-    },
-    {
-      label: 'Rotate Right',
-      icon: <RotateCw size={16} />,
-      onClick: onRotate ? () => onRotate(90) : undefined
-    },
-    {
-      label: 'Rotate Left',
-      icon: <RotateCcw size={16} />,
-      onClick: onRotate ? () => onRotate(-90) : undefined
     },
     {
       label: 'Split Document Here',

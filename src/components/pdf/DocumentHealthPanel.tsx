@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle, FileSearch, Lock, } from 'lucide-react';
+import { CheckCircle, FileSearch, Lock, } from 'lucide-react';
 import type { PDFDocument } from '../../store/fileStore';
 
 interface HealthCheck {
@@ -18,7 +18,6 @@ interface DocumentHealthPanelProps {
   healthData?: { needsOcr: boolean; hasSelectableText: boolean; hasForms: boolean } | null;
   onOcr: () => void;
   onUnlock: () => void;
-  onSanitize: () => void;
 }
 
 export function DocumentHealthPanel({
@@ -26,7 +25,6 @@ export function DocumentHealthPanel({
   healthData,
   onOcr,
   onUnlock,
-  onSanitize,
 }: DocumentHealthPanelProps) {
   const checks: HealthCheck[] = [];
 
@@ -61,18 +59,6 @@ export function DocumentHealthPanel({
     });
   }
 
-  // Check 4: Metadata present
-  checks.push({
-    id: 'metadata',
-    status: 'action',
-    icon: <AlertCircle className="w-5 h-5" />,
-    title: 'Contains Metadata',
-    description: 'Remove author, creation date, and other hidden information.',
-    action: {
-      label: 'Sanitize',
-      onClick: onSanitize
-    }
-  });
 
   // Show "All Good" if no issues
   if (checks.length === 0) {
