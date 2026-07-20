@@ -6,7 +6,17 @@ import { X, Check, Type, ZoomIn, ZoomOut, Loader2, MousePointer2 } from 'lucide-
 import { useFileStore } from '../../store/fileStore';
 import { cleanupPdfResources } from '../../lib/pdfCleanup';
 import { getConfiguredLiteParse } from '../../lib/liteparseEngine';
-import type { EditBox } from './InteractiveEditModal';
+
+export interface EditBox {
+  pageNum: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  newText: string;
+  fontSize?: number;
+  lineHeight?: number;
+}
 
 
 interface InteractiveFontSizeNormalizerModalProps {

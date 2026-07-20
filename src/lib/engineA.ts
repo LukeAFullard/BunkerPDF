@@ -201,22 +201,6 @@ export async function watermarkPdf(file: File, text: string, pagesStr?: string):
   return await pdfDoc.save();
 }
 
-export async function optimizePdf(file: File): Promise<Uint8Array> {
-  const arrayBuffer = await file.arrayBuffer();
-  const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
-
-  // Basic metadata stripping
-  pdfDoc.setTitle('');
-  pdfDoc.setAuthor('');
-  pdfDoc.setSubject('');
-  pdfDoc.setKeywords([]);
-  pdfDoc.setProducer('');
-  pdfDoc.setCreator('');
-
-  // Recompressing by saving without adding any new stuff. Not true compression but strips metadata.
-  return await pdfDoc.save({ useObjectStreams: false });
-}
-
 export async function deletePages(file: File, pageIndices: number[]): Promise<Uint8Array> {
   const arrayBuffer = await file.arrayBuffer();
   const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
@@ -276,16 +260,6 @@ export async function signPdf(file: File, signatureImageBytes: Uint8Array): Prom
     width: signatureDims.width,
     height: signatureDims.height,
   });
-
-  return await pdfDoc.save();
-}
-
-export async function flattenForms(file: File): Promise<Uint8Array> {
-  const arrayBuffer = await file.arrayBuffer();
-  const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
-
-  const form = pdfDoc.getForm();
-  form.flatten();
 
   return await pdfDoc.save();
 }

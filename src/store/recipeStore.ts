@@ -6,11 +6,9 @@ export type RecipeAction =
   | 'split'
   | 'rotate'
   | 'watermark'
-  | 'optimize'
   | 'ocr'
   | 'redact'
   | 'sanitize'
-  | 'flatten'
   | 'extract-tables'
   | 'extract-text'
   | 'extract-images';

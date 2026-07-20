@@ -194,7 +194,7 @@ function RecipeBuilderModal({ onClose, onSave }: { onClose: () => void, onSave: 
   const [steps, setSteps] = useState<RecipeAction[]>([]);
 
   const availableActions: RecipeAction[] = [
-    'ocr', 'redact', 'sanitize', 'flatten', 'optimize',
+    'ocr', 'redact', 'sanitize',
     'extract-tables', 'extract-images', 'extract-text'
   ];
 
@@ -237,7 +237,7 @@ function RecipeBuilderModal({ onClose, onSave }: { onClose: () => void, onSave: 
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-              placeholder="e.g., OCR, flatten, then optimize"
+              placeholder="e.g., OCR, then sanitize"
             />
           </div>
 

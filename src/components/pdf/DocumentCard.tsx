@@ -11,32 +11,24 @@ import { useAuditStore } from "../../store/auditStore";
 import { BookmarkModal, type Bookmark } from "../ui/BookmarkModal";
 import { DocumentHealthPanel } from './DocumentHealthPanel';
 import { analyzeDocumentHealth } from '../../lib/healthChecks';
-import { ParagraphEditModal } from './ParagraphEditModal';
 import { TableExtractionModal } from './TableExtractionModal';
 import { ToolsModal } from './ToolsModal';
 
 interface DocumentCardProps {
+  onResizePages?: (doc: PDFDocument) => void;
   doc: PDFDocument;
   onRemove: (id: string) => void;
   onSplit: (doc: PDFDocument) => void;
   onOcr?: (doc: PDFDocument) => void;
   onRotate?: (doc: PDFDocument) => void;
   onWatermark?: (doc: PDFDocument) => void;
-  onOptimize?: (doc: PDFDocument) => void;
-  onDeletePages?: (doc: PDFDocument) => void;
-  onReorderPages?: (doc: PDFDocument) => void;
   onAddPageNumbers?: (doc: PDFDocument) => void;
   onBatesNumbering?: (doc: PDFDocument) => void;
-  onResizePages?: (doc: PDFDocument) => void;
   onEncrypt?: (doc: PDFDocument) => void;
   onUnlock?: (doc: PDFDocument) => void;
   onSanitize?: (doc: PDFDocument) => void;
-  onFlatten?: (doc: PDFDocument) => void;
-  onShare?: (doc: PDFDocument) => void;
   onHighlight?: (doc: PDFDocument) => void;
-  onSign?: (doc: PDFDocument) => void;
   onAudit?: (doc: PDFDocument) => void;
-  onVerifySignature?: (doc: PDFDocument) => void;
   onReadAloud?: (doc: PDFDocument) => void;
   extractText: (bytes: Uint8Array) => Promise<string>;
   extractEntities: (text: string, customPatterns?: string[]) => Promise<string[]>;
@@ -62,7 +54,6 @@ interface DocumentCardProps {
   onScanPii?: (doc: PDFDocument) => void;
   onInteractiveRedact?: (doc: PDFDocument) => void;
   onAutoRedactLayout?: (doc: PDFDocument) => void;
-  onInteractiveEdit?: (doc: PDFDocument) => void;
   onInteractiveTable?: (doc: PDFDocument) => void;
   onSmartTableReflow?: (doc: PDFDocument) => void;
   onInteractiveCopy?: (doc: PDFDocument) => void;
@@ -103,27 +94,20 @@ function PreviewModal({ isOpen, content, format, onClose, onDownload }: { isOpen
 }
 
 export function DocumentCard({
+  onResizePages,
   doc,
   onRemove,
   onSplit,
   onOcr,
   onRotate,
   onWatermark,
-  onOptimize,
-  onDeletePages,
-  onReorderPages,
   onAddPageNumbers,
   onBatesNumbering,
-  onResizePages,
   onEncrypt,
   onUnlock,
   onSanitize,
-  onFlatten,
-  onShare,
   onHighlight,
-  onSign,
   onAudit,
-  onVerifySignature,
   onReadAloud,
   onScanPii,
   extractText,
@@ -135,7 +119,7 @@ export function DocumentCard({
   extractLinks,
   extractAnnotations,
   extractMetadata,
-  editParagraph,
+
   onViewMetadata,
   extractBookmarks,
   editBookmarks,
@@ -145,7 +129,6 @@ export function DocumentCard({
   exportPdfToDark,
   onInteractiveRedact,
   onAutoRedactLayout,
-  onInteractiveEdit,
   onInteractiveTable,
   onSmartTableReflow,
   onInteractiveCopy,
@@ -330,7 +313,6 @@ export function DocumentCard({
     isOpen: boolean;
     bookmarks: Bookmark[];
   }>({ isOpen: false, bookmarks: [] });
-  const [isParagraphEditModalOpen, setIsParagraphEditModalOpen] = React.useState(false);
 
   const handleEditBookmarks = async () => {
     if (!extractBookmarks) return;
@@ -401,32 +383,6 @@ export function DocumentCard({
   };
 
 
-  const handleEditParagraph = async (docToEdit: PDFDocument, searchText: string, replacementText: string) => {
-    if (!editParagraph) return;
-    let isCancelled = false;
-    startProcessing("Editing paragraph...", true, () => {
-      isCancelled = true;
-      stopProcessing();
-    });
-
-    try {
-      const buffer = await docToEdit.file.arrayBuffer();
-      const newBytes = await editParagraph(new Uint8Array(buffer), searchText, replacementText);
-      if (isCancelled) return;
-
-      const standardBuffer = new Uint8Array(newBytes.length);
-      standardBuffer.set(newBytes);
-      const newFile = new File([standardBuffer], docToEdit.file.name, { type: 'application/pdf' });
-      await updateDocumentFile(docToEdit.id, newFile);
-      addLog("Edit Paragraph", "Replaced paragraph text.", docToEdit.name);
-    } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
-      if (isCancelled) return;
-      console.error(err);
-      setErrorState({ isOpen: true, title: "Edit Error", message: err.message || "Failed to edit paragraph." });
-    } finally {
-      if (!isCancelled) stopProcessing();
-    }
-  };
 
   const handleExtractMarkdown = async () => {
     if (!extractMarkdown) return;
@@ -960,17 +916,12 @@ export function DocumentCard({
   const toolsItems = [
 
     { category: "Page Modification", label: "Rotate 90° (~Instant)", onClick: () => onRotate?.(doc), complexity: "simple" },
-    { category: "Page Modification", label: "Delete Pages (~1s)", onClick: () => onDeletePages?.(doc), complexity: "simple" },
-    { category: "Page Modification", label: "Reorder Pages (~1s)", onClick: () => onReorderPages?.(doc), complexity: "professional" },
     { category: "Page Modification", label: "Resize to A4/Letter/Custom (~2s)", onClick: () => onResizePages?.(doc), complexity: "simple" },
 
     { category: "Content & Marks", label: "Add Watermark (~1s)", onClick: () => onWatermark?.(doc), complexity: "simple" },
     { category: "Content & Marks", label: "Smart Highlight Text (~Instant)", onClick: () => onHighlight?.(doc), complexity: "professional" },
-    { category: "Content & Marks", label: "Sign Document (~2s)", onClick: () => onSign?.(doc), complexity: "professional" },
-    { category: "Content & Marks", label: "Edit Text (Beta) (~3s)", onClick: () => setIsParagraphEditModalOpen(true), complexity: "professional" },
     { category: "Content & Marks", label: "Add Page Numbers (~2s)", onClick: () => onAddPageNumbers?.(doc), complexity: "professional" },
     { category: "Content & Marks", label: "Bates Numbering (~2s)", onClick: () => onBatesNumbering?.(doc), complexity: "professional" },
-    { category: "Content & Marks", label: "Flatten Forms (~1s)", onClick: () => onFlatten?.(doc), complexity: "professional" },
 
     { category: "Extract & Export", ...(!isMobile ? { label: "Extract Tables (~10s)", onClick: () => setIsTableExtractionModalOpen(true), complexity: "professional" } : {}) },
     { category: "Extract & Export", label: "Extract Notes (MD) (~5s)", onClick: handleExtractMarkdown, complexity: "simple" },
@@ -980,9 +931,6 @@ export function DocumentCard({
     { category: "Extract & Export", ...(!isMobile ? { label: "Extract Images (~10s)", onClick: handleExtractImages, complexity: "simple" } : {}) },
     { category: "Extract & Export", label: "Extract Links (CSV) (~2s)", onClick: handleExtractLinks, complexity: "professional" },
     { category: "Extract & Export", label: "Extract Annotations (CSV) (~2s)", onClick: handleExtractAnnotations, complexity: "professional" },
-    { category: "Extract & Export", label: "Share (URL, <64KB only)", onClick: () => onShare?.(doc), complexity: "simple" },
-
-    { category: "Interactive Tools", label: "Hover to Edit (~Instant)", onClick: () => onInteractiveEdit?.(doc), complexity: "professional" },
     { category: "Interactive Tools", label: "Magic Box Table (~Instant)", onClick: () => onInteractiveTable?.(doc), complexity: "professional" },
     { category: "Interactive Tools", label: "Smart Table Re-flow (~Instant)", onClick: () => onSmartTableReflow?.(doc), complexity: "professional" },
     { category: "Interactive Tools", label: "Magic Copy (~Instant)", onClick: () => onInteractiveCopy?.(doc), complexity: "professional" },
@@ -999,9 +947,6 @@ export function DocumentCard({
     { category: "Security & Audit", label: "Point & Click Redact (~Instant)", onClick: () => onInteractiveRedact?.(doc), complexity: "professional" },
     { category: "Security & Audit", label: "Auto-Redact Headers/Footers (~Instant)", onClick: () => onAutoRedactLayout?.(doc), complexity: "professional" },
     { category: "Security & Audit", ...(!isMobile ? { label: "Audit Redactions (~5s)", onClick: () => onAudit?.(doc), complexity: "professional" } : {}) },
-    { category: "Security & Audit", label: "Verify Signatures (~2s)", onClick: () => onVerifySignature?.(doc), complexity: "professional" },
-
-    { category: "Other", label: "Optimize (Compress) (~5s)", onClick: () => onOptimize?.(doc), complexity: "simple" },
     { category: "Other", label: "Edit Bookmarks/Outline (~2s)", onClick: handleEditBookmarks, complexity: "simple" },
     { category: "Other", label: "Edit Metadata (~2s)", onClick: handleViewMetadataLocal, complexity: "professional" },
     { category: "Other", label: "Read Aloud (TTS) (~15s/pg)", onClick: () => onReadAloud?.(doc), complexity: "professional" },
@@ -1047,7 +992,6 @@ export function DocumentCard({
             onOcr={() => onOcr?.(doc)}
             onUnlock={() => onUnlock?.(doc)}
             onSanitize={() => onSanitize?.(doc)}
-            onOptimize={() => onOptimize?.(doc)}
           />
         </div>
 
@@ -1272,12 +1216,6 @@ export function DocumentCard({
         </div>
       )}
 
-      <ParagraphEditModal
-        isOpen={isParagraphEditModalOpen}
-        doc={doc}
-        onClose={() => setIsParagraphEditModalOpen(false)}
-        onEdit={handleEditParagraph}
-      />
 
       <TableExtractionModal
         isOpen={isTableExtractionModalOpen}

@@ -3,7 +3,7 @@ import { set as idbSet, get as idbGet, del as idbDel, clear as idbClear } from '
 
 export interface DocumentOperation {
   id: string;
-  type: 'rotate' | 'delete_pages' | 'reorder' | 'watermark' | 'optimize' | 'redact' | 'merge' | 'other';
+  type: 'rotate' | 'watermark' | 'redact' | 'merge' | 'other';
   timestamp: number;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   params: Record<string, any>;
