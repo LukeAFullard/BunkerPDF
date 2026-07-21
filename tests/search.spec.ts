@@ -23,12 +23,7 @@ test('Multi-PDF Search Initialization', async ({ page }) => {
   // The modal for Search will open up
   await expect(page.locator('h2', { hasText: 'Multi-PDF Search' })).toBeVisible({ timeout: 30000 });
 
-  // It should show Indexing Required
-  await expect(page.locator('h3', { hasText: 'Indexing Required' })).toBeVisible({ timeout: 5000 });
-
-  // Click Index Documents Now
-  await page.locator('button:has-text("Index Documents Now")').click();
-
+  // Indexing now happens in the background automatically.
   // Wait for the search input to be visible (meaning indexing is done)
   await expect(page.locator('input[placeholder="Search across all open documents..."]')).toBeVisible({ timeout: 30000 });
 
