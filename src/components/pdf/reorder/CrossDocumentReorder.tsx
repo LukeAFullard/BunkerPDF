@@ -23,7 +23,7 @@ import {
   rectSortingStrategy,
 } from '@dnd-kit/sortable';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
-import { X, Check, RotateCw, RotateCcw, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
+import { X, Check, RotateCw, RotateCcw, Trash2, ZoomIn, ZoomOut, ChevronLeft, ChevronRight } from 'lucide-react';
 
 import { useFileStore } from '../../../store/fileStore';
 import { cleanupPdfResources } from '../../../lib/pdfCleanup';
@@ -527,6 +527,36 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
     onApply(result, columnNames);
   };
 
+  const allItems = columns.flatMap(c => c.items);
+  const previewIndex = previewItem ? allItems.findIndex(i => i.id === previewItem.id) : -1;
+
+  const handleNextPreview = () => {
+    if (previewIndex !== -1 && previewIndex < allItems.length - 1) {
+      setPreviewItem(allItems[previewIndex + 1]);
+    }
+  };
+
+  const handlePrevPreview = () => {
+    if (previewIndex !== -1 && previewIndex > 0) {
+      setPreviewItem(allItems[previewIndex - 1]);
+    }
+  };
+
+  useEffect(() => {
+    if (!previewItem) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight') {
+        handleNextPreview();
+      } else if (e.key === 'ArrowLeft') {
+        handlePrevPreview();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [previewItem, allItems, previewIndex]);
+
   const handleSplit = (itemId: string, colId: string) => {
     setColumns(prevColumns => {
       const colIndex = prevColumns.findIndex(c => c.docId === colId);
@@ -820,7 +850,10 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
         {/* Full Screen Preview Overlay */}
         {previewItem && (
           <div className="fixed inset-0 z-[60] bg-black/90 flex flex-col backdrop-blur-sm transition-opacity">
-            <div className="flex justify-end p-4 absolute top-4 right-4 z-[100]">
+            <div className="flex justify-between items-center p-4 absolute top-0 left-0 right-0 z-[100]">
+              <div className="text-white bg-black/50 px-3 py-1.5 rounded-lg backdrop-blur-sm border border-white/20 text-sm font-medium">
+                Page {previewIndex + 1} of {allItems.length}
+              </div>
               <button
                 onClick={() => setPreviewItem(null)}
                 className="bg-black/50 hover:bg-black/70 text-white p-3 rounded-full transition-colors shadow-lg backdrop-blur-sm border border-white/20 relative z-[100]"
@@ -828,6 +861,26 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
                 <X size={24} />
               </button>
             </div>
+
+            {/* Navigation Buttons */}
+            {previewIndex > 0 && (
+              <button
+                onClick={handlePrevPreview}
+                className="absolute left-4 top-1/2 -translate-y-1/2 z-[100] bg-black/50 hover:bg-black/70 text-white p-3 rounded-full transition-colors shadow-lg backdrop-blur-sm border border-white/20"
+              >
+                <ChevronLeft size={32} />
+              </button>
+            )}
+
+            {previewIndex < allItems.length - 1 && (
+              <button
+                onClick={handleNextPreview}
+                className="absolute right-4 top-1/2 -translate-y-1/2 z-[100] bg-black/50 hover:bg-black/70 text-white p-3 rounded-full transition-colors shadow-lg backdrop-blur-sm border border-white/20"
+              >
+                <ChevronRight size={32} />
+              </button>
+            )}
+
             <div className="flex-1 flex items-center justify-center overflow-hidden z-[40]">
               <TransformWrapper centerOnInit={true} initialScale={1} minScale={0.5} maxScale={5}>
                 <TransformComponent wrapperStyle={{ width: '100vw', height: '100vh' }} contentStyle={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
