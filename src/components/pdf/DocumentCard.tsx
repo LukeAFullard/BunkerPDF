@@ -55,7 +55,6 @@ interface DocumentCardProps {
   onInteractiveTable?: (doc: PDFDocument) => void;
   onSmartTableReflow?: (doc: PDFDocument) => void;
   onInteractiveCopy?: (doc: PDFDocument) => void;
-  onInteractiveFontSizeNormalizer?: (doc: PDFDocument) => void;
   onInteractiveDataDictionary?: (doc: PDFDocument) => void;
   onInteractiveAutoLinker?: (doc: PDFDocument) => void;
   onSmartForm?: (doc: PDFDocument) => void;
@@ -127,7 +126,6 @@ export function DocumentCard({
   onInteractiveTable,
   onSmartTableReflow,
   onInteractiveCopy,
-  onInteractiveFontSizeNormalizer,
   onInteractiveDataDictionary,
   onInteractiveAutoLinker,
   onSmartForm,
@@ -927,7 +925,6 @@ export function DocumentCard({
     { category: "Interactive Tools", label: "Magic Box Table (~Instant)", onClick: () => onInteractiveTable?.(doc), complexity: "professional" },
     { category: "Interactive Tools", label: "Smart Table Re-flow (~Instant)", onClick: () => onSmartTableReflow?.(doc), complexity: "professional" },
     { category: "Interactive Tools", label: "Magic Copy (~Instant)", onClick: () => onInteractiveCopy?.(doc), complexity: "professional" },
-    { category: "Interactive Tools", label: "Font-Size Normalizer (~Instant)", onClick: () => onInteractiveFontSizeNormalizer?.(doc), complexity: "professional" },
     { category: "Interactive Tools", label: "Data Dictionary Extraction (~Instant)", onClick: () => onInteractiveDataDictionary?.(doc), complexity: "professional" },
     { category: "Interactive Tools", label: "Auto-Linker (~Instant)", onClick: () => onInteractiveAutoLinker?.(doc), complexity: "professional" },
     { category: "Interactive Tools", label: "Smart Form Generation (~Instant)", onClick: () => onSmartForm?.(doc), complexity: "professional" },

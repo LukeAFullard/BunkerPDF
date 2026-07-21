@@ -30,8 +30,6 @@ import { SmartTableReflowModal } from "./components/pdf/SmartTableReflowModal";
 import { autoLinkBoxesLiteparse } from "./lib/liteparseEngine";
 import { SmartFormGenerationModal } from "./components/pdf/SmartFormGenerationModal";
 import { SmartCropModal } from "./components/pdf/SmartCropModal";
-import { InteractiveFontSizeNormalizerModal } from "./components/pdf/InteractiveFontSizeNormalizerModal";
-import { normalizeFontsLiteparse } from "./lib/liteparseEngine";
 import { InteractiveDataDictionaryModal } from "./components/pdf/InteractiveDataDictionaryModal";
 
 
@@ -44,8 +42,6 @@ import { DocumentCard } from "./components/pdf/DocumentCard";
 import { FileTabs } from "./components/ui/FileTabs";
 import { DiffModal } from "./components/pdf/diff/DiffModal";
 import { SideBySideViewerModal } from "./components/pdf/SideBySideViewerModal";
-import { RecipeMenu } from "./components/ui/RecipeMenu";
-import type { WorkflowRecipe } from "./store/recipeStore";
 import { ErrorModal } from "./components/ui/ErrorModal";
 import { InputModal } from "./components/ui/InputModal";
 import { PageSelectorModal } from "./components/ui/PageSelectorModal";
@@ -263,214 +259,6 @@ function App() {
     isActive: isGlobalProcessing,
   } = useProcessingStore();
 
-  const handleApplyRecipe = async (recipe: WorkflowRecipe) => {
-    const activeDoc = documents.find((doc) => doc.id === activeDocumentId);
-    if (!activeDoc) return;
-
-    // CRITICAL: Validate prerequisites
-    const { pyodideStatus } = useEngineStore.getState();
-    const needsPyodide = recipe.steps.some(s =>
-      ['redact', 'sanitize', 'extract-tables', 'extract-text', 'extract-images',
-       'ocr', 'highlight', 'encrypt', 'unlock', 'extract-links', 'extract-annotations'].includes(s)
-    );
-
-    if (needsPyodide && pyodideStatus !== 'ready') {
-      setErrorState({
-        isOpen: true,
-        title: 'Tools Not Ready',
-        message: 'Advanced features are still loading. Please wait and try again.'
-      });
-      return;
-    }
-
-    // Validate recipe makes sense for this document
-    const validationErrors: string[] = [];
-    if (recipe.steps.includes('merge') && documents.length < 2) {
-      validationErrors.push("'merge' requires at least 2 documents");
-    }
-    if (activeDoc.isEncrypted && recipe.steps.some(s => ['redact', 'sanitize', 'ocr', 'flatten'].includes(s))) {
-      validationErrors.push("Document must be unlocked before running this recipe");
-    }
-
-    if (validationErrors.length > 0) {
-      setErrorState({
-        isOpen: true,
-        title: 'Recipe Cannot Run',
-        message: (
-          <ul className="list-disc pl-5">
-            {validationErrors.map((err, i) => <li key={i}>{err}</li>)}
-          </ul>
-        )
-      });
-      return;
-    }
-
-    // Use current state to fetch the active doc safely for sequential steps
-    let currentDoc = activeDoc;
-    let isCancelled = false;
-    const startingOpIndex = activeDoc.operationIndex ?? 0;
-
-    startProcessing(`Running recipe: ${recipe.name}`, true, () => {
-      isCancelled = true;
-      stopProcessing();
-    });
-
-    try {
-      for (const step of recipe.steps) {
-        if (isCancelled) break;
-        useProcessingStore.getState().updateStage(`Executing: ${step}`);
-
-        const docFromState = useFileStore.getState().documents.find(d => d.id === currentDoc.id);
-        if (!docFromState) throw new Error("Document lost during processing");
-        currentDoc = docFromState;
-
-        try {
-          // Perform the step
-          if (step === 'sanitize') {
-            const arrayBuffer = await currentDoc.file.arrayBuffer();
-            const { bytes } = await sanitizePdf(new Uint8Array(arrayBuffer));
-            if (isCancelled) break;
-            const standardBuffer = new Uint8Array(bytes.length);
-            standardBuffer.set(bytes);
-            const newFile = new File([standardBuffer], currentDoc.name, { type: "application/pdf" });
-            await useFileStore.getState().updateDocumentFile(currentDoc.id, newFile);
-            addLog("Recipe", `Applied Sanitize`, currentDoc.name);
-          } else if (step === 'ocr') {
-            const abortController = new AbortController();
-            const newFile = await ocrPdf(currentDoc.file, undefined, (stage) => {
-               if (!isCancelled) useProcessingStore.getState().updateStage(`OCR: ${stage}`);
-            }, abortController.signal);
-            if (isCancelled) {
-               abortController.abort();
-               break;
-            }
-            await useFileStore.getState().updateDocumentFile(currentDoc.id, newFile);
-            addLog("Recipe", `Applied OCR`, currentDoc.name);
-          } else if (step === 'redact') {
-            useProcessingStore.getState().updateStage(`Redacting (Auto PII)...`);
-            const arrayBuffer = await currentDoc.file.arrayBuffer();
-            const pdfBytes = new Uint8Array(arrayBuffer);
-
-            if (!extractText || !extractEntities || !redactPdf) {
-               throw new Error("Missing functions for auto redaction");
-            }
-
-            const text = await extractText(pdfBytes);
-            if (isCancelled) break;
-            const entities = await extractEntities(text);
-            if (isCancelled) break;
-
-            if (entities && entities.length > 0) {
-               const redactedBytes = await redactPdf(pdfBytes, entities);
-               if (isCancelled) break;
-               const standardBuffer = new Uint8Array(redactedBytes.length);
-               standardBuffer.set(redactedBytes);
-               const newFile = new File([standardBuffer], currentDoc.name, { type: "application/pdf" });
-               await useFileStore.getState().updateDocumentFile(currentDoc.id, newFile);
-               addLog("Recipe", `Auto Redacted ${entities.length} PII items`, currentDoc.name);
-            } else {
-               addLog("Recipe", `No PII found for redaction`, currentDoc.name);
-            }
-          } else if (step === 'extract-tables') {
-             if (extractTables) {
-               const format = useUIStore.getState().extractionMethod === 'liteparse' ? 'csv' : 'excel';
-               const result = await extractTables(currentDoc.file, format);
-               if (isCancelled) break;
-               const standardBuffer = new Uint8Array(result.data.length);
-               standardBuffer.set(result.data);
-               // Simple mime type logic for defaults
-               const mimeType = result.extension.includes('.md') ? "text/markdown" : result.extension.includes('.csv') ? "text/csv" : result.extension.includes('.tex') ? "text/plain" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-               const blob = new Blob([standardBuffer], { type: mimeType });
-               const url = URL.createObjectURL(blob);
-               const a = document.createElement("a");
-               a.href = url;
-               a.download = currentDoc.name.replace(/\.pdf$/i, `-tables${result.extension}`);
-               document.body.appendChild(a);
-               a.click();
-               document.body.removeChild(a);
-               URL.revokeObjectURL(url);
-               addLog("Recipe", `Extracted Tables`, currentDoc.name);
-             }
-          } else if (step === 'extract-images') {
-             if (extractImages) {
-               const pdfBytes = await currentDoc.file.arrayBuffer();
-               const result = await extractImages(new Uint8Array(pdfBytes));
-               if (isCancelled) break;
-               const standardBuffer = new Uint8Array(result.length);
-               standardBuffer.set(result);
-               const blob = new Blob([standardBuffer], { type: "application/zip" });
-               if (blob.size > 22) {
-                 const url = URL.createObjectURL(blob);
-                 const a = document.createElement("a");
-                 a.href = url;
-                 a.download = currentDoc.name.replace(/\.pdf$/i, "-images.zip");
-                 document.body.appendChild(a);
-                 a.click();
-                 document.body.removeChild(a);
-                 URL.revokeObjectURL(url);
-               }
-               addLog("Recipe", `Extracted Images`, currentDoc.name);
-             }
-          } else if (step === 'extract-text') {
-             if (extractText) {
-               const buffer = await currentDoc.file.arrayBuffer();
-               let text = "";
-               if (useUIStore.getState().extractionMethod === 'liteparse') {
-                 text = await extractTextLiteparse(new Uint8Array(buffer));
-               } else {
-                 text = await extractText(new Uint8Array(buffer));
-               }
-               if (isCancelled) break;
-               const blob = new Blob([text], { type: "text/plain" });
-               const url = URL.createObjectURL(blob);
-               const a = document.createElement("a");
-               a.href = url;
-               a.download = currentDoc.name.replace(/\.pdf$/i, "-text.txt");
-               document.body.appendChild(a);
-               a.click();
-               document.body.removeChild(a);
-               URL.revokeObjectURL(url);
-               addLog("Recipe", `Extracted Text`, currentDoc.name);
-             }
-          } else {
-            // Other steps need UI interaction usually (like manual Redact bounding boxes or Merge files)
-            // We can skip or show a notice
-            console.warn(`Step ${step} requires manual UI interaction or is not supported in recipes yet.`);
-          }
-        } catch (stepError) {
-          throw new Error(`Step '${step}' failed: ${stepError instanceof Error ? stepError.message : 'Unknown error'}`, { cause: stepError });
-        }
-      }
-
-      if (!isCancelled) {
-        setErrorState({
-          isOpen: true,
-          title: "Recipe Complete",
-          message: `Successfully executed ${recipe.name}.`
-        });
-      }
-    } catch (err: unknown) {
-      if (!isCancelled) {
-        // Rollback using the index-based undo system
-        const docFromState = useFileStore.getState().documents.find(d => d.id === activeDoc.id);
-        if (docFromState) {
-          const stepsToUndo = (docFromState.operationIndex ?? 0) - startingOpIndex;
-          for (let i = 0; i < stepsToUndo; i++) {
-            await useFileStore.getState().undo(activeDoc.id);
-          }
-        }
-
-        console.error("Recipe error:", err);
-        setErrorState({
-          isOpen: true,
-          title: "Recipe Error",
-          message: err instanceof Error ? err.message : "Failed to execute recipe."
-        });
-      }
-    } finally {
-      if (!isCancelled) stopProcessing();
-    }
-  };
 
   const clearAll = useFileStore((state) => state.clearAll);
   const [errorState, setErrorState] = useState<{
@@ -508,10 +296,6 @@ function App() {
     docId: string | null;
   }>({ isOpen: false, docId: null });
 
-  const [interactiveFontSizeNormalizerState, setInteractiveFontSizeNormalizerState] = useState<{
-    isOpen: boolean;
-    docId: string | null;
-  }>({ isOpen: false, docId: null });
 
   const [interactiveDataDictionaryState, setInteractiveDataDictionaryState] = useState<{
     isOpen: boolean;
@@ -2237,9 +2021,6 @@ function App() {
   };
 
 
-  const handleInteractiveFontSizeNormalizer = (doc: PDFDocument) => {
-    setInteractiveFontSizeNormalizerState({ isOpen: true, docId: doc.id });
-  };
 
   const handleInteractiveDataDictionary = (doc: PDFDocument) => {
     setInteractiveDataDictionaryState({ isOpen: true, docId: doc.id });
@@ -2717,41 +2498,6 @@ function App() {
         }}
       />
 
-      <InteractiveFontSizeNormalizerModal
-        isOpen={interactiveFontSizeNormalizerState.isOpen}
-        docId={interactiveFontSizeNormalizerState.docId}
-        onClose={() => setInteractiveFontSizeNormalizerState({ isOpen: false, docId: null })}
-        onApply={async (edits) => {
-          const docId = interactiveFontSizeNormalizerState.docId;
-          setInteractiveFontSizeNormalizerState({ isOpen: false, docId: null });
-          if (docId && edits.length > 0) {
-             const doc = documents.find(d => d.id === docId);
-             if (!doc) return;
-             try {
-                // Determine targetFontSize by checking the first edit, or we could pass it from the modal if needed.
-                // Assuming we default to 12 as per our modal, but let's grab it from the modal state if possible, or just default to 12 since the prompt was open-ended.
-                // Actually the modal handles minFontSize. Let's assume 12pt normalization for now.
-               const arrayBuffer = await doc.file.arrayBuffer();
-               const resultBytes = await normalizeFontsLiteparse(new Uint8Array(arrayBuffer), edits, 12);
-               const newBlob = new Blob([resultBytes.buffer as ArrayBuffer], { type: "application/pdf" });
-               const newFile = new File([newBlob], doc.name, { type: "application/pdf", lastModified: Date.now() });
-               useFileStore.getState().updateDocument(docId, {
-                  file: newFile,
-                  size: newFile.size,
-
-               });
-               // @ts-ignore
-               useToastStore.getState().addToast({
-                 title: "Fonts Normalized",
-                 description: "Tiny text has been resized.",
-                 type: "success"
-               });
-             } catch (err) {
-               setErrorState({ isOpen: true, title: "Normalization Error", message: err instanceof Error ? err.message : String(err) });
-             }
-          }
-        }}
-      />
       <InteractiveDataDictionaryModal
         isOpen={interactiveDataDictionaryState.isOpen}
         docId={interactiveDataDictionaryState.docId}
@@ -3037,7 +2783,6 @@ function App() {
                 <button onClick={() => setIsSideBySideModalOpen(true)} className="mr-2 px-3 py-1.5 text-sm font-medium bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center gap-2">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16m-7 6h7" /></svg> Side-by-Side
                 </button>
-                <RecipeMenu onApplyRecipe={handleApplyRecipe} />
               </div>
             </div>
 
@@ -3068,7 +2813,6 @@ function App() {
                       onInteractiveTable={handleInteractiveTable}
                       onSmartTableReflow={handleSmartTableReflow}
                       onInteractiveCopy={handleInteractiveCopy}
-                      onInteractiveFontSizeNormalizer={handleInteractiveFontSizeNormalizer}
                       onInteractiveDataDictionary={handleInteractiveDataDictionary}
                       onInteractiveAutoLinker={handleInteractiveAutoLinker}
                       onSmartForm={handleSmartForm}
