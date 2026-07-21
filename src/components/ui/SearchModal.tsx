@@ -12,12 +12,12 @@ interface SearchModalProps {
   onRunOcr: (doc: PDFDocument) => void;
 }
 
-type SearchMode = 'semantic' | 'keyword';
+
 
 export function SearchModal({ isOpen, onClose, onIndexDocuments, onRunOcr }: SearchModalProps) {
-  const [searchMode, setSearchMode] = useState<SearchMode>('semantic');
+  const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<{ segment: DocumentSegment, score?: number }[]>([]);
+  const [results, setResults] = useState<{ semantic: { segment: DocumentSegment, score?: number }[], keyword: { segment: DocumentSegment }[] }>({ semantic: [], keyword: [] });
   const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ocrNeededDocs, setOcrNeededDocs] = useState<PDFDocument[]>([]);
@@ -35,7 +35,7 @@ export function SearchModal({ isOpen, onClose, onIndexDocuments, onRunOcr }: Sea
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setQuery('');
 
-      setResults([]);
+      setResults({ semantic: [], keyword: [] });
 
       setError(null);
     }
@@ -78,33 +78,39 @@ export function SearchModal({ isOpen, onClose, onIndexDocuments, onRunOcr }: Sea
     e.preventDefault();
     if (!query.trim()) return;
 
+    if (selectedDocIds.size === 0) {
+      setError("Please select at least one document to search.");
+      return;
+    }
+
     setIsSearching(true);
     setError(null);
 
     try {
-      if (searchMode === 'semantic') {
-        const queryEmbedding = await generateEmbedding(query);
+      const filteredSegments = segments.filter(s => selectedDocIds.has(s.docId));
 
-        const scoredResults = segments
-          .filter(s => s.embedding)
-          .map(segment => ({
-            segment,
-            score: cosineSimilarity(queryEmbedding, segment.embedding!)
-          }))
-          .filter(r => r.score > 0.3) // threshold
-          .sort((a, b) => b.score - a.score)
-          .slice(0, 10); // top 10
+      const queryEmbedding = await generateEmbedding(query);
 
-        setResults(scoredResults);
-      } else {
-        // Keyword search
-        const lowerQuery = query.toLowerCase();
-        const keywordResults = segments
-          .filter(s => s.text.toLowerCase().includes(lowerQuery))
-          .map(segment => ({ segment }))
-          .slice(0, 20); // Limit keyword results
-        setResults(keywordResults);
-      }
+      const semanticResults = filteredSegments
+        .filter(s => s.embedding)
+        .map(segment => ({
+          segment,
+          score: cosineSimilarity(queryEmbedding, segment.embedding!)
+        }))
+        .filter(r => r.score > 0.3) // threshold
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 10); // top 10
+
+      const lowerQuery = query.toLowerCase();
+      const keywordResults = filteredSegments
+        .filter(s => s.text.toLowerCase().includes(lowerQuery))
+        .map(segment => ({ segment }))
+        .slice(0, 20); // Limit keyword results
+
+      setResults({
+        semantic: semanticResults,
+        keyword: keywordResults
+      });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       setError(err.message || 'Error performing search');
@@ -135,21 +141,33 @@ export function SearchModal({ isOpen, onClose, onIndexDocuments, onRunOcr }: Sea
 
         <div className="p-4 border-b bg-gray-50">
           {unindexedDocsCount === 0 && !isIndexing && !isAnalyzingHealth && (
-            <div className="flex gap-4 mb-4 border-b border-gray-200">
-              <button
-                onClick={() => setSearchMode('semantic')}
-                className={`pb-2 px-1 font-medium text-sm transition-colors relative ${searchMode === 'semantic' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                Semantic Search
-                {searchMode === 'semantic' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-t-full" />}
-              </button>
-              <button
-                onClick={() => setSearchMode('keyword')}
-                className={`pb-2 px-1 font-medium text-sm transition-colors relative ${searchMode === 'keyword' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                Keyword Search
-                {searchMode === 'keyword' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-t-full" />}
-              </button>
+            <div className="mb-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-700">Select documents to search:</span>
+                <div className="space-x-2 text-sm">
+                  <button type="button" onClick={() => setSelectedDocIds(new Set(documents.map(d => d.id)))} className="text-blue-600 hover:underline">Select All</button>
+                  <span className="text-gray-300">|</span>
+                  <button type="button" onClick={() => setSelectedDocIds(new Set())} className="text-gray-500 hover:underline">Clear</button>
+                </div>
+              </div>
+              <div className="flex flex-col gap-2 max-h-32 overflow-y-auto border border-gray-200 rounded-lg p-2 bg-white">
+                {documents.map(doc => (
+                  <label key={doc.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
+                    <input
+                      type="checkbox"
+                      checked={selectedDocIds.has(doc.id)}
+                      onChange={(e) => {
+                        const newSet = new Set(selectedDocIds);
+                        if (e.target.checked) newSet.add(doc.id);
+                        else newSet.delete(doc.id);
+                        setSelectedDocIds(newSet);
+                      }}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-700 truncate">{doc.name}</span>
+                  </label>
+                ))}
+              </div>
             </div>
           )}
 
@@ -225,33 +243,67 @@ export function SearchModal({ isOpen, onClose, onIndexDocuments, onRunOcr }: Sea
             </div>
           )}
 
-          {results.length > 0 ? (
-            <div className="space-y-4">
-              {results.map(({ segment, score }, index) => (
-                <div
-                  key={index}
-                  className="p-4 border rounded-lg hover:border-blue-500 cursor-pointer transition-colors"
-                  onClick={() => handleResultClick(segment.docId)}
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <h3 className="font-semibold text-blue-600 truncate mr-4">
-                      {segment.docName} (Page {segment.pageNumber})
-                    </h3>
-                    {score !== undefined && (
-                      <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full whitespace-nowrap">
-                        Score: {(score * 100).toFixed(1)}%
-                      </span>
-                    )}
+          {(results.semantic.length > 0 || results.keyword.length > 0) ? (
+            <div className="space-y-6">
+              {results.semantic.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-800 mb-3 border-b pb-2">Semantic Matches</h3>
+                  <div className="space-y-4">
+                    {results.semantic.map(({ segment, score }, index) => (
+                      <div
+                        key={'sem-'+index}
+                        className="p-4 border rounded-lg hover:border-blue-500 cursor-pointer transition-colors"
+                        onClick={() => handleResultClick(segment.docId)}
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <h4 className="font-semibold text-blue-600 truncate mr-4">
+                            {segment.docName} (Page {segment.pageNumber})
+                          </h4>
+                          {score !== undefined && (
+                            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full whitespace-nowrap">
+                              Score: {(score * 100).toFixed(1)}%
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-700 line-clamp-3">
+                          ...{segment.text.substring(0, 300)}...
+                        </p>
+                      </div>
+                    ))}
                   </div>
-                  <p className="text-sm text-gray-700 line-clamp-3">
-                    ...{segment.text.substring(0, 300)}...
-                  </p>
                 </div>
-              ))}
+              )}
+
+              {results.keyword.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-800 mb-3 border-b pb-2 mt-4">Keyword Matches</h3>
+                  <div className="space-y-4">
+                    {results.keyword.map(({ segment }, index) => (
+                      <div
+                        key={'key-'+index}
+                        className="p-4 border rounded-lg hover:border-blue-500 cursor-pointer transition-colors"
+                        onClick={() => handleResultClick(segment.docId)}
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <h4 className="font-semibold text-blue-600 truncate mr-4">
+                            {segment.docName} (Page {segment.pageNumber})
+                          </h4>
+                          <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full whitespace-nowrap">
+                            Exact Match
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-700 line-clamp-3">
+                          ...{segment.text.substring(0, 300)}...
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           ) : query && !isSearching && !isIndexing ? (
             <div className="text-center text-gray-500 py-12">
-              No {searchMode === 'semantic' ? 'semantic' : 'keyword'} matches found for "{query}".
+              No matches found for "{query}".
             </div>
           ) : (
             <div className="text-center text-gray-500 py-12 flex flex-col items-center">
