@@ -55,7 +55,6 @@ interface DocumentCardProps {
   onInteractiveTable?: (doc: PDFDocument) => void;
   onSmartTableReflow?: (doc: PDFDocument) => void;
   onInteractiveCopy?: (doc: PDFDocument) => void;
-  onInteractiveDataDictionary?: (doc: PDFDocument) => void;
   onInteractiveAutoLinker?: (doc: PDFDocument) => void;
   onSmartForm?: (doc: PDFDocument) => void;
   onSmartCrop?: (doc: PDFDocument) => void;
@@ -126,7 +125,6 @@ export function DocumentCard({
   onInteractiveTable,
   onSmartTableReflow,
   onInteractiveCopy,
-  onInteractiveDataDictionary,
   onInteractiveAutoLinker,
   onSmartForm,
   onSmartCrop,
@@ -925,7 +923,6 @@ export function DocumentCard({
     { category: "Interactive Tools", label: "Magic Box Table (~Instant)", onClick: () => onInteractiveTable?.(doc), complexity: "professional" },
     { category: "Interactive Tools", label: "Smart Table Re-flow (~Instant)", onClick: () => onSmartTableReflow?.(doc), complexity: "professional" },
     { category: "Interactive Tools", label: "Magic Copy (~Instant)", onClick: () => onInteractiveCopy?.(doc), complexity: "professional" },
-    { category: "Interactive Tools", label: "Data Dictionary Extraction (~Instant)", onClick: () => onInteractiveDataDictionary?.(doc), complexity: "professional" },
     { category: "Interactive Tools", label: "Auto-Linker (~Instant)", onClick: () => onInteractiveAutoLinker?.(doc), complexity: "professional" },
     { category: "Interactive Tools", label: "Smart Form Generation (~Instant)", onClick: () => onSmartForm?.(doc), complexity: "professional" },
     { category: "Interactive Tools", label: "Smart Crop (~Instant)", onClick: () => onSmartCrop?.(doc), complexity: "professional" },
@@ -1035,13 +1032,6 @@ export function DocumentCard({
 
           <div className="mt-4">
             <div className="flex gap-2">
-              <button
-                onClick={() => onSplit(doc)}
-                className="flex-1 bg-gray-50 text-gray-700 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 py-2 px-2 rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 flex items-center justify-center gap-1 text-sm"
-                title="Extract / Split"
-              >
-                Split
-              </button>
               <button
                 onClick={() => setIsToolsModalOpen(true)}
                 className="flex-[2] bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50 py-2 px-2 rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 flex items-center justify-center gap-1 text-sm"
