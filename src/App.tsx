@@ -11,7 +11,7 @@ import { useSearchStore, type DocumentSegment } from "./store/searchStore";
 import { useUIStore } from "./store/uiStore";
 import { SearchModal } from "./components/ui/SearchModal";
 import { generateEmbedding } from "./lib/searchEngine";
-import { ChevronDown, FileDiff, Plus } from "lucide-react";
+import { ChevronDown, Plus } from "lucide-react";
 import {
   mergePdfs,
   splitPdf,
@@ -2050,10 +2050,6 @@ function App() {
 
 
 
-  const handleInteractiveDataDictionary = (doc: PDFDocument) => {
-    setInteractiveDataDictionaryState({ isOpen: true, docId: doc.id });
-  };
-
   const handleInteractiveAutoLinker = (doc: PDFDocument) => {
     setInteractiveAutoLinkerState({ isOpen: true, docId: doc.id });
   };
@@ -2805,9 +2801,6 @@ function App() {
                 <button onClick={() => setIsSearchModalOpen(true)} title="Index all documents for search" className="mr-2 px-3 py-1.5 text-sm font-medium bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center gap-2">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg> Search
                 </button>
-                <button onClick={() => setIsDiffModalOpen(true)} className="mr-2 px-3 py-1.5 text-sm font-medium bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center gap-2">
-                  <FileDiff className="w-4 h-4" /> Compare
-                </button>
                 <button onClick={() => setIsSideBySideModalOpen(true)} className="mr-2 px-3 py-1.5 text-sm font-medium bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center gap-2">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16m-7 6h7" /></svg> Side-by-Side
                 </button>
@@ -2841,7 +2834,6 @@ function App() {
                       onInteractiveTable={handleInteractiveTable}
                       onSmartTableReflow={handleSmartTableReflow}
                       onInteractiveCopy={handleInteractiveCopy}
-                      onInteractiveDataDictionary={handleInteractiveDataDictionary}
                       onInteractiveAutoLinker={handleInteractiveAutoLinker}
                       onSmartForm={handleSmartForm}
                       onSmartCrop={handleSmartCrop}
