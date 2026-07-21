@@ -175,17 +175,17 @@ function App() {
   const [isSideBySideModalOpen, setIsSideBySideModalOpen] = useState(false);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
 
-  const { isIndexing, setIndexingState, addSegments, segments } = useSearchStore();
+  const { isIndexing, setIndexingState, addSegments, segments, failedIndexDocs, addFailedIndexDoc } = useSearchStore();
 
-  const handleIndexDocuments = async () => {
+  const handleIndexDocuments = async (background = false) => {
     if (isIndexing || documents.length === 0) return;
 
     // Only index documents that haven't been indexed yet
     const indexedDocIds = new Set(segments.map(s => s.docId));
-    const unindexedDocs = documents.filter(doc => !indexedDocIds.has(doc.id));
+    const unindexedDocs = documents.filter(doc => !indexedDocIds.has(doc.id) && !failedIndexDocs.includes(doc.id));
 
     if (unindexedDocs.length === 0) {
-      setIsSearchModalOpen(true);
+      if (!background) setIsSearchModalOpen(true);
       return;
     }
 
@@ -241,11 +241,39 @@ function App() {
       addSegments(newSegments);
     } catch (e) {
       console.error("Error indexing documents", e);
+      for (const doc of unindexedDocs) {
+        addFailedIndexDoc(doc.id);
+      }
     } finally {
       setIndexingState(false, 100);
-      setIsSearchModalOpen(true);
+      if (!background) setIsSearchModalOpen(true);
     }
   };
+
+  const [hasHydrated, setHasHydrated] = useState(false);
+
+  useEffect(() => {
+    const unsubHydrate = useSearchStore.persist.onHydrate(() => setHasHydrated(false));
+    const unsubFinishHydration = useSearchStore.persist.onFinishHydration(() => setHasHydrated(true));
+
+    setHasHydrated(useSearchStore.persist.hasHydrated());
+
+    return () => {
+      unsubHydrate();
+      unsubFinishHydration();
+    };
+  }, []);
+
+
+  useEffect(() => {
+    if (documents.length > 0 && !isIndexing && isInitialized.current && hasHydrated) {
+      const indexedDocIds = new Set(segments.map(s => s.docId));
+      const unindexedDocs = documents.filter(doc => !indexedDocIds.has(doc.id) && !failedIndexDocs.includes(doc.id));
+      if (unindexedDocs.length > 0) {
+        handleIndexDocuments(true);
+      }
+    }
+  }, [documents, segments, isIndexing, hasHydrated, failedIndexDocs]);
   const isInitialized = useRef(false);
   const { setAiStatus, setPyodideStatus } = useEngineStore();
   const nerWorkerRef = useRef<Worker | null>(null);
