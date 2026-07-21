@@ -931,7 +931,7 @@ export function DocumentCard({
     { category: "Interactive Tools", label: "Data Dictionary Extraction (~Instant)", onClick: () => onInteractiveDataDictionary?.(doc), complexity: "professional" },
     { category: "Interactive Tools", label: "Auto-Linker (~Instant)", onClick: () => onInteractiveAutoLinker?.(doc), complexity: "professional" },
     { category: "Interactive Tools", label: "Smart Form Generation (~Instant)", onClick: () => onSmartForm?.(doc), complexity: "professional" },
-    { category: "Interactive Tools", label: "Smart Crop Warning (~Instant)", onClick: () => onSmartCrop?.(doc), complexity: "professional" },
+    { category: "Interactive Tools", label: "Smart Crop (~Instant)", onClick: () => onSmartCrop?.(doc), complexity: "professional" },
 
     { category: "Security & Audit", label: "Protect (Password) (~2s)", onClick: () => onEncrypt?.(doc), complexity: "simple" },
     ...(doc.isEncrypted ? [{ category: "Security & Audit", label: "Unlock (Remove Password)", onClick: () => onUnlock?.(doc), complexity: "simple" }] : []),

@@ -470,7 +470,7 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex justify-center items-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl flex flex-col h-[90vh] overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-2xl w-[95vw] max-w-7xl flex flex-col h-[95vh] overflow-hidden">
 
         <div className="p-4 border-b flex justify-between items-center bg-gray-50">
           <div className="flex items-center gap-3">
@@ -490,15 +490,16 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
         <div className="flex-1 flex overflow-hidden relative bg-gray-100">
 
           <div className="w-64 bg-white border-r p-4 flex flex-col gap-4 overflow-y-auto">
-            <h3 className="font-semibold text-gray-700 mb-2">Crop Area (pt)</h3>
+            <h3 className="font-semibold text-gray-700 mb-2">Crop Area ({measurementUnit})</h3>
 
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">Left Crop</label>
                 <input
                   type="number"
-                  value={pdfBox?.left ?? ''}
-                  onChange={(e) => handlePdfBoxChange('left', parseFloat(e.target.value) || 0)}
+                  step="0.01"
+                  value={pdfBox ? formatUnit(pdfBox.left, measurementUnit) : ''}
+                  onChange={(e) => handlePdfBoxChange('left', parseUnit(e.target.value, measurementUnit) || 0)}
                   disabled={!pdfBox}
                   className="w-full border rounded px-3 py-2 text-sm focus:ring-1 focus:ring-blue-500 outline-none disabled:bg-gray-50 disabled:text-gray-400"
                 />
@@ -507,10 +508,11 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
                 <label className="block text-xs font-medium text-gray-500 mb-1">Right Crop</label>
                 <input
                   type="number"
-                  value={pdfBox && unscaledDimensions ? Math.max(0, Math.round(unscaledDimensions.width - pdfBox.right)) : ''}
+                  step="0.01"
+                  value={pdfBox && unscaledDimensions ? formatUnit(Math.max(0, unscaledDimensions.width - pdfBox.right), measurementUnit) : ''}
                   onChange={(e) => {
                     if (!unscaledDimensions) return;
-                    const margin = parseFloat(e.target.value) || 0;
+                    const margin = parseUnit(e.target.value, measurementUnit) || 0;
                     handlePdfBoxChange('right', unscaledDimensions.width - margin);
                   }}
                   disabled={!pdfBox || !unscaledDimensions}
@@ -521,8 +523,9 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
                 <label className="block text-xs font-medium text-gray-500 mb-1">Top Crop</label>
                 <input
                   type="number"
-                  value={pdfBox?.top ?? ''}
-                  onChange={(e) => handlePdfBoxChange('top', parseFloat(e.target.value) || 0)}
+                  step="0.01"
+                  value={pdfBox ? formatUnit(pdfBox.top, measurementUnit) : ''}
+                  onChange={(e) => handlePdfBoxChange('top', parseUnit(e.target.value, measurementUnit) || 0)}
                   disabled={!pdfBox}
                   className="w-full border rounded px-3 py-2 text-sm focus:ring-1 focus:ring-blue-500 outline-none disabled:bg-gray-50 disabled:text-gray-400"
                 />
@@ -531,10 +534,11 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
                 <label className="block text-xs font-medium text-gray-500 mb-1">Bottom Crop</label>
                 <input
                   type="number"
-                  value={pdfBox && unscaledDimensions ? Math.max(0, Math.round(unscaledDimensions.height - pdfBox.bottom)) : ''}
+                  step="0.01"
+                  value={pdfBox && unscaledDimensions ? formatUnit(Math.max(0, unscaledDimensions.height - pdfBox.bottom), measurementUnit) : ''}
                   onChange={(e) => {
                     if (!unscaledDimensions) return;
-                    const margin = parseFloat(e.target.value) || 0;
+                    const margin = parseUnit(e.target.value, measurementUnit) || 0;
                     handlePdfBoxChange('bottom', unscaledDimensions.height - margin);
                   }}
                   disabled={!pdfBox || !unscaledDimensions}
