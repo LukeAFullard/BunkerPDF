@@ -1177,12 +1177,10 @@ export const formatMarkdownFromItems = (textItems: any[]): string => {
   // We need to ensure we don't accidentally turn regular paragraphs into tables.
   // A table has multiple rows where the items strictly align into vertical columns.
   // We check if there are well-defined common X-coordinates (columns) shared across rows.
-  let multiItemRowCount = 0;
   const allXPositions = [];
 
   for (const row of tempRows) {
     if (row.items.length >= 2) {
-      multiItemRowCount++;
       for (const item of row.items) {
           allXPositions.push(item.x);
       }
@@ -1237,7 +1235,7 @@ export const formatMarkdownFromItems = (textItems: any[]): string => {
      const nextInterval = intervals[i];
      // A GUTTER_THRESHOLD determines how large an empty gap must be to split a column.
      // If the gap is smaller than the threshold, we merge them into a single column interval.
-     const GUTTER_THRESHOLD = 20;
+     const GUTTER_THRESHOLD = 40;
      if (nextInterval.start - currentInterval.end <= GUTTER_THRESHOLD) {
          currentInterval.end = Math.max(currentInterval.end, nextInterval.end);
      } else {
@@ -1336,7 +1334,7 @@ export const formatMarkdownFromItems = (textItems: any[]): string => {
         const nextRow = formattedRows[i + 1];
         const gap = nextRow.y - row.bottom;
 
-        if (gap > row.averageHeight * 0.5) {
+        if (gap > row.averageHeight * 0.8) {
           blocks.push(currentBlock);
           currentBlock = { rows: [], maxFontSize: 0 };
         }
