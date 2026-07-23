@@ -1,32 +1,45 @@
 from playwright.sync_api import sync_playwright
 
 def run_cuj(page):
+    # App is configured with base: '/BunkerPDF/' in Vite (saw it in output), so navigating to root might redirect, or we need to go to /BunkerPDF/
     page.goto("http://localhost:5173/BunkerPDF/")
-    page.wait_for_timeout(2000)
+    page.wait_for_timeout(2000) # wait for page to load fully
 
-    # 1. Upload the dummy pdf
-    file_input = page.locator('input[type="file"]')
-    file_input.set_input_files('dummy.pdf')
-    page.wait_for_timeout(2000)
+    # Upload test PDF
+    page.set_input_files('input[type="file"]', 'test.pdf')
+    page.wait_for_timeout(3000)
 
-    # Take screenshot of the document card and preview (this captures the larger preview size and health details)
-    page.screenshot(path="/home/jules/verification/screenshots/preview_size.png")
+    # We should have one document card now
+    # Let's hover over the thumbnail to reveal the controls
+    page.locator('.group.relative').first.hover()
     page.wait_for_timeout(1000)
 
-    # 2. Click tools to open the tools modal to show OCR is gone
-    page.locator('button', has_text='Tools').click()
-    page.wait_for_timeout(1000)
+    # Take screenshot of the initial state with pagination controls showing "1 / 3"
+    page.screenshot(path="/home/jules/verification/screenshots/verification-page1.png")
+    page.wait_for_timeout(500)
 
-    # Take screenshot at the key moment showing the modal
+    # Click next page
+    page.locator('button').filter(has=page.locator('svg.lucide-chevron-right')).click()
+    page.wait_for_timeout(2000) # Wait for page to render
+
+    # Take screenshot of page 2
+    page.screenshot(path="/home/jules/verification/screenshots/verification-page2.png")
+    page.wait_for_timeout(500)
+
+    # Click next page
+    page.locator('button').filter(has=page.locator('svg.lucide-chevron-right')).click()
+    page.wait_for_timeout(2000) # Wait for page to render
+
+    # Take screenshot of page 3
     page.screenshot(path="/home/jules/verification/screenshots/verification.png")
     page.wait_for_timeout(1000)
-
 
 if __name__ == "__main__":
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(
-            record_video_dir="/home/jules/verification/videos"
+            record_video_dir="/home/jules/verification/videos",
+            viewport={"width": 1280, "height": 720}
         )
         page = context.new_page()
         try:
