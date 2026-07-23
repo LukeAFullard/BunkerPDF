@@ -41,6 +41,14 @@ export function DocumentHealthPanel({
         onClick: onUnlock
       }
     });
+  } else {
+    checks.push({
+      id: 'unencrypted',
+      status: 'good',
+      icon: <CheckCircle className="w-5 h-5" />,
+      title: 'No Encryption',
+      description: 'Document is not password protected.',
+    });
   }
 
 
@@ -57,17 +65,23 @@ export function DocumentHealthPanel({
         onClick: onOcr
       }
     });
-  }
-
-
-  // Show "All Good" if no issues
-  if (checks.length === 0) {
+  } else if (healthData) {
     checks.push({
-      id: 'healthy',
+      id: 'text-selectable',
       status: 'good',
       icon: <CheckCircle className="w-5 h-5" />,
-      title: 'Document Looks Good',
-      description: 'No issues detected. Use the context menu to perform actions.'
+      title: 'Text Selectable',
+      description: 'Document has selectable text (No OCR needed).',
+    });
+  }
+
+  if (healthData?.hasForms) {
+    checks.push({
+      id: 'forms',
+      status: 'good',
+      icon: <CheckCircle className="w-5 h-5" />,
+      title: 'Forms Detected',
+      description: 'Document contains interactive form fields.',
     });
   }
 
