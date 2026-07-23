@@ -937,7 +937,6 @@ export function DocumentCard({
     { category: "Other", label: "Read Aloud (TTS) (~15s/pg)", onClick: () => onReadAloud?.(doc), complexity: "professional" },
     { category: "Other", ...(!isMobile ? { label: "Scan PII (~5s)", onClick: handleScan, complexity: "professional" } : {}) },
     { category: "Other", ...(!isMobile ? { label: "Scan Codes (~5s)", onClick: handleScanCodes, complexity: "professional" } : {}) },
-    { category: "Other", ...(!isMobile ? { label: "OCR (~10s)", onClick: () => onOcr?.(doc), complexity: "professional" } : {}) },
 
 
   ].filter(item => item.label) as { category: string; label: string; onClick?: () => void; variant?: string; complexity?: 'simple'|'professional' }[];
@@ -967,7 +966,7 @@ export function DocumentCard({
       />
       <div className="p-4 flex flex-col justify-between flex-1">
         <div className="mb-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded">
-          <PDFThumbnail file={doc.file} />
+          <PDFThumbnail file={doc.file} width={600} />
         </div>
 
         <div className="mb-4">
