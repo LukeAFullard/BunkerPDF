@@ -13,6 +13,7 @@ import { DocumentHealthPanel } from './DocumentHealthPanel';
 import { analyzeDocumentHealth } from '../../lib/healthChecks';
 import { TableExtractionModal } from './TableExtractionModal';
 import { ToolsModal } from './ToolsModal';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface DocumentCardProps {
   onResizePages?: (doc: PDFDocument) => void;
@@ -165,6 +166,7 @@ export function DocumentCard({
     hasForms: boolean;
   } | null>(null);
   const [analyzedFileKey, setAnalyzedFileKey] = React.useState<string | null>(null);
+  const [currentPage, setCurrentPage] = React.useState(1);
 
   React.useEffect(() => {
     if (!isActive) return;
@@ -965,8 +967,32 @@ export function DocumentCard({
         onClose={() => setErrorState((prev) => ({ ...prev, isOpen: false }))}
       />
       <div className="p-4 flex flex-col justify-between flex-1">
-        <div className="mb-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded">
-          <PDFThumbnail file={doc.file} width={600} />
+        <div className="mb-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded group relative">
+          <PDFThumbnail file={doc.file} width={600} pageNumber={currentPage} />
+
+          {doc.pageCount && doc.pageCount > 1 && (
+            <div className="absolute inset-x-0 bottom-2 flex justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+              <div className="bg-black/60 text-white rounded-full flex items-center px-2 py-1 gap-2 shadow-lg backdrop-blur-sm">
+                <button
+                  onClick={(e) => { e.stopPropagation(); setCurrentPage(p => Math.max(1, p - 1)); }}
+                  disabled={currentPage <= 1}
+                  className="p-1 hover:bg-white/20 rounded-full disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <span className="text-xs font-medium min-w-[3ch] text-center">
+                  {currentPage} / {doc.pageCount}
+                </span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setCurrentPage(p => Math.min(doc.pageCount!, p + 1)); }}
+                  disabled={currentPage >= doc.pageCount}
+                  className="p-1 hover:bg-white/20 rounded-full disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="mb-4">

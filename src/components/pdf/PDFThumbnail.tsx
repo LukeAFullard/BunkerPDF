@@ -11,9 +11,10 @@ interface PDFThumbnailProps {
   file: File;
   width?: number;
   className?: string;
+  pageNumber?: number;
 }
 
-export function PDFThumbnail({ file, width = 200, className }: PDFThumbnailProps) {
+export function PDFThumbnail({ file, width = 200, className, pageNumber = 1 }: PDFThumbnailProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pdfDocRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -30,8 +31,8 @@ export function PDFThumbnail({ file, width = 200, className }: PDFThumbnailProps
         const pdf = await loadingTask.promise;
         pdfDocRef.current = pdf;
 
-        // Render the first page
-        const page = await pdf.getPage(1);
+        // Render the specified page
+        const page = await pdf.getPage(pageNumber);
 
         // Calculate scale to match the requested width
         const unscaledViewport = page.getViewport({ scale: 1.0 });
@@ -82,7 +83,7 @@ export function PDFThumbnail({ file, width = 200, className }: PDFThumbnailProps
         pdfDocRef.current = null;
       }
     };
-  }, [file, width]);
+  }, [file, width, pageNumber]);
 
   if (error) {
     return (
