@@ -27,7 +27,7 @@ export const useUIStore = create<UIState>()(
     (set) => ({
   isDarkMode: false,
   toggleDarkMode: () => set((state) => ({ isDarkMode: !state.isDarkMode })),
-  complexityMode: 'simple',
+  complexityMode: 'professional',
   setComplexityMode: (mode) => set({ complexityMode: mode }),
   activeTool: null,
   setActiveTool: (tool) => set({ activeTool: tool }),
