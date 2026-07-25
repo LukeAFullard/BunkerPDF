@@ -914,12 +914,12 @@ export function DocumentCard({
     { category: "Content & Marks", label: "Add Page Numbers (~2s)", onClick: () => onAddPageNumbers?.(doc), complexity: "professional" },
     { category: "Content & Marks", label: "Bates Numbering (~2s)", onClick: () => onBatesNumbering?.(doc), complexity: "professional" },
 
-    { category: "Extract & Export", ...(!isMobile ? { label: "Extract Tables (~10s)", onClick: () => setIsTableExtractionModalOpen(true), complexity: "professional" } : {}) },
+    { category: "Extract & Export", label: "Extract Tables (~10s)", onClick: () => setIsTableExtractionModalOpen(true), complexity: "professional" },
     { category: "Extract & Export", label: "Extract Notes (MD) (~5s)", onClick: handleExtractMarkdown, complexity: "simple" },
     { category: "Extract & Export", label: "Extract Web (HTML) (~5s)", onClick: handleExtractHtml, complexity: "professional" },
-    { category: "Extract & Export", ...(!isMobile ? { label: "Export DOCX (~10s)", onClick: handleExportDocx, complexity: "professional" } : {}) },
+    { category: "Extract & Export", label: "Export DOCX (~10s)", onClick: handleExportDocx, complexity: "professional" },
     { category: "Extract & Export", label: "Export True Dark (~10s)", onClick: handleExportDark, complexity: "professional" },
-    { category: "Extract & Export", ...(!isMobile ? { label: "Extract Images (~10s)", onClick: handleExtractImages, complexity: "simple" } : {}) },
+    { category: "Extract & Export", label: "Extract Images (~10s)", onClick: handleExtractImages, complexity: "simple" },
     { category: "Extract & Export", label: "Extract Links (CSV) (~2s)", onClick: handleExtractLinks, complexity: "professional" },
     { category: "Extract & Export", label: "Extract Annotations (CSV) (~2s)", onClick: handleExtractAnnotations, complexity: "professional" },
     { category: "Interactive Tools", label: "Magic Box Table (~Instant)", onClick: () => onInteractiveTable?.(doc), complexity: "professional" },
@@ -933,12 +933,12 @@ export function DocumentCard({
     ...(doc.isEncrypted ? [{ category: "Security & Audit", label: "Unlock (Remove Password)", onClick: () => onUnlock?.(doc), complexity: "simple" }] : []),
     { category: "Security & Audit", label: "Point & Click Redact (~Instant)", onClick: () => onInteractiveRedact?.(doc), complexity: "professional" },
     { category: "Security & Audit", label: "Auto-Redact Headers/Footers (~Instant)", onClick: () => onAutoRedactLayout?.(doc), complexity: "professional" },
-    { category: "Security & Audit", ...(!isMobile ? { label: "Audit Redactions (~5s)", onClick: () => onAudit?.(doc), complexity: "professional" } : {}) },
+    { category: "Security & Audit", label: "Audit Redactions (~5s)", onClick: () => onAudit?.(doc), complexity: "professional" },
     { category: "Other", label: "Edit Bookmarks/Outline (~2s)", onClick: handleEditBookmarks, complexity: "simple" },
     { category: "Other", label: "Edit Metadata (~2s)", onClick: handleViewMetadataLocal, complexity: "professional" },
     { category: "Other", label: "Read Aloud (TTS) (~15s/pg)", onClick: () => onReadAloud?.(doc), complexity: "professional" },
-    { category: "Other", ...(!isMobile ? { label: "Scan PII (~5s)", onClick: handleScan, complexity: "professional" } : {}) },
-    { category: "Other", ...(!isMobile ? { label: "Scan Codes (~5s)", onClick: handleScanCodes, complexity: "professional" } : {}) },
+    { category: "Other", label: "Scan PII (~5s)", onClick: handleScan, complexity: "professional" },
+    { category: "Other", label: "Scan Codes (~5s)", onClick: handleScanCodes, complexity: "professional" },
 
 
   ].filter(item => item.label) as { category: string; label: string; onClick?: () => void; variant?: string; complexity?: 'simple'|'professional' }[];
