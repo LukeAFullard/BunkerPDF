@@ -371,8 +371,13 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
     }
   }
 
+
   // Sort rows by Y coordinate
   rows.sort((a, b) => a.y - b.y);
+
+  // Sort items within each row by X coordinate
+  rows.forEach(row => row.items.sort((a, b) => a.x - b.x));
+
 
   // Second pass: merge wrapped lines into the row above
   // 1. Calculate typical gap
