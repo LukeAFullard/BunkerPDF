@@ -19,38 +19,13 @@ PyMuPDF allows extracting vector paths. We need to expose a new command (e.g., `
     ```typescript
     export type PyodideWorkerAction =
       | { type: 'EXTRACT_IMAGES'; file: ArrayBuffer; pageNumber: number }
-      | { type: 'EXTRACT_LINES'; file: ArrayBuffer; pageNumber: number }; // NEW
+      | { type: 'EXTRACT_LINES'; file: ArrayBuffer; pageNumber: number };
     ```
 
 2.  **Implement the Python extraction logic:**
     Within the Pyodide worker, write a Python snippet that opens the document, goes to the specified page, and calls `page.get_drawings()`.
 
     The Python code should filter the drawings for horizontal and vertical lines/rectangles, extracting their bounding boxes (`rect`).
-    ```python
-    import fitz
-    import json
-
-    def extract_lines(doc_bytes, page_number):
-        doc = fitz.open(stream=doc_bytes, filetype="pdf")
-        page = doc[page_number - 1]
-        paths = page.get_drawings()
-
-        lines = []
-        for path in paths:
-            # Look at bounding boxes of paths
-            rect = path["rect"]
-            # Basic filtering for horizontal/vertical lines or thin rectangles
-            is_horizontal = rect.height < 5 and rect.width > 20
-            is_vertical = rect.width < 5 and rect.height > 20
-
-            if is_horizontal or is_vertical:
-                lines.append({
-                    "x0": rect.x0, "y0": rect.y0,
-                    "x1": rect.x1, "y1": rect.y1,
-                    "type": "horizontal" if is_horizontal else "vertical"
-                })
-        return json.dumps(lines)
-    ```
 
 3.  **Return the parsed geometric data** to the main thread.
 
@@ -70,42 +45,50 @@ Currently, `formatTableFromItems` and `analyzeLayoutLiteparse` rely purely on te
     }
     ```
 
-2.  **Update `formatTableFromItems`:**
-    Modify the table heuristic function to accept an array of `LineItem`s.
-    If `LineItem`s are provided:
-    *   Use horizontal lines to definitively mark row boundaries.
-    *   Use vertical lines to definitively mark column boundaries.
-    *   Snap text items into the resulting grid explicitly, falling back to spatial clustering only for areas without drawn borders (borderless tables).
+2.  **Pre-processing (Deduplication & Validation):**
+    *   **Handle partial/broken rulings:** `get_drawings()` often returns messy paths (overlapping lines, segments split by merged cells). We must cluster near-duplicate lines (dedupe within ~1-2px) and require a line to span a minimum fraction of the table's bounding box before treating it as a hard boundary.
+    *   **Coordinate validation:** Before wiring into logic, ensure PyMuPDF coordinates (often top-left) align perfectly with the LiteParse/pdf.js coordinate system being used.
 
-3.  **Enhance Text Formatting (Underlines & Strikethroughs):**
+3.  **Update `formatTableFromItems` (Per-Axis Hybrid Mode):**
+    Modify the table heuristic function to accept an array of `LineItem`s.
+    Crucially, evaluate rows and columns **independently**:
+    ```typescript
+    rowBoundaries = horizontalLines.length ? fromLines(horizontalLines) : fromSpatialClustering(items);
+    colBoundaries = verticalLines.length ? fromLines(verticalLines)   : fromOverlapClustering(items);
+    ```
+    This ensures tables with only vertical rules (or only horizontal rules) still benefit from geometry on the ruled axis, while falling back to spatial clustering for the unruled axis.
+    *(Note: The existing row-merge heuristic for wrapped cells remains necessary and operates alongside this logic).*
+
+4.  **Confidence & Fallback Signal:**
+    Compute both the geometric grid and the spatial-clustering grid where feasible. Log or flag if they disagree above a certain threshold to prevent false-positive "lines" (like decorative borders) from silently destroying table extraction.
+
+5.  **Enhance Text Formatting (Underlines & Strikethroughs):**
     Add a pre-processing pass in `extractMarkdownLiteparse` or `formatMarkdownFromItems`:
     *   Iterate through horizontal lines.
     *   If a line's `y` coordinate overlaps with a text item's baseline and spans its width, classify it as an underline.
     *   If a line's `y` coordinate intersects the middle of a text item's bounding box, classify it as a strikethrough.
-    *   Wrap the respective text item's content in `<u>` or `<s>` before processing the markdown.
 
 ### C. The UI / Trigger Layer
-**Files to modify:** `src/components/workspace/DocumentCard.tsx`, `src/components/modals/InteractiveCopyModal.tsx` (and potentially others)
+**Files to modify:** `src/components/workspace/DocumentCard.tsx`, `src/components/modals/InteractiveCopyModal.tsx`
 
-1.  **State Management:**
-    When initiating a table extraction or markdown extraction that requires high accuracy, the UI should dispatch both a LiteParse text extraction request AND a Pyodide line extraction request in parallel.
+1.  **Coordinate Debugging (Crucial First Step):**
+    Build a visual debug overlay in `InteractiveCopyModal` *first*. Render the extracted lines as absolutely positioned `<div>`s or draw them on a `<canvas>` to visually verify coordinate mapping against real PDFs *before* touching extraction logic.
 
-2.  **Interactive Overlays:**
-    For debugging and user interaction (e.g., in `InteractiveCopyModal`), we can render the detected lines as absolutely positioned `<div>`s or draw them onto a transparent `<canvas>` over the PDF page. This allows users to see the structure the engine has detected.
+2.  **Performance Considerations:**
+    Running Pyodide `get_drawings()` in parallel per page adds latency. Benchmark this on multi-page documents before enabling it by default on latency-sensitive interactive tools (like Magic Copy).
 
 ## 3. Fallback for Scanned Documents (Raster Images)
 
-The PyMuPDF approach works for native vector PDFs. For scanned documents (where lines are part of the image pixels), vector extraction will return nothing.
+The PyMuPDF approach works for native vector PDFs. For scanned documents, vector extraction will return nothing.
 
-**Future enhancement:**
-If PyMuPDF returns no lines but OCR is triggered, we can utilize `opencv.js` (OpenCV for Web) to perform image processing on the extracted canvas data.
-1.  Apply Grayscale & Thresholding.
-2.  Use a Hough Line Transform (`cv.HoughLinesP`) to detect line segments in the raster image.
-3.  Map these pixel coordinates back to PDF points and pass them to `liteparseEngine.ts` in the exact same `LineItem` format.
+**Future enhancement (Deferred):**
+If PyMuPDF returns no lines but OCR is triggered, we can utilize `opencv.js` (OpenCV for Web) to perform image processing on the extracted canvas data via Grayscale, Thresholding, and Hough Line Transforms.
 
-## 4. Summary of Work
+## 4. Rollout Sequencing
 
-1.  **Pyodide Worker Update:** Add `EXTRACT_LINES` action using `fitz.Page.get_drawings()`.
-2.  **Data Models:** Create `LineItem` types.
-3.  **Layout Engine Update:** Refactor `liteparseEngine.ts` to utilize line intersections for tables and text formatting.
-4.  **UI Coordination:** Ensure front-end components orchestrate the dual data fetching (Text + Lines) before invoking the formatting logic.
+To de-risk the feature, it should be shipped in this specific order:
+1.  **Borderless-table row-merge heuristic:** (Fix existing bugs cheaply using spatial text clustering).
+2.  **`EXTRACT_LINES` + Visual Overlay:** (Validate PyMuPDF coordinates on the frontend; no extraction logic changes yet).
+3.  **Per-axis Hybrid Boundary Logic:** (Implement the core geometry + spatial fallback in `formatTableFromItems`).
+4.  **Text Formatting Pass:** (Extract underlines and strikethroughs).
+5.  **Raster/Hough-line fallback:** (Deferred - highest effort, smallest near-term payoff).
