@@ -394,35 +394,89 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
   const allTablesOutput: string[] = [];
 
   for (const table of tables) {
-    // Find all unique X coordinates to establish columns
-    const xPositions: number[] = [];
+    // Build column intervals using overlapping bounding boxes
+    const intervals: { start: number, end: number }[] = [];
     for (const row of table.rows) {
       for (const item of row.items) {
-        if (!xPositions.some(x => Math.abs(x - item.x) < 10)) {
-          xPositions.push(item.x);
-        }
+        intervals.push({ start: item.x, end: item.x + item.width });
       }
     }
-    xPositions.sort((a, b) => a - b);
+    intervals.sort((a, b) => a.start - b.start);
+
+    const columns: { start: number, end: number }[] = [];
+    if (intervals.length > 0) {
+      let currentInterval = intervals[0];
+      for (let i = 1; i < intervals.length; i++) {
+        const nextInterval = intervals[i];
+        // Merge if overlapping or within a small gutter (5px)
+        if (nextInterval.start <= currentInterval.end + 5) {
+          currentInterval.end = Math.max(currentInterval.end, nextInterval.end);
+        } else {
+          columns.push(currentInterval);
+          currentInterval = nextInterval;
+        }
+      }
+      columns.push(currentInterval);
+    }
 
     const tableGrid: string[][] = [];
 
     for (const row of table.rows) {
-      const gridRow: string[] = Array(xPositions.length).fill('');
+      const gridRow: string[] = Array(columns.length).fill('');
       for (const item of row.items) {
-        // Find closest column
-        let minDiff = Infinity;
+        const itemMid = item.x + item.width / 2;
         let colIndex = 0;
-        for (let i = 0; i < xPositions.length; i++) {
-          const diff = Math.abs(xPositions[i] - item.x);
+        let minDiff = Infinity;
+        for (let i = 0; i < columns.length; i++) {
+          const col = columns[i];
+          if (item.x <= col.end && (item.x + item.width) >= col.start) {
+            colIndex = i;
+            break;
+          }
+          const colMid = (col.start + col.end) / 2;
+          const diff = Math.abs(colMid - itemMid);
           if (diff < minDiff) {
             minDiff = diff;
             colIndex = i;
           }
         }
-        gridRow[colIndex] = item.text.replace(/(\r\n|\n|\r)/gm, " ");
+
+        const cleanedText = item.text.replace(/(\r\n|\n|\r)/gm, " ");
+        if (gridRow[colIndex]) {
+          gridRow[colIndex] += " " + cleanedText;
+        } else {
+          gridRow[colIndex] = cleanedText;
+        }
       }
       tableGrid.push(gridRow);
+    }
+
+    // Safety-net post-process: merge mutually exclusive adjacent columns
+    let merged = true;
+    while (merged && tableGrid.length > 0 && tableGrid[0].length > 1) {
+      merged = false;
+      for (let c = 0; c < tableGrid[0].length - 1; c++) {
+        let mutuallyExclusive = true;
+        for (let r = 0; r < tableGrid.length; r++) {
+          if (tableGrid[r][c] !== '' && tableGrid[r][c + 1] !== '') {
+            mutuallyExclusive = false;
+            break;
+          }
+        }
+
+        if (mutuallyExclusive) {
+          for (let r = 0; r < tableGrid.length; r++) {
+            if (tableGrid[r][c + 1] !== '') {
+              tableGrid[r][c] = tableGrid[r][c] ? tableGrid[r][c] + " " + tableGrid[r][c + 1] : tableGrid[r][c + 1];
+            }
+          }
+          for (let r = 0; r < tableGrid.length; r++) {
+            tableGrid[r].splice(c + 1, 1);
+          }
+          merged = true;
+          break;
+        }
+      }
     }
 
     if (format === 'csv') {
@@ -439,7 +493,7 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
       }
       allTablesOutput.push(md);
     } else if (format === 'latex') {
-      const colCount = xPositions.length;
+      const colCount = tableGrid.length > 0 ? tableGrid[0].length : 0;
       let latex = "\\begin{tabular}{|" + "c|".repeat(colCount) + "}\n\\hline\n";
       for (const row of tableGrid) {
         latex += row.join(" & ") + " \\\\\n\\hline\n";
