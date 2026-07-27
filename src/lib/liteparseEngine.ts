@@ -53,6 +53,14 @@ export const getConfiguredLiteParse = async (options: { outputFormat?: 'json' | 
   return engine;
 };
 
+export interface LineItem {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  type: 'horizontal' | 'vertical';
+}
+
 export const initLiteParse = async (): Promise<void> => {
   if (hasInit) return;
   if (initPromise) return initPromise;

@@ -19,6 +19,7 @@ export type PyodideWorkerMessage = {
     | "EXTRACT_MARKDOWN"
     | "EXTRACT_HTML"
     | "EXTRACT_IMAGES"
+    | "EXTRACT_LINES"
     | "EXTRACT_INTERSECTING_IMAGES"
     | "EXTRACT_LINKS"
     | "EXTRACT_ANNOTATIONS"
@@ -579,6 +580,80 @@ doc.close()
           bytes: resultBytes,
         },
       } satisfies PyodideWorkerResponse);
+    } else if (type === "EXTRACT_LINES") {
+      if (!initPromise) initPromise = initializePyodide();
+      await initPromise;
+      if (!pyodide) throw new Error("Pyodide not initialized");
+      if (!pdfBytes) throw new Error("No PDF bytes provided");
+
+      pyodide.globals.set("doc_bytes", pdfBytes);
+      pyodide.globals.set("page_num", pageNum ?? 1);
+
+      const extractLinesCode = `
+import fitz
+import json
+
+doc = fitz.open(stream=bytes(doc_bytes), filetype="pdf")
+page_idx = max(0, page_num - 1)
+page = doc[page_idx]
+
+lines = []
+try:
+    drawings = page.get_drawings()
+    for draw in drawings:
+        for item in draw.get("items", []):
+            item_type = item[0]
+
+            # Handle straight lines ('l')
+            if item_type == 'l':
+                p1, p2 = item[1], item[2]
+                # Check if strictly horizontal
+                if abs(p1.y - p2.y) < 1.0:
+                    lines.append({
+                        "x0": min(p1.x, p2.x),
+                        "y0": p1.y,
+                        "x1": max(p1.x, p2.x),
+                        "y1": p1.y,
+                        "type": "horizontal"
+                    })
+                # Check if strictly vertical
+                elif abs(p1.x - p2.x) < 1.0:
+                    lines.append({
+                        "x0": p1.x,
+                        "y0": min(p1.y, p2.y),
+                        "x1": p1.x,
+                        "y1": max(p1.y, p2.y),
+                        "type": "vertical"
+                    })
+
+            # Handle rectangles ('re')
+            elif item_type == 're':
+                rect = item[1]
+                # Top horizontal edge
+                lines.append({"x0": rect.x0, "y0": rect.y0, "x1": rect.x1, "y1": rect.y0, "type": "horizontal"})
+                # Bottom horizontal edge
+                lines.append({"x0": rect.x0, "y0": rect.y1, "x1": rect.x1, "y1": rect.y1, "type": "horizontal"})
+                # Left vertical edge
+                lines.append({"x0": rect.x0, "y0": rect.y0, "x1": rect.x0, "y1": rect.y1, "type": "vertical"})
+                # Right vertical edge
+                lines.append({"x0": rect.x1, "y0": rect.y0, "x1": rect.x1, "y1": rect.y1, "type": "vertical"})
+
+except Exception as e:
+    pass # Ignore drawing extraction failures
+
+doc.close()
+del doc, doc_bytes, page_num
+json.dumps(lines)
+`;
+      const resultJson = await pyodide.runPythonAsync(extractLinesCode);
+      const resultData = JSON.parse(resultJson);
+
+      self.postMessage({
+        type: "RESULT",
+        jobId,
+        result: resultData,
+      } satisfies PyodideWorkerResponse);
+
     } else if (type === "EXTRACT_TABLES") {
       if (!initPromise) initPromise = initializePyodide();
       await initPromise;

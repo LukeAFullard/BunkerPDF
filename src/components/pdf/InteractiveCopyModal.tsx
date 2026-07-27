@@ -6,6 +6,8 @@ import { X, Type, ZoomIn, ZoomOut, Loader2, Copy, Check, Image as ImageIcon, Sca
 import { useFileStore } from '../../store/fileStore';
 import { cleanupPdfResources } from '../../lib/pdfCleanup';
 import { getConfiguredLiteParse, formatParagraphFromItems, formatMarkdownFromItems } from '../../lib/liteparseEngine';
+import type { LineItem } from '../../lib/liteparseEngine';
+import type { PyodideWorkerMessage, PyodideWorkerResponse } from '../../workers/pyodideWorker';
 import { createWorker } from 'tesseract.js';
 
 interface InteractiveCopyModalProps {
@@ -43,6 +45,8 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
   const [selectWholeLine, setSelectWholeLine] = useState(false);
   const [copyFormat, setCopyFormat] = useState<'text' | 'markdown'>('text');
   const [showBoundingBoxes, setShowBoundingBoxes] = useState(false);
+  const [showExtractedLines, setShowExtractedLines] = useState(false);
+  const [extractedLines, setExtractedLines] = useState<LineItem[]>([]);
   const [isOcrRunning, setIsOcrRunning] = useState(false);
   const [isHandwritingRunning, setIsHandwritingRunning] = useState(false);
 
@@ -288,6 +292,36 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
   useEffect(() => {
     if (isOpen && pdfDocRef.current && liteparseData) {
       renderPage(currentPage, pdfDocRef.current);
+
+      // Extract lines for the current page
+      if (doc) {
+        if (!pyWorkerRef.current) {
+          pyWorkerRef.current = new Worker(new URL('../../workers/pyodideWorker.ts', import.meta.url), { type: 'module' });
+        }
+
+        const jobId = `lines-${doc.id}-${currentPage}`;
+
+        const handleWorkerMessage = (e: MessageEvent) => {
+          const response = e.data as PyodideWorkerResponse;
+          if (response.jobId === jobId) {
+            if (response.type === 'RESULT') {
+              setExtractedLines(response.result as LineItem[]);
+            }
+            pyWorkerRef.current?.removeEventListener('message', handleWorkerMessage);
+          }
+        };
+
+        pyWorkerRef.current.addEventListener('message', handleWorkerMessage);
+
+        doc.file.arrayBuffer().then(buffer => {
+          pyWorkerRef.current?.postMessage({
+            type: 'EXTRACT_LINES',
+            jobId,
+            pdfBytes: new Uint8Array(buffer),
+            pageNum: currentPage
+          } as PyodideWorkerMessage);
+        });
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, zoomLevel]);
@@ -689,6 +723,22 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
                         }}
                       />
                     ))}
+
+                    {showExtractedLines && extractedLines.map((line, idx) => {
+                      const isHorizontal = line.type === 'horizontal';
+                      return (
+                        <div
+                          key={`line-${idx}`}
+                          className="absolute bg-red-500 pointer-events-none"
+                          style={{
+                            left: line.x0 * overlayScale,
+                            top: line.y0 * overlayScale,
+                            width: isHorizontal ? Math.max(1, (line.x1 - line.x0) * overlayScale) : 2,
+                            height: isHorizontal ? 2 : Math.max(1, (line.y1 - line.y0) * overlayScale)
+                          }}
+                        />
+                      );
+                    })}
                   </div>
                </div>
             )}
@@ -804,6 +854,18 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
                 />
                 <label htmlFor="boundingBoxesToggle" className="text-xs font-medium text-gray-600 cursor-pointer">
                   Show Bounding Boxes
+                </label>
+             </div>
+             <div className="flex items-center gap-2 mt-1">
+                <input
+                  type="checkbox"
+                  id="extractedLinesToggle"
+                  checked={showExtractedLines}
+                  onChange={(e) => setShowExtractedLines(e.target.checked)}
+                  className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                />
+                <label htmlFor="extractedLinesToggle" className="text-xs font-medium text-gray-600 cursor-pointer">
+                  Show Extracted Lines
                 </label>
              </div>
           </div>
