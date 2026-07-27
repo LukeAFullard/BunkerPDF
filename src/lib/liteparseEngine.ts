@@ -374,6 +374,50 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
   // Sort rows by Y coordinate
   rows.sort((a, b) => a.y - b.y);
 
+  // Second pass: merge wrapped lines into the row above
+  // 1. Calculate typical gap
+  const gaps: number[] = [];
+  for (let i = 0; i < rows.length - 1; i++) {
+    gaps.push(rows[i + 1].y - rows[i].y);
+  }
+  gaps.sort((a, b) => a - b);
+  const medianGap = gaps.length > 0 ? gaps[Math.floor(gaps.length / 2)] : 20;
+
+  // 2. Merge wrapped rows
+  let mergedAnyRow = true;
+  while (mergedAnyRow) {
+    mergedAnyRow = false;
+    for (let i = 0; i < rows.length - 1; i++) {
+      const rowA = rows[i];
+      const rowB = rows[i + 1];
+      const gap = rowB.y - rowA.y;
+
+      if (gap < medianGap * 0.8 || gap <= 15) {
+        let allSubset = true;
+        for (const itemB of rowB.items) {
+          let foundOverlap = false;
+          for (const itemA of rowA.items) {
+            if (itemB.x <= itemA.x + itemA.width + 5 && itemB.x + itemB.width >= itemA.x - 5) {
+              foundOverlap = true;
+              break;
+            }
+          }
+          if (!foundOverlap) {
+            allSubset = false;
+            break;
+          }
+        }
+
+        if (allSubset) {
+          rowA.items.push(...rowB.items);
+          rows.splice(i + 1, 1);
+          mergedAnyRow = true;
+          break;
+        }
+      }
+    }
+  }
+
   const tables: { rows: typeof rows }[] = [];
   let currentTable: typeof rows = [];
 
