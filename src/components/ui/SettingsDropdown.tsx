@@ -7,7 +7,7 @@ import { twMerge } from 'tailwind-merge';
 export function SettingsDropdown() {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const { extractionMethod, setExtractionMethod, isDarkMode, complexityMode, setComplexityMode, toggleDarkMode } = useUIStore();
+  const { extractionMethod, setExtractionMethod, complexityMode, setComplexityMode } = useUIStore();
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -26,7 +26,7 @@ export function SettingsDropdown() {
         className={twMerge(
           clsx(
             "p-2 rounded-lg transition-colors flex items-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400",
-            isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-600 hover:bg-gray-200"
+            "text-gray-600 hover:bg-gray-200"
           )
         )}
         title="Settings"
@@ -39,7 +39,7 @@ export function SettingsDropdown() {
         <div className={twMerge(
           clsx(
             "absolute right-0 mt-2 w-64 rounded-lg shadow-lg py-2 z-50 border",
-            isDarkMode ? "bg-gray-800 border-gray-700 text-gray-200" : "bg-white border-gray-200 text-gray-800"
+            "bg-white border-gray-200 text-gray-800"
           )
         )}>
           <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700 font-semibold">
@@ -53,7 +53,7 @@ export function SettingsDropdown() {
               className={twMerge(
                 clsx(
                   "w-full rounded-md border text-sm py-1.5 px-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
-                  isDarkMode ? "bg-gray-700 border-gray-600" : "bg-gray-50 border-gray-300"
+                  "bg-gray-50 border-gray-300"
                 )
               )}
             >
@@ -74,7 +74,7 @@ export function SettingsDropdown() {
                 className={twMerge(
                   clsx(
                     "w-full rounded-md border text-sm py-1.5 px-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
-                    isDarkMode ? "bg-gray-700 border-gray-600" : "bg-gray-50 border-gray-300"
+                    "bg-gray-50 border-gray-300"
                   )
                 )}
               >
@@ -83,27 +83,6 @@ export function SettingsDropdown() {
               </select>
             </div>
 
-            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
-              <label className="block text-sm font-medium">Dark Mode</label>
-              <button
-                onClick={toggleDarkMode}
-                className={twMerge(
-                  clsx(
-                    "relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
-                    isDarkMode ? "bg-blue-600" : "bg-gray-200"
-                  )
-                )}
-              >
-                <span
-                  className={twMerge(
-                    clsx(
-                      "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
-                      isDarkMode ? "translate-x-6" : "translate-x-1"
-                    )
-                  )}
-                />
-              </button>
-            </div>
 
             <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
               <button

@@ -1,7 +1,6 @@
 import { loadPdfDocument } from "../../../lib/pdfHelper";
 import { useEffect, useRef, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
-import { useUIStore } from '../../../store/uiStore';
 import { useFileStore } from '../../../store/fileStore';
 import { cleanupPdfResources } from '../../../lib/pdfCleanup';
 
@@ -18,7 +17,6 @@ export function PDFPageThumbnail({ docId, pageNumber, width = 100, className = '
   const containerRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [isVisible, setIsVisible] = useState(false);
-  const isDarkMode = useUIStore((state) => state.isDarkMode);
   const documents = useFileStore((state) => state.documents);
 
   const cacheKey = `${docId}-${pageNumber}-${width}`;
@@ -135,7 +133,7 @@ export function PDFPageThumbnail({ docId, pageNumber, width = 100, className = '
           src={cachedDataUrl}
           alt={`Page ${pageNumber}`}
           className="shadow-sm max-w-full max-h-full object-contain transition-all"
-          style={isDarkMode ? { filter: 'invert(1) hue-rotate(180deg)' } : undefined}
+
           draggable={false}
         />
       ) : (

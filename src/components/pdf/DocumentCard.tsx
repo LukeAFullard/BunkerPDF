@@ -54,7 +54,6 @@ interface DocumentCardProps {
   onInteractiveRedact?: (doc: PDFDocument) => void;
   onAutoRedactLayout?: (doc: PDFDocument) => void;
   onInteractiveTable?: (doc: PDFDocument) => void;
-  onSmartTableReflow?: (doc: PDFDocument) => void;
   onInteractiveCopy?: (doc: PDFDocument) => void;
   onInteractiveAutoLinker?: (doc: PDFDocument) => void;
   onSmartForm?: (doc: PDFDocument) => void;
@@ -124,7 +123,6 @@ export function DocumentCard({
   onInteractiveRedact,
   onAutoRedactLayout,
   onInteractiveTable,
-  onSmartTableReflow,
   onInteractiveCopy,
   onInteractiveAutoLinker,
   onSmartForm,
@@ -158,7 +156,6 @@ export function DocumentCard({
   const activeDocumentId = useFileStore((state) => state.activeDocumentId);
   const isActive = activeDocumentId === doc.id;
   const addLog = useAuditStore((state) => state.addLog);
-  const isDarkMode = useUIStore((state) => state.isDarkMode);
 
   const [healthData, setHealthData] = React.useState<{
     needsOcr: boolean;
@@ -923,7 +920,6 @@ export function DocumentCard({
     { category: "Extract & Export", label: "Extract Links (CSV) (~2s)", onClick: handleExtractLinks, complexity: "professional" },
     { category: "Extract & Export", label: "Extract Annotations (CSV) (~2s)", onClick: handleExtractAnnotations, complexity: "professional" },
     { category: "Interactive Tools", label: "Magic Box Table (~Instant)", onClick: () => onInteractiveTable?.(doc), complexity: "professional" },
-    { category: "Interactive Tools", label: "Smart Table Re-flow (~Instant)", onClick: () => onSmartTableReflow?.(doc), complexity: "professional" },
     { category: "Interactive Tools", label: "Magic Copy (~Instant)", onClick: () => onInteractiveCopy?.(doc), complexity: "professional" },
     { category: "Interactive Tools", label: "Auto-Linker (~Instant)", onClick: () => onInteractiveAutoLinker?.(doc), complexity: "professional" },
     { category: "Interactive Tools", label: "Smart Form Generation (~Instant)", onClick: () => onSmartForm?.(doc), complexity: "professional" },
@@ -944,7 +940,7 @@ export function DocumentCard({
   ].filter(item => item.label) as { category: string; label: string; onClick?: () => void; variant?: string; complexity?: 'simple'|'professional' }[];
 
   return (
-    <div className={`rounded-xl border shadow-sm flex flex-col hover:shadow-md transition-shadow relative ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-100" : "bg-white border-gray-200 text-gray-900"}`}>
+    <div className={`rounded-xl border shadow-sm flex flex-col hover:shadow-md transition-shadow relative bg-white border-gray-200 text-gray-900`}>
 
       <PreviewModal
         isOpen={previewState.isOpen}
@@ -1008,7 +1004,7 @@ export function DocumentCard({
           <h3 className="font-semibold text-lg truncate" title={doc.name}>
             {doc.name}
           </h3>
-          <div className={`text-sm mt-1 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
+          <div className={`text-sm mt-1 text-gray-500`}>
             <p>Size: {(doc.size / 1024 / 1024).toFixed(2)} MB</p>
             <p>
               Pages:{" "}
