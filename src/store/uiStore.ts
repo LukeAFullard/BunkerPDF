@@ -4,8 +4,6 @@ import { persist } from 'zustand/middleware';
 export type ComplexityMode = 'simple' | 'enhanced' | 'professional';
 
 interface UIState {
-  isDarkMode: boolean;
-  toggleDarkMode: () => void;
   complexityMode: ComplexityMode;
   setComplexityMode: (mode: ComplexityMode) => void;
   activeTool: string | null;
@@ -27,8 +25,6 @@ interface UIState {
 export const useUIStore = create<UIState>()(
   persist(
     (set) => ({
-  isDarkMode: false,
-  toggleDarkMode: () => set((state) => ({ isDarkMode: !state.isDarkMode })),
   complexityMode: 'professional',
   setComplexityMode: (mode) => set({ complexityMode: mode }),
   activeTool: null,
@@ -46,7 +42,6 @@ export const useUIStore = create<UIState>()(
     {
       name: 'bunkerpdf-ui-storage',
       partialize: (state) => ({
-        isDarkMode: state.isDarkMode,
         complexityMode: state.complexityMode,
         extractionMethod: state.extractionMethod,
         liteparseOcrEnabled: state.liteparseOcrEnabled,

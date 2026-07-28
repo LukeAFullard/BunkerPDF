@@ -26,7 +26,6 @@ import { InteractiveRedactModal, type RedactBox } from "./components/pdf/Interac
 import { InteractiveTableModal } from "./components/pdf/InteractiveTableModal";
 import { InteractiveCopyModal } from "./components/pdf/InteractiveCopyModal";
 import { InteractiveAutoLinkerModal } from "./components/pdf/InteractiveAutoLinkerModal";
-import { SmartTableReflowModal } from "./components/pdf/SmartTableReflowModal";
 import { autoLinkBoxesLiteparse } from "./lib/liteparseEngine";
 import { SmartFormGenerationModal } from "./components/pdf/SmartFormGenerationModal";
 import { SmartCropModal } from "./components/pdf/SmartCropModal";
@@ -61,7 +60,6 @@ import { extractParagraphsLiteparse, extractTextLiteparse, extractAllPagesTextLi
 function App() {
   const documents = useFileStore((state) => state.documents);
   const activeDocumentId = useFileStore((state) => state.activeDocumentId);
-  const { isDarkMode } = useUIStore();
 
   const handleWorkspaceFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
@@ -307,10 +305,6 @@ function App() {
   }>({ isOpen: false, doc: null });
 
   const [interactiveHighlightState, setInteractiveHighlightState] = useState<{
-    isOpen: boolean;
-    docId: string | null;
-  }>({ isOpen: false, docId: null });
-  const [smartTableReflowState, setSmartTableReflowState] = useState<{
     isOpen: boolean;
     docId: string | null;
   }>({ isOpen: false, docId: null });
@@ -2054,9 +2048,6 @@ function App() {
     setInteractiveAutoLinkerState({ isOpen: true, docId: doc.id });
   };
 
-  const handleSmartTableReflow = (doc: PDFDocument) => {
-    setSmartTableReflowState({ isOpen: true, docId: doc.id });
-  };
 
   const handleSmartCrop = (doc: PDFDocument) => {
     setSmartCropState({ isOpen: true, docId: doc.id });
@@ -2376,7 +2367,7 @@ function App() {
     });
   };
   return (
-    <div className={`App font-sans min-h-screen flex flex-col ${isDarkMode ? "dark bg-gray-900 text-gray-100" : "bg-gray-50 text-gray-900"}`}>
+    <div className={`App font-sans min-h-screen flex flex-col bg-gray-50 text-gray-900`}>
       <MetadataModal
         isOpen={metadataModalState.isOpen}
         metadata={metadataModalState.metadata}
@@ -2467,31 +2458,6 @@ function App() {
         docId={interactiveCopyState.docId}
         onClose={() => setInteractiveCopyState({ isOpen: false, docId: null })}
       />
-      <SmartTableReflowModal
-        isOpen={smartTableReflowState.isOpen}
-        docId={smartTableReflowState.docId}
-        onClose={() => setSmartTableReflowState({ isOpen: false, docId: null })}
-        onApplyEdits={async (edits) => {
-          const docId = smartTableReflowState.docId;
-          setSmartTableReflowState({ isOpen: false, docId: null });
-          if (docId) {
-             const doc = documents.find(d => d.id === docId);
-             if (!doc) return;
-             try {
-               const arrayBuffer = await doc.file.arrayBuffer();
-               const bytes = new Uint8Array(arrayBuffer);
-               const editBoxesLiteparse = (await import("./lib/liteparseEngine")).editBoxesLiteparse;
-               const newBytes = await editBoxesLiteparse(bytes, edits);
-
-               const newFile = new File([new Uint8Array(newBytes)], doc.name, { type: "application/pdf" });
-               await useFileStore.getState().updateDocumentFile(doc.id, newFile);
-               addLog("Manual Action", `Applied ${edits.length} inline edits via Smart Table`, doc.name);
-             } catch (error) {
-               console.error(error);
-             }
-          }
-        }}
-      />
       <InteractiveAutoLinkerModal
         isOpen={interactiveAutoLinkerState.isOpen}
         docId={interactiveAutoLinkerState.docId}
@@ -2547,8 +2513,8 @@ function App() {
       />
       {documents.length === 0 ? (
         <div className="flex flex-col h-screen">
-          <header className={`p-4 flex justify-between items-center border-b ${isDarkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"}`}>
-            <div className={`font-bold text-xl tracking-tight ${isDarkMode ? "text-gray-100" : "text-gray-800"}`}>
+          <header className={`p-4 flex justify-between items-center border-b bg-white border-gray-200`}>
+            <div className={`font-bold text-xl tracking-tight text-gray-800`}>
               BunkerPDF
             </div>
             <div className="flex gap-2 items-center">
@@ -2696,7 +2662,7 @@ function App() {
               <button
                 onClick={() => workspaceFileInputRef.current?.click()}
                 disabled={isGlobalProcessing || documents.length >= 50}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${isDarkMode ? "bg-gray-700 text-gray-200 hover:bg-gray-600 focus-visible:ring-gray-500" : "bg-white text-gray-800 border border-gray-200 shadow-sm hover:bg-gray-50 focus-visible:ring-gray-300"}`}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 bg-white text-gray-800 border border-gray-200 shadow-sm hover:bg-gray-50 focus-visible:ring-gray-300`}
                 title="Add Files"
               >
                 <Plus size={16} /> Add Files
@@ -2832,7 +2798,6 @@ function App() {
                       onInteractiveRedact={handleInteractiveRedact}
                       onAutoRedactLayout={autoRedactLayout}
                       onInteractiveTable={handleInteractiveTable}
-                      onSmartTableReflow={handleSmartTableReflow}
                       onInteractiveCopy={handleInteractiveCopy}
                       onInteractiveAutoLinker={handleInteractiveAutoLinker}
                       onSmartForm={handleSmartForm}

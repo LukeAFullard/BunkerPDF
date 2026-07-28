@@ -1,7 +1,6 @@
 import { loadPdfDocument } from "../../lib/pdfHelper";
 import { useEffect, useRef, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
-import { useUIStore } from '../../store/uiStore';
 import { cleanupPdfResources } from '../../lib/pdfCleanup';
 
 // We must specify the worker source for pdfjs-dist.
@@ -18,7 +17,6 @@ export function PDFThumbnail({ file, width = 200, className, pageNumber = 1 }: P
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pdfDocRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const isDarkMode = useUIStore((state) => state.isDarkMode);
 
   useEffect(() => {
     let renderTask: pdfjsLib.RenderTask | null = null;
@@ -98,7 +96,7 @@ export function PDFThumbnail({ file, width = 200, className, pageNumber = 1 }: P
       <canvas
         ref={canvasRef}
         className="shadow-sm max-w-full max-h-full object-contain transition-all"
-        style={isDarkMode ? { filter: 'invert(1) hue-rotate(180deg)' } : undefined}
+
       />
     </div>
   );

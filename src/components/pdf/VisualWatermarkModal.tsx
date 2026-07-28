@@ -4,7 +4,6 @@ import * as pdfjsLib from 'pdfjs-dist';
 import { Check, Type, Move } from 'lucide-react';
 import { useFileStore } from '../../store/fileStore';
 import { cleanupPdfResources } from '../../lib/pdfCleanup';
-import { useUIStore } from '../../store/uiStore';
 
 interface VisualWatermarkModalProps {
   isOpen: boolean;
@@ -16,7 +15,6 @@ interface VisualWatermarkModalProps {
 export function VisualWatermarkModal({ isOpen, docId, onClose, onApply }: VisualWatermarkModalProps) {
   const documents = useFileStore(state => state.documents);
   const doc = documents.find(d => d.id === docId);
-  const isDarkMode = useUIStore(state => state.isDarkMode);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -141,7 +139,7 @@ export function VisualWatermarkModal({ isOpen, docId, onClose, onApply }: Visual
               <div className="text-red-500">{error}</div>
             ) : (
               <div className="relative shadow-lg pointer-events-none select-none">
-                <canvas ref={canvasRef} className="block" style={isDarkMode ? { filter: 'invert(1) hue-rotate(180deg)' } : undefined} />
+                <canvas ref={canvasRef} className="block"  />
 
                 {/* CSS Watermark Overlay matching engineA.ts logic (center, 45deg, 0.5 opacity, gray) */}
                 {viewportCache && (

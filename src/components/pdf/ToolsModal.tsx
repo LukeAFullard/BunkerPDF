@@ -18,7 +18,6 @@ interface ToolsModalProps {
 }
 
 export function ToolsModal({ isOpen, onClose, tools, documentName }: ToolsModalProps) {
-  const isDarkMode = useUIStore((state) => state.isDarkMode);
   const complexityMode = useUIStore((state) => state.complexityMode);
   const [searchQuery, setSearchQuery] = React.useState("");
 
@@ -54,27 +53,21 @@ export function ToolsModal({ isOpen, onClose, tools, documentName }: ToolsModalP
       onClick={onClose}
     >
       <div
-        className={`w-full max-w-4xl max-h-[85vh] rounded-xl shadow-2xl flex flex-col ${
-          isDarkMode ? "bg-gray-800 text-gray-100" : "bg-white text-gray-900"
-        }`}
+        className={`w-full max-w-4xl max-h-[85vh] rounded-xl shadow-2xl flex flex-col bg-white text-gray-900`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex justify-between items-center p-6 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex justify-between items-center p-6 border-b border-gray-200">
           <div>
             <div className="flex items-center gap-4">
               <h2 className="text-2xl font-bold">Document Tools</h2>
             </div>
-            <p className={`text-sm mt-1 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
+            <p className={`text-sm mt-1 text-gray-500`}>
               {documentName}
             </p>
           </div>
           <button
             onClick={onClose}
-            className={`p-2 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 ${
-              isDarkMode
-                ? "hover:bg-gray-700 focus-visible:ring-gray-500"
-                : "hover:bg-gray-100 focus-visible:ring-gray-300"
-            }`}
+            className={`p-2 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 hover:bg-gray-100 focus-visible:ring-gray-300`}
           >
             <span className="sr-only">Close</span>
             <svg
@@ -88,23 +81,17 @@ export function ToolsModal({ isOpen, onClose, tools, documentName }: ToolsModalP
           </button>
         </div>
 
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+        <div className="p-4 border-b border-gray-200">
           <div className="relative">
             <Search
-              className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 ${
-                isDarkMode ? "text-gray-400" : "text-gray-500"
-              }`}
+              className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-500`}
             />
             <input
               type="text"
               placeholder="Search tools..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className={`w-full pl-10 pr-4 py-3 rounded-lg border transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-                isDarkMode
-                  ? "bg-gray-900 border-gray-700 text-gray-100 placeholder-gray-500"
-                  : "bg-gray-50 border-gray-300 text-gray-900 placeholder-gray-400"
-              }`}
+              className={`w-full pl-10 pr-4 py-3 rounded-lg border transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50 border-gray-300 text-gray-900 placeholder-gray-400`}
               autoFocus
             />
           </div>
@@ -123,8 +110,6 @@ export function ToolsModal({ isOpen, onClose, tools, documentName }: ToolsModalP
                     className={`font-semibold text-sm uppercase tracking-wider ${
                       category === "Danger"
                         ? "text-red-500"
-                        : isDarkMode
-                        ? "text-gray-400"
                         : "text-gray-500"
                     }`}
                   >
@@ -141,8 +126,6 @@ export function ToolsModal({ isOpen, onClose, tools, documentName }: ToolsModalP
                         className={`text-left px-4 py-3 rounded-lg border transition-all focus-visible:outline-none focus-visible:ring-2 ${
                           item.variant === "danger"
                             ? "border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:border-red-300 focus-visible:ring-red-500 dark:bg-red-900/20 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/40"
-                            : isDarkMode
-                            ? "border-gray-700 bg-gray-800/50 hover:bg-gray-700 hover:border-gray-600 focus-visible:ring-gray-500"
                             : "border-gray-200 bg-white hover:bg-gray-50 hover:border-gray-300 focus-visible:ring-indigo-500 shadow-sm hover:shadow"
                         }`}
                       >
