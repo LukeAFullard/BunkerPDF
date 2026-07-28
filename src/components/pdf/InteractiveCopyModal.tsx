@@ -440,7 +440,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
     if (intersectingItems.length > 0) {
       const currentFormat = overrideFormat !== undefined ? overrideFormat : copyFormat;
       const textStr = currentFormat === 'markdown'
-        ? formatMarkdownFromItems(intersectingItems)
+        ? formatMarkdownFromItems(intersectingItems, extractedLines)
         : formatParagraphFromItems(intersectingItems);
 
       // Show text immediately so UX is not blocked

@@ -1334,18 +1334,55 @@ export const autoLinkBoxesLiteparse = async (
 
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const formatMarkdownFromItems = (textItems: any[]): string => {
+export const formatMarkdownFromItems = (textItems: any[], explicitLines?: LineItem[]): string => {
   if (!textItems || textItems.length === 0) return "";
 
+  // Deep clone text items to avoid mutating shared state
+  const items = textItems.map(item => ({ ...item }));
+
+  // Pre-process formatting (underlines and strikethroughs) based on lines
+  if (explicitLines && explicitLines.length > 0) {
+    const horizontalLines = explicitLines.filter(l => l.type === 'horizontal');
+    for (const item of items) {
+      const baselineY = item.y + (item.height || 12);
+      const midY = item.y + (item.height || 12) / 2;
+
+      let hasUnderline = false;
+      let hasStrikethrough = false;
+
+      for (const line of horizontalLines) {
+        // Line spans the item horizontally (with 2px tolerance)
+        const spansItem = line.x0 <= item.x + 2 && line.x1 >= item.x + item.width - 2;
+        if (!spansItem) continue;
+
+        // Check for underline (line near baseline)
+        if (Math.abs(line.y0 - baselineY) <= 2.5) {
+          hasUnderline = true;
+        }
+
+        // Check for strikethrough (line through the middle)
+        if (Math.abs(line.y0 - midY) <= 2.5) {
+          hasStrikethrough = true;
+        }
+      }
+
+      if (hasStrikethrough) {
+        item.text = `~~${item.text}~~`;
+      } else if (hasUnderline) {
+        item.text = `<u>${item.text}</u>`;
+      }
+    }
+  }
+
   // 1. Calculate median font size
-  const fontSizes = textItems.map(it => it.fontSize || 12).sort((a, b) => a - b);
+  const fontSizes = items.map(it => it.fontSize || 12).sort((a, b) => a - b);
   const baseFontSize = fontSizes[Math.floor(fontSizes.length / 2)];
 
   // First, check if this is a table/grid layout overall.
   // We can do this by creating a quick row map and checking alignments.
   const tempRows: { items: any[], y: number }[] = [];
   const rowTolerance = 5;
-  for (const item of textItems) {
+  for (const item of items) {
     let foundRow = false;
     for (const row of tempRows) {
       if (Math.abs(row.y - item.y) < rowTolerance) {
@@ -1403,7 +1440,7 @@ export const formatMarkdownFromItems = (textItems: any[]): string => {
   // A strict heuristic: Needs at least 2 distinct columns, at least 3 rows,
   // and the aligned rows must make up the majority of the multi-item rows.
   if (columnsX.length >= 2 && tempRows.length >= 3 && alignedRowsCount >= 2 && alignedRowsCount / tempRows.length >= 0.5) {
-      const tableMarkdown = formatTableFromItems(textItems, 'markdown', true);
+      const tableMarkdown = formatTableFromItems(items, 'markdown', true, explicitLines);
       if (tableMarkdown.trim()) {
         return tableMarkdown.trim();
       }
@@ -1411,7 +1448,7 @@ export const formatMarkdownFromItems = (textItems: any[]): string => {
 
   // Not a grid, or grid formatting failed. Proceed with column-aware reading order.
   // We identify true vertical gutters by computing the union of all horizontal intervals.
-  const intervals = textItems.map(item => ({ start: item.x, end: item.x + item.width }));
+  const intervals = items.map(item => ({ start: item.x, end: item.x + item.width }));
   intervals.sort((a, b) => a.start - b.start);
 
   const mergedIntervals = [];
@@ -1438,7 +1475,7 @@ export const formatMarkdownFromItems = (textItems: any[]): string => {
       maxX: inv.end
   }));
 
-  for (const item of textItems) {
+  for (const item of items) {
       const itemMidX = item.x + (item.width / 2);
       for (const col of columns) {
           if (itemMidX >= col.x - 5 && itemMidX <= col.maxX + 5) {
