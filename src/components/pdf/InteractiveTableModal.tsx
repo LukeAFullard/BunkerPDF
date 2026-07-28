@@ -6,7 +6,8 @@ import { X, TableProperties, ZoomIn, ZoomOut, Loader2, Download, Copy, Check } f
 import { useFileStore } from '../../store/fileStore';
 import { cleanupPdfResources } from '../../lib/pdfCleanup';
 import { getConfiguredLiteParse, formatTableFromItems } from '../../lib/liteparseEngine';
-
+import type { LineItem } from '../../lib/liteparseEngine';
+import type { PyodideWorkerMessage, PyodideWorkerResponse } from '../../workers/pyodideWorker';
 
 interface InteractiveTableModalProps {
   isOpen: boolean;
@@ -39,9 +40,20 @@ export function InteractiveTableModal({ isOpen, docId, onClose }: InteractiveTab
   const [extractedTable, setExtractedTable] = useState<string | null>(null);
   const [format, setFormat] = useState<'csv' | 'markdown'>('csv');
   const [copied, setCopied] = useState(false);
+  const [extractedLines, setExtractedLines] = useState<LineItem[]>([]);
 
   const renderTaskRef = useRef<pdfjsLib.RenderTask | null>(null);
   const pdfDocRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
+  const pyWorkerRef = useRef<Worker | null>(null);
+
+  useEffect(() => {
+    return () => {
+       if (pyWorkerRef.current) {
+          pyWorkerRef.current.terminate();
+          pyWorkerRef.current = null;
+       }
+    };
+  }, []);
 
   useEffect(() => {
     if (!isOpen || !doc) return;
@@ -100,6 +112,35 @@ export function InteractiveTableModal({ isOpen, docId, onClose }: InteractiveTab
   useEffect(() => {
     if (isOpen && pdfDocRef.current && liteparseData) {
       renderPage(currentPage, pdfDocRef.current);
+
+      if (doc) {
+        if (!pyWorkerRef.current) {
+          pyWorkerRef.current = new Worker(new URL('../../workers/pyodideWorker.ts', import.meta.url), { type: 'module' });
+        }
+
+        const jobId = `lines-${doc.id}-${currentPage}`;
+
+        const handleWorkerMessage = (e: MessageEvent) => {
+          const response = e.data as PyodideWorkerResponse;
+          if (response.jobId === jobId) {
+            if (response.type === 'RESULT') {
+              setExtractedLines(response.result as LineItem[]);
+            }
+            pyWorkerRef.current?.removeEventListener('message', handleWorkerMessage);
+          }
+        };
+
+        pyWorkerRef.current.addEventListener('message', handleWorkerMessage);
+
+        doc.file.arrayBuffer().then(buffer => {
+          pyWorkerRef.current?.postMessage({
+            type: 'EXTRACT_LINES',
+            jobId,
+            pdfBytes: new Uint8Array(buffer),
+            pageNum: currentPage
+          } as PyodideWorkerMessage);
+        });
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, zoomLevel]);
@@ -218,20 +259,20 @@ export function InteractiveTableModal({ isOpen, docId, onClose }: InteractiveTab
     if (intersectingItems.length > 0) {
       // Use our backend function, telling it NOT to require multiple columns,
       // since the user explicitly drew a box around this specific content.
-      const tableStr = formatTableFromItems(intersectingItems, format, false);
+      const tableStr = formatTableFromItems(intersectingItems, format, false, extractedLines);
       setExtractedTable(tableStr);
     } else {
       setExtractedTable(null);
     }
   };
 
-  // Re-run extraction if format changes
+  // Re-run extraction if format or lines change
   useEffect(() => {
     if (selectionBox) {
       extractRegion(selectionBox.x, selectionBox.y, selectionBox.w, selectionBox.h);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [format]);
+  }, [format, extractedLines]);
 
   const handleCopy = () => {
     if (extractedTable) {
