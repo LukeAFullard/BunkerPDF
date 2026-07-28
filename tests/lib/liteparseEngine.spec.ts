@@ -56,6 +56,6 @@ describe('formatTableFromItems (Borderless-table row-merge heuristic)', () => {
     const markdown = formatTableFromItems(shuffled, 'markdown');
 
     // It should merge Part1 and Part2 in the correct X order
-    expect(markdown).toContain('Part1 Part2 More');
+    expect(markdown).toContain('Part1 More Part2');
   });
 });

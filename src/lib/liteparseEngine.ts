@@ -1,3 +1,4 @@
+import { fromLines } from './lineTracingMath';
 import init, { LiteParse } from "@llamaindex/liteparse-wasm";
 import { useUIStore } from '../store/uiStore';
 import { ocrPdf } from './ocrEngine';
@@ -359,21 +360,69 @@ export const editParagraphLiteparse = async (bytes: Uint8Array, searchText: stri
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown' | 'latex', requiresMultipleColumns = true): string => {
+export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown' | 'latex', requiresMultipleColumns = true, explicitLines?: LineItem[]): string => {
   if (!textItems || textItems.length === 0) return "";
+
+  // 1. Calculate the table bounding box for line filtering
+  let minX = Infinity; let maxX = -Infinity;
+  let minY = Infinity; let maxY = -Infinity;
+  for (const item of textItems) {
+      if (item.x < minX) minX = item.x;
+      if (item.x + item.width > maxX) maxX = item.x + item.width;
+      if (item.y < minY) minY = item.y;
+      if (item.y + item.height > maxY) maxY = item.y + item.height;
+  }
+  const tableXSpan = { start: minX, end: maxX };
+  const tableYSpan = { start: minY, end: maxY };
+
+  const enableLineTracing = useUIStore.getState().enableLineTracing;
+  const useLines = enableLineTracing && explicitLines && explicitLines.length > 0;
+
+  // Determine row boundaries
+  let rowBoundaries: number[] = [];
+  if (useLines) {
+      rowBoundaries = fromLines(explicitLines, 'horizontal', tableXSpan);
+  }
 
   const rowTolerance = 5; // pixels
   const rows: { items: typeof textItems, y: number }[] = [];
 
   for (const item of textItems) {
+    const itemMidY = item.y + item.height / 2;
     let foundRow = false;
-    for (const row of rows) {
-      if (Math.abs(row.y - item.y) < rowTolerance) {
-        row.items.push(item);
-        foundRow = true;
-        break;
+
+    if (rowBoundaries.length > 0) {
+      // Find the row boundary interval this item belongs to.
+      // Boundaries are sorted Y coordinates of horizontal lines.
+      let rowIndex = 0;
+      for (let i = 0; i < rowBoundaries.length; i++) {
+         if (itemMidY > rowBoundaries[i]) {
+            rowIndex = i + 1;
+         }
+      }
+
+      // Look for an existing row with this index based on boundary
+      const boundaryY = rowIndex > 0 ? rowBoundaries[rowIndex - 1] + 1 : minY;
+
+      let matchedRow = rows.find(r => r.y === boundaryY);
+      if (matchedRow) {
+          matchedRow.items.push(item);
+          foundRow = true;
+      } else {
+          rows.push({ items: [item], y: boundaryY });
+          foundRow = true;
+      }
+    } else {
+      // Fallback to spatial clustering
+      for (const row of rows) {
+        if (Math.abs(row.y - item.y) < rowTolerance) {
+          row.items.push(item);
+          foundRow = true;
+          break;
+        }
       }
     }
+
     if (!foundRow) {
       rows.push({ items: [item], y: item.y });
     }
@@ -387,55 +436,59 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
   rows.forEach(row => row.items.sort((a, b) => a.x - b.x));
 
 
-  // Second pass: merge wrapped lines into the row above
-  // 1. Calculate typical gap
-  const gaps: number[] = [];
-  for (let i = 0; i < rows.length - 1; i++) {
-    gaps.push(rows[i + 1].y - rows[i].y);
-  }
-  gaps.sort((a, b) => a - b);
-  const medianGap = gaps.length > 0 ? gaps[Math.floor(gaps.length / 2)] : 20;
-
-  // 2. Merge wrapped rows
-  let mergedAnyRow = true;
-  while (mergedAnyRow) {
-    mergedAnyRow = false;
+  // Second pass: merge wrapped lines into the row above (only if not using explicit lines for rows)
+  if (rowBoundaries.length === 0) {
+    // 1. Calculate typical gap
+    const gaps: number[] = [];
     for (let i = 0; i < rows.length - 1; i++) {
-      const rowA = rows[i];
-      const rowB = rows[i + 1];
-      const gap = rowB.y - rowA.y;
+      gaps.push(rows[i + 1].y - rows[i].y);
+    }
+    gaps.sort((a, b) => a - b);
+    const medianGap = gaps.length > 0 ? gaps[Math.floor(gaps.length / 2)] : 20;
 
-      if (gap < medianGap * 0.8 || gap <= 15) {
-        let allSubset = true;
-        for (const itemB of rowB.items) {
-          let foundOverlap = false;
-          for (const itemA of rowA.items) {
-            if (itemB.x <= itemA.x + itemA.width + 5 && itemB.x + itemB.width >= itemA.x - 5) {
-              foundOverlap = true;
+    // 2. Merge wrapped rows
+    let mergedAnyRow = true;
+    while (mergedAnyRow) {
+      mergedAnyRow = false;
+      for (let i = 0; i < rows.length - 1; i++) {
+        const rowA = rows[i];
+        const rowB = rows[i + 1];
+        const gap = rowB.y - rowA.y;
+
+        if (gap < medianGap * 0.8 || gap <= 15) {
+          let allSubset = true;
+          for (const itemB of rowB.items) {
+            let foundOverlap = false;
+            for (const itemA of rowA.items) {
+              if (itemB.x <= itemA.x + itemA.width + 5 && itemB.x + itemB.width >= itemA.x - 5) {
+                foundOverlap = true;
+                break;
+              }
+            }
+            if (!foundOverlap) {
+              allSubset = false;
               break;
             }
           }
-          if (!foundOverlap) {
-            allSubset = false;
+
+          if (allSubset) {
+            rowA.items.push(...rowB.items);
+            rows.splice(i + 1, 1);
+            mergedAnyRow = true;
             break;
           }
         }
-
-        if (allSubset) {
-          rowA.items.push(...rowB.items);
-          rows.splice(i + 1, 1);
-          mergedAnyRow = true;
-          break;
-        }
       }
     }
+    // Re-sort items after merge
+    rows.forEach(row => row.items.sort((a, b) => a.x - b.x));
   }
 
   const tables: { rows: typeof rows }[] = [];
   let currentTable: typeof rows = [];
 
   for (const row of rows) {
-    if (!requiresMultipleColumns || row.items.length >= 2) {
+    if (!requiresMultipleColumns || row.items.length >= 2 || rowBoundaries.length > 0) {
       currentTable.push(row);
     } else {
       if (currentTable.length > 1) {
@@ -451,29 +504,49 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
   const allTablesOutput: string[] = [];
 
   for (const table of tables) {
-    // Build column intervals using overlapping bounding boxes
-    const intervals: { start: number, end: number }[] = [];
-    for (const row of table.rows) {
-      for (const item of row.items) {
-        intervals.push({ start: item.x, end: item.x + item.width });
-      }
-    }
-    intervals.sort((a, b) => a.start - b.start);
+    let columns: { start: number, end: number }[] = [];
+    let colBoundaries: number[] = [];
 
-    const columns: { start: number, end: number }[] = [];
-    if (intervals.length > 0) {
-      let currentInterval = intervals[0];
-      for (let i = 1; i < intervals.length; i++) {
-        const nextInterval = intervals[i];
-        // Merge if overlapping or within a small gutter (5px)
-        if (nextInterval.start <= currentInterval.end + 5) {
-          currentInterval.end = Math.max(currentInterval.end, nextInterval.end);
-        } else {
-          columns.push(currentInterval);
-          currentInterval = nextInterval;
+    if (useLines) {
+        colBoundaries = fromLines(explicitLines, 'vertical', tableYSpan);
+    }
+
+    if (colBoundaries.length > 0) {
+        // Create intervals from vertical line boundaries
+        let prev = minX;
+        for (const boundary of colBoundaries) {
+            if (boundary > prev) {
+                columns.push({ start: prev, end: boundary });
+            }
+            prev = boundary;
         }
-      }
-      columns.push(currentInterval);
+        if (maxX > prev) {
+            columns.push({ start: prev, end: maxX });
+        }
+    } else {
+        // Build column intervals using overlapping bounding boxes
+        const intervals: { start: number, end: number }[] = [];
+        for (const row of table.rows) {
+          for (const item of row.items) {
+            intervals.push({ start: item.x, end: item.x + item.width });
+          }
+        }
+        intervals.sort((a, b) => a.start - b.start);
+
+        if (intervals.length > 0) {
+          let currentInterval = intervals[0];
+          for (let i = 1; i < intervals.length; i++) {
+            const nextInterval = intervals[i];
+            // Merge if overlapping or within a small gutter (5px)
+            if (nextInterval.start <= currentInterval.end + 5) {
+              currentInterval.end = Math.max(currentInterval.end, nextInterval.end);
+            } else {
+              columns.push(currentInterval);
+              currentInterval = nextInterval;
+            }
+          }
+          columns.push(currentInterval);
+        }
     }
 
     const tableGrid: string[][] = [];
@@ -508,32 +581,34 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
       tableGrid.push(gridRow);
     }
 
-    // Safety-net post-process: merge mutually exclusive adjacent columns
-    let merged = true;
-    while (merged && tableGrid.length > 0 && tableGrid[0].length > 1) {
-      merged = false;
-      for (let c = 0; c < tableGrid[0].length - 1; c++) {
-        let mutuallyExclusive = true;
-        for (let r = 0; r < tableGrid.length; r++) {
-          if (tableGrid[r][c] !== '' && tableGrid[r][c + 1] !== '') {
-            mutuallyExclusive = false;
-            break;
-          }
-        }
+    // Safety-net post-process: merge mutually exclusive adjacent columns ONLY if we didn't use explicit lines
+    if (colBoundaries.length === 0) {
+        let merged = true;
+        while (merged && tableGrid.length > 0 && tableGrid[0].length > 1) {
+          merged = false;
+          for (let c = 0; c < tableGrid[0].length - 1; c++) {
+            let mutuallyExclusive = true;
+            for (let r = 0; r < tableGrid.length; r++) {
+              if (tableGrid[r][c] !== '' && tableGrid[r][c + 1] !== '') {
+                mutuallyExclusive = false;
+                break;
+              }
+            }
 
-        if (mutuallyExclusive) {
-          for (let r = 0; r < tableGrid.length; r++) {
-            if (tableGrid[r][c + 1] !== '') {
-              tableGrid[r][c] = tableGrid[r][c] ? tableGrid[r][c] + " " + tableGrid[r][c + 1] : tableGrid[r][c + 1];
+            if (mutuallyExclusive) {
+              for (let r = 0; r < tableGrid.length; r++) {
+                if (tableGrid[r][c + 1] !== '') {
+                  tableGrid[r][c] = tableGrid[r][c] ? tableGrid[r][c] + " " + tableGrid[r][c + 1] : tableGrid[r][c + 1];
+                }
+              }
+              for (let r = 0; r < tableGrid.length; r++) {
+                tableGrid[r].splice(c + 1, 1);
+              }
+              merged = true;
+              break;
             }
           }
-          for (let r = 0; r < tableGrid.length; r++) {
-            tableGrid[r].splice(c + 1, 1);
-          }
-          merged = true;
-          break;
         }
-      }
     }
 
     if (format === 'csv') {
