@@ -112,6 +112,6 @@ If PyMuPDF returns no lines but OCR is triggered, we can utilize `opencv.js` (Op
 To de-risk the feature, it should be shipped in this specific order:
 1.  **[x] Borderless-table row-merge heuristic:** (Fix existing bugs cheaply using spatial text clustering).
 2.  **[x] `EXTRACT_LINES` + Visual Overlay:** (Validate PyMuPDF coordinates on the frontend; no extraction logic changes yet).
-3.  **[ ] Per-axis Hybrid Boundary Logic:** (Implement the core geometry + spatial fallback in `formatTableFromItems`).
-4.  **[ ] Text Formatting Pass:** (Extract underlines and strikethroughs).
+3.  **[x] Per-axis Hybrid Boundary Logic:** (Implement the core geometry + spatial fallback in `formatTableFromItems`).
+4.  **[x] Text Formatting Pass:** (Extract underlines and strikethroughs).
 5.  **[ ] Raster/Hough-line fallback:** (Deferred - highest effort, smallest near-term payoff).

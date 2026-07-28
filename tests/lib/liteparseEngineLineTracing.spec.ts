@@ -60,6 +60,58 @@ describe('formatTableFromItems - Line Tracing Hybrid', () => {
         expect(md).toContain("| Row1 |");
         expect(md).toContain("| Cell1 |");
     });
+    it('should fall back to spatial clustering if geometric rows confidence is low (decorative line)', () => {
+        const items = [
+            { text: "Row1", x: 10, y: 10, width: 20, height: 10 },
+            { text: "Row2", x: 10, y: 30, width: 20, height: 10 },
+            { text: "Row3", x: 10, y: 50, width: 20, height: 10 },
+            { text: "Row4", x: 10, y: 70, width: 20, height: 10 },
+            { text: "Row5", x: 10, y: 90, width: 20, height: 10 },
+        ];
+
+        // Only one horizontal line (e.g. decorative header), geometric rows = 2, spatial = 5
+        // Geometric (2) < Spatial (5) * 0.5 (2.5) -> should fallback
+        const lines: LineItem[] = [
+            { x0: 0, x1: 100, y0: 20, y1: 20, type: 'horizontal' }
+        ];
+
+        const md = formatTableFromItems(items, 'markdown', false, lines);
+
+        // If fallback occurs, it will correctly identify all 5 rows based on spatial clustering
+        // instead of grouping everything below y=20 into a single row.
+        expect(md).toContain("| Row1 |");
+        expect(md).toContain("| Row2 |");
+        expect(md).toContain("| Row3 |");
+        expect(md).toContain("| Row4 |");
+        expect(md).toContain("| Row5 |");
+    });
+
+    it('should fall back to spatial clustering if geometric columns confidence is low (decorative border)', () => {
+        const items = [
+            { text: "Col1", x: 10, y: 10, width: 20, height: 10 },
+            { text: "Col2", x: 40, y: 10, width: 20, height: 10 },
+            { text: "Col3", x: 70, y: 10, width: 20, height: 10 },
+            { text: "Col4", x: 100, y: 10, width: 20, height: 10 },
+        ];
+
+        // Only one vertical line (e.g. left border), geometric cols = 2, spatial cols = 4
+        // Geometric (2) < Spatial (4) * 0.5 (2) -> wait, 2 < 2 is false.
+        // Let's add 5 columns.
+        const items5 = [
+            ...items,
+            { text: "Col5", x: 130, y: 10, width: 20, height: 10 },
+        ];
+
+        // Geometric (2) < Spatial (5) * 0.5 (2.5) -> should fallback
+        const lines: LineItem[] = [
+            { x0: 5, x1: 5, y0: 0, y1: 100, type: 'vertical' }
+        ];
+
+        const md = formatTableFromItems(items5, 'markdown', false, lines);
+
+        // If fallback occurs, it correctly identifies 5 columns.
+        expect(md).toContain("| Col1 | Col2 | Col3 | Col4 | Col5 |");
+    });
 });
 
 describe('formatMarkdownFromItems - Line Tracing Hybrid', () => {

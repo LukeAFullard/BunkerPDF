@@ -382,6 +382,33 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
   let rowBoundaries: number[] = [];
   if (useLines) {
       rowBoundaries = fromLines(explicitLines, 'horizontal', tableXSpan);
+
+      if (rowBoundaries.length > 0) {
+        // Calculate spatial rows count for confidence check
+        const rowTolerance = 5;
+        const spatialRows: { items: any[], y: number }[] = [];
+        for (const item of textItems) {
+          let foundRow = false;
+          for (const row of spatialRows) {
+            if (Math.abs(row.y - item.y) < rowTolerance) {
+              row.items.push(item);
+              foundRow = true;
+              break;
+            }
+          }
+          if (!foundRow) {
+            spatialRows.push({ items: [item], y: item.y });
+          }
+        }
+
+        const geometricRowCount = rowBoundaries.length + 1;
+        const spatialRowCount = spatialRows.length;
+
+        if (geometricRowCount < spatialRowCount * 0.5) {
+          console.warn(`[LineTracing] Row confidence low: geometric (${geometricRowCount}) vs spatial (${spatialRowCount}). Falling back to spatial.`);
+          rowBoundaries = []; // Force fallback
+        }
+      }
   }
 
   const rowTolerance = 5; // pixels
@@ -509,6 +536,39 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
 
     if (useLines) {
         colBoundaries = fromLines(explicitLines, 'vertical', tableYSpan);
+
+        if (colBoundaries.length > 0) {
+          // Calculate spatial columns count for confidence check
+          const intervals: { start: number, end: number }[] = [];
+          for (const row of table.rows) {
+            for (const item of row.items) {
+              intervals.push({ start: item.x, end: item.x + item.width });
+            }
+          }
+          intervals.sort((a, b) => a.start - b.start);
+
+          let spatialColCount = 0;
+          if (intervals.length > 0) {
+            let currentInterval = intervals[0];
+            for (let i = 1; i < intervals.length; i++) {
+              const nextInterval = intervals[i];
+              if (nextInterval.start <= currentInterval.end + 5) {
+                currentInterval.end = Math.max(currentInterval.end, nextInterval.end);
+              } else {
+                spatialColCount++;
+                currentInterval = nextInterval;
+              }
+            }
+            spatialColCount++;
+          }
+
+          const geometricColCount = colBoundaries.length + 1;
+
+          if (geometricColCount < spatialColCount * 0.5) {
+            console.warn(`[LineTracing] Column confidence low: geometric (${geometricColCount}) vs spatial (${spatialColCount}). Falling back to spatial.`);
+            colBoundaries = []; // Force fallback
+          }
+        }
     }
 
     if (colBoundaries.length > 0) {
