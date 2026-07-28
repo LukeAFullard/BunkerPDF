@@ -53,6 +53,7 @@ interface DocumentCardProps {
   onScanPii?: (doc: PDFDocument) => void;
   onInteractiveRedact?: (doc: PDFDocument) => void;
   onAutoRedactLayout?: (doc: PDFDocument) => void;
+  onFlipbook?: (doc: PDFDocument) => void;
   onInteractiveTable?: (doc: PDFDocument) => void;
   onSmartTableReflow?: (doc: PDFDocument) => void;
   onInteractiveCopy?: (doc: PDFDocument) => void;
@@ -123,6 +124,7 @@ export function DocumentCard({
   exportPdfToDark,
   onInteractiveRedact,
   onAutoRedactLayout,
+  onFlipbook,
   onInteractiveTable,
   onSmartTableReflow,
   onInteractiveCopy,
@@ -937,6 +939,7 @@ export function DocumentCard({
     { category: "Other", label: "Edit Bookmarks/Outline (~2s)", onClick: handleEditBookmarks, complexity: "simple" },
     { category: "Other", label: "Edit Metadata (~2s)", onClick: handleViewMetadataLocal, complexity: "professional" },
     { category: "Other", label: "Read Aloud (TTS) (~15s/pg)", onClick: () => onReadAloud?.(doc), complexity: "professional" },
+    { category: "Other", label: "View as Flipbook", onClick: () => onFlipbook?.(doc), complexity: "professional" },
     { category: "Other", label: "Scan PII (~5s)", onClick: handleScan, complexity: "professional" },
     { category: "Other", label: "Scan Codes (~5s)", onClick: handleScanCodes, complexity: "professional" },
 

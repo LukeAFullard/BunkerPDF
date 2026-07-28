@@ -57,6 +57,7 @@ import { ImageReorderRail, type ImageItem } from "./components/ui/ImageReorderRa
 import { convertImagesToPdf } from "./lib/engineA";
 import { SettingsDropdown } from "./components/ui/SettingsDropdown";
 import { extractParagraphsLiteparse, extractTextLiteparse, extractAllPagesTextLiteparse, extractMarkdownLiteparse, editParagraphLiteparse, extractTablesLiteparse, redactDocumentLiteparse, redactBoxesLiteparse, diffMergedHighlightPdfLiteparse, diffHighlightPdfLiteparse, autoRedactLayoutLiteparse } from "./lib/liteparseEngine";
+import { FlipbookModal } from "./components/pdf/FlipbookModal";
 
 function App() {
   const documents = useFileStore((state) => state.documents);
@@ -365,6 +366,11 @@ function App() {
     pageCount: 0,
     onConfirm: () => {},
   });
+
+  const [flipbookState, setFlipbookState] = useState<{
+    isOpen: boolean;
+    pdfFile: File | null;
+  }>({ isOpen: false, pdfFile: null });
 
 
   const [thumbnailCache, setThumbnailCache] = useState<Record<string, string>>({});
@@ -1506,6 +1512,10 @@ function App() {
     setSplitModalState({ isOpen: true, doc: doc });
   };
 
+  const handleFlipbookRequest = (doc: PDFDocument) => {
+    setFlipbookState({ isOpen: true, pdfFile: doc.file });
+  };
+
   const executeSplit = async (ranges: string) => {
     const doc = splitModalState.doc;
     if (!doc) return;
@@ -2535,6 +2545,11 @@ function App() {
         onClose={() => setSmartFormState({ isOpen: false, docId: null })}
         onApply={executeSmartForm}
       />
+      <FlipbookModal
+        isOpen={flipbookState.isOpen}
+        onClose={() => setFlipbookState({ isOpen: false, pdfFile: null })}
+        pdfFile={flipbookState.pdfFile}
+      />
       <VisualWatermarkModal
         isOpen={visualWatermarkState.isOpen}
         docId={visualWatermarkState.docId}
@@ -2827,6 +2842,7 @@ function App() {
                       onOcr={handleOcr}
                       onInteractiveRedact={handleInteractiveRedact}
                       onAutoRedactLayout={autoRedactLayout}
+                      onFlipbook={handleFlipbookRequest}
                       onInteractiveTable={handleInteractiveTable}
                       onSmartTableReflow={handleSmartTableReflow}
                       onInteractiveCopy={handleInteractiveCopy}
