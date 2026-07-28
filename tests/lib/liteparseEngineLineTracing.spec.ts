@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { formatTableFromItems } from '../../src/lib/liteparseEngine';
+import { formatTableFromItems, formatMarkdownFromItems } from '../../src/lib/liteparseEngine';
 import type { LineItem } from '../../src/lib/liteparseEngine';
 import { useUIStore } from '../../src/store/uiStore';
 
@@ -57,13 +57,29 @@ describe('formatTableFromItems - Line Tracing Hybrid', () => {
         ];
 
         const md = formatTableFromItems(items, 'markdown', false, lines);
-        // "Cell1" should be on a separate row because of the horizontal line boundary at Y=15.
-        // Actually wait, row bound algorithm:
-        // boundary = 15. Item at 10 -> boundary 15. Item at 18 -> boundary 30 (or whatever next is).
-        // Let's check output.
         expect(md).toContain("| Row1 |");
         expect(md).toContain("| Cell1 |");
-        // We aren't testing the exact output structure here since CSV/MD generation works,
-        // but it should break into rows correctly.
+    });
+});
+
+describe('formatMarkdownFromItems - Line Tracing Hybrid', () => {
+    it('should correctly format text items intersecting with horizontal lines', () => {
+        const items = [
+            { text: "Underlined", x: 10, y: 10, width: 50, height: 12 },
+            { text: "Strikethrough", x: 10, y: 30, width: 80, height: 12 },
+            { text: "Normal", x: 10, y: 50, width: 40, height: 12 }
+        ];
+
+        const lines: LineItem[] = [
+            { x0: 5, x1: 70, y0: 22, y1: 22, type: 'horizontal' }, // underline
+            { x0: 5, x1: 100, y0: 36, y1: 36, type: 'horizontal' }, // strikethrough
+        ];
+
+        const md = formatMarkdownFromItems(items, lines);
+        expect(md).toContain("<u>Underlined</u>");
+        expect(md).toContain("~~Strikethrough~~");
+        expect(md).toContain("Normal");
+        expect(md).not.toContain("<u>Normal</u>");
+        expect(md).not.toContain("~~Normal~~");
     });
 });
