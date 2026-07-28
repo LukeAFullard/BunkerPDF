@@ -20,6 +20,8 @@ interface UIState {
   setExtractionMethod: (method: 'pyodide' | 'liteparse') => void;
   liteparseOcrEnabled: boolean;
   setLiteparseOcrEnabled: (enabled: boolean) => void;
+  enableLineTracing: boolean;
+  setEnableLineTracing: (enabled: boolean) => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -38,6 +40,8 @@ export const useUIStore = create<UIState>()(
   setExtractionMethod: (method) => set({ extractionMethod: method }),
   liteparseOcrEnabled: false,
   setLiteparseOcrEnabled: (enabled) => set({ liteparseOcrEnabled: enabled }),
+  enableLineTracing: true,
+  setEnableLineTracing: (enabled) => set({ enableLineTracing: enabled }),
     }),
     {
       name: 'bunkerpdf-ui-storage',
@@ -45,7 +49,8 @@ export const useUIStore = create<UIState>()(
         isDarkMode: state.isDarkMode,
         complexityMode: state.complexityMode,
         extractionMethod: state.extractionMethod,
-        liteparseOcrEnabled: state.liteparseOcrEnabled
+        liteparseOcrEnabled: state.liteparseOcrEnabled,
+        enableLineTracing: state.enableLineTracing
       }),
     }
   )
