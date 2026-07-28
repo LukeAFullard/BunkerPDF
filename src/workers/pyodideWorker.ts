@@ -1092,7 +1092,37 @@ for page in doc:
     html_lines.append(page.get_text("html"))
 
 doc.close()
-"\\n<hr>\\n".join(html_lines)
+
+html_content = "\\n<hr style='border: none; border-top: 1px solid #ccc; margin: 20px 0;'>\\n".join(html_lines)
+full_html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Extracted Document</title>
+    <style>
+        body {{
+            background-color: #f0f0f0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }}
+        div[id^="page"] {{
+            background-color: white;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            position: relative;
+            overflow: hidden;
+        }}
+    </style>
+</head>
+<body>
+{html_content}
+</body>
+</html>"""
+full_html
       `;
       const htmlData = await pyodide.runPythonAsync(htmlCode);
 
