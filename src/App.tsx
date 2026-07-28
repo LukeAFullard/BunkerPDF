@@ -56,7 +56,7 @@ import type {
 import { ImageReorderRail, type ImageItem } from "./components/ui/ImageReorderRail";
 import { convertImagesToPdf } from "./lib/engineA";
 import { SettingsDropdown } from "./components/ui/SettingsDropdown";
-import { extractParagraphsLiteparse, extractTextLiteparse, extractAllPagesTextLiteparse, extractMarkdownLiteparse, editParagraphLiteparse, extractTablesLiteparse, redactDocumentLiteparse, redactBoxesLiteparse, diffMergedHighlightPdfLiteparse, diffHighlightPdfLiteparse, autoRedactLayoutLiteparse } from "./lib/liteparseEngine";
+import { extractParagraphsLiteparse, extractTextLiteparse, extractAllPagesTextLiteparse, extractMarkdownLiteparse, extractHtmlLiteparse, editParagraphLiteparse, extractTablesLiteparse, redactDocumentLiteparse, redactBoxesLiteparse, diffMergedHighlightPdfLiteparse, diffHighlightPdfLiteparse, autoRedactLayoutLiteparse } from "./lib/liteparseEngine";
 
 function App() {
   const documents = useFileStore((state) => state.documents);
@@ -768,6 +768,10 @@ function App() {
   };
 
   const extractHtml = (bytes: Uint8Array): Promise<string> => {
+    const method = useUIStore.getState().extractionMethod;
+    if (method === 'liteparse') {
+      return extractHtmlLiteparse(bytes);
+    }
     return new Promise((resolve, reject) => {
       if (!pyodideWorkerRef.current)
         return reject(new Error("Pyodide worker not ready"));
