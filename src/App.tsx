@@ -30,6 +30,7 @@ import { autoLinkBoxesLiteparse } from "./lib/liteparseEngine";
 import { SmartFormGenerationModal } from "./components/pdf/SmartFormGenerationModal";
 import { SmartCropModal } from "./components/pdf/SmartCropModal";
 import { InteractiveDataDictionaryModal } from "./components/pdf/InteractiveDataDictionaryModal";
+import { FlipbookViewer } from "./components/pdf/flipbook/FlipbookViewer";
 
 
 import { VisualWatermarkModal } from "./components/pdf/VisualWatermarkModal";
@@ -2037,6 +2038,10 @@ function App() {
   };
 
   const [interactiveCopyState, setInteractiveCopyState] = useState<{isOpen: boolean, docId: string | null}>({isOpen: false, docId: null});
+  const [flipbookState, setFlipbookState] = useState<{isOpen: boolean, docId: string | null}>({isOpen: false, docId: null});
+  const handleFlipbook = (doc: PDFDocument) => {
+    setFlipbookState({ isOpen: true, docId: doc.id });
+  };
 
   const handleInteractiveCopy = (doc: PDFDocument) => {
     setInteractiveCopyState({ isOpen: true, docId: doc.id });
@@ -2453,6 +2458,11 @@ function App() {
         docId={interactiveTableState.docId}
         onClose={() => setInteractiveTableState({ isOpen: false, docId: null })}
       />
+      <FlipbookViewer
+        isOpen={flipbookState.isOpen}
+        docId={flipbookState.docId}
+        onClose={() => setFlipbookState({ isOpen: false, docId: null })}
+      />
       <InteractiveCopyModal
         isOpen={interactiveCopyState.isOpen}
         docId={interactiveCopyState.docId}
@@ -2799,6 +2809,7 @@ function App() {
                       onAutoRedactLayout={autoRedactLayout}
                       onInteractiveTable={handleInteractiveTable}
                       onInteractiveCopy={handleInteractiveCopy}
+                      onFlipbook={handleFlipbook}
                       onInteractiveAutoLinker={handleInteractiveAutoLinker}
                       onSmartForm={handleSmartForm}
                       onSmartCrop={handleSmartCrop}

@@ -55,6 +55,7 @@ interface DocumentCardProps {
   onAutoRedactLayout?: (doc: PDFDocument) => void;
   onInteractiveTable?: (doc: PDFDocument) => void;
   onInteractiveCopy?: (doc: PDFDocument) => void;
+  onFlipbook?: (doc: PDFDocument) => void;
   onInteractiveAutoLinker?: (doc: PDFDocument) => void;
   onSmartForm?: (doc: PDFDocument) => void;
   onSmartCrop?: (doc: PDFDocument) => void;
@@ -124,6 +125,7 @@ export function DocumentCard({
   onAutoRedactLayout,
   onInteractiveTable,
   onInteractiveCopy,
+  onFlipbook,
   onInteractiveAutoLinker,
   onSmartForm,
   onSmartCrop,
@@ -921,6 +923,7 @@ export function DocumentCard({
     { category: "Extract & Export", label: "Extract Annotations (CSV) (~2s)", onClick: handleExtractAnnotations, complexity: "professional" },
     { category: "Interactive Tools", label: "Magic Box Table (~Instant)", onClick: () => onInteractiveTable?.(doc), complexity: "professional" },
     { category: "Interactive Tools", label: "Magic Copy (~Instant)", onClick: () => onInteractiveCopy?.(doc), complexity: "professional" },
+    { category: "Interactive Tools", label: "Flipbook Viewer (~Instant)", onClick: () => onFlipbook?.(doc), complexity: "professional" },
     { category: "Interactive Tools", label: "Auto-Linker (~Instant)", onClick: () => onInteractiveAutoLinker?.(doc), complexity: "professional" },
     { category: "Interactive Tools", label: "Smart Form Generation (~Instant)", onClick: () => onSmartForm?.(doc), complexity: "professional" },
     { category: "Interactive Tools", label: "Smart Crop (~Instant)", onClick: () => onSmartCrop?.(doc), complexity: "professional" },
