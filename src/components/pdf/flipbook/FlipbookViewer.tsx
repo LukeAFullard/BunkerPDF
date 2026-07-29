@@ -1,9 +1,29 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import HTMLFlipBook from 'react-pageflip';
 import { X, Loader2, Maximize2, Minimize2 } from 'lucide-react';
 import { useFileStore } from '../../../store/fileStore';
 import { loadPdfDocument } from '../../../lib/pdfHelper';
+
+// Provide partial type for HTMLFlipBook to avoid @ts-expect-error
+type HTMLFlipBookProps = {
+  width: number;
+  height: number;
+  size?: 'fixed' | 'stretch';
+  minWidth?: number;
+  maxWidth?: number;
+  minHeight?: number;
+  maxHeight?: number;
+  maxShadowOpacity?: number;
+  showCover?: boolean;
+  mobileScrollSupport?: boolean;
+  className?: string;
+  onFlip?: (e: { data: number }) => void;
+  children: React.ReactNode;
+};
+
+// Cast HTMLFlipBook to include the properties we need
+const FlipBook = HTMLFlipBook as unknown as React.FC<HTMLFlipBookProps>;
 
 interface FlipbookViewerProps {
   isOpen: boolean;
@@ -15,97 +35,233 @@ export function FlipbookViewer({ isOpen, docId, onClose }: FlipbookViewerProps) 
   const documents = useFileStore(state => state.documents);
   const doc = documents.find(d => d.id === docId);
 
+  const [pdfDoc, setPdfDoc] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
   const [numPages, setNumPages] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [pageImages, setPageImages] = useState<string[]>([]);
+
+  // Track rendered images by 0-indexed page number
+  const [pageImages, setPageImages] = useState<Record<number, string>>({});
+  const [currentPage, setCurrentPage] = useState(0);
+
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Keep track of active render tasks to cancel them
+  const renderTasksRef = useRef<Record<number, { cancel: () => void }>>({});
+
+  // 1. Load the document structure first
   useEffect(() => {
     if (!isOpen || !doc) return;
 
     let isMounted = true;
-
     let currentPdf: pdfjsLib.PDFDocumentProxy | null = null;
-    const loadDoc = async () => {
+
+    // Clear previous state
+    setTimeout(() => {
+      setPageImages({});
+      setCurrentPage(0);
+      setPdfDoc(null);
+      setNumPages(0);
+    }, 0);
+
+    // Cancel any stray renders
+    Object.values(renderTasksRef.current).forEach(task => {
+      try { task.cancel(); } catch { /* ignore */ }
+    });
+    renderTasksRef.current = {};
+
+    const initDoc = async () => {
       setIsLoading(true);
-      setPageImages([]);
       try {
         const arrayBuffer = await doc.file.arrayBuffer();
         const loadedPdf = await loadPdfDocument(arrayBuffer).promise;
         currentPdf = loadedPdf;
+
         if (!isMounted) return;
 
+        setPdfDoc(loadedPdf);
         setNumPages(loadedPdf.numPages);
+        setIsLoading(false);
 
-        const images: string[] = [];
-
-        for (let i = 1; i <= Math.min(loadedPdf.numPages, 10); i++) {
-          if (!isMounted) break;
-          const page = await loadedPdf.getPage(i);
-          const viewport = page.getViewport({ scale: 1.5 });
-
-          const canvas = document.createElement('canvas');
-          const context = canvas.getContext('2d', { willReadFrequently: true });
-
-          if (!context) continue;
-
-          canvas.height = viewport.height;
-          canvas.width = viewport.width;
-
-          await page.render({
-            canvasContext: context,
-            canvas: canvas,
-            viewport: viewport
-          }).promise;
-
-          images.push(canvas.toDataURL('image/jpeg', 0.8));
-          if (isMounted) {
-            setPageImages([...images]);
-          }
-        }
-
-        if (isMounted) {
-          setIsLoading(false);
-        }
       } catch (err) {
         console.error("Error loading PDF for flipbook:", err);
-        if (isMounted) {
-          setIsLoading(false);
-        }
+        if (isMounted) setIsLoading(false);
       }
     };
 
-    loadDoc();
+    initDoc();
 
     return () => {
       isMounted = false;
       if (currentPdf) {
         currentPdf.destroy();
       }
+
+      // Cancel renders on unmount
+      Object.values(renderTasksRef.current).forEach(task => {
+        try { task.cancel(); } catch { /* ignore */ }
+      });
+      renderTasksRef.current = {};
     };
   }, [isOpen, docId, doc]);
 
+
+  // 2. Render pages near the current page
+  const renderPage = useCallback(async (pdf: pdfjsLib.PDFDocumentProxy, pageIndex: number) => {
+    // pageIndex is 0-based, PDF.js uses 1-based
+    const pdfPageNum = pageIndex + 1;
+    if (pdfPageNum < 1 || pdfPageNum > pdf.numPages) return;
+
+    // Already rendering or rendered
+    if (renderTasksRef.current[pageIndex]) return;
+
+    try {
+      // Mark as rendering with a dummy task to prevent duplicate concurrent calls
+      renderTasksRef.current[pageIndex] = { cancel: () => {} };
+
+      const page = await pdf.getPage(pdfPageNum);
+
+      const dpr = window.devicePixelRatio || 1;
+      const viewport = page.getViewport({ scale: 1.5 * dpr });
+
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+
+      if (!context) {
+        delete renderTasksRef.current[pageIndex];
+        return;
+      }
+
+      canvas.height = viewport.height;
+      canvas.width = viewport.width;
+
+      const renderContext = {
+        canvasContext: context,
+        canvas: canvas,
+        viewport: viewport
+      };
+
+      const renderTask = page.render(renderContext);
+      renderTasksRef.current[pageIndex] = renderTask;
+
+      await renderTask.promise;
+
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+
+      setPageImages(prev => ({
+        ...prev,
+        [pageIndex]: dataUrl
+      }));
+
+    } catch (err: unknown) {
+      // Ignore cancellation errors
+      if ((err as Error)?.name !== 'RenderingCancelledException') {
+        console.error(`Error rendering page ${pdfPageNum}:`, err);
+      }
+    } finally {
+      // Only remove if it's still this task (might have been overwritten on remount)
+      if (renderTasksRef.current[pageIndex]) {
+        delete renderTasksRef.current[pageIndex];
+      }
+    }
+  }, []);
+
+  // Update visible pages when currentPage or pdfDoc changes
+  useEffect(() => {
+    if (!pdfDoc || !isOpen) return;
+
+    const PREFETCH_WINDOW = 2; // ±2 pages
+
+    // Evict old pages outside a slightly larger window to save memory
+    const EVICTION_WINDOW = 4;
+
+    setPageImages(prev => {
+      const next = { ...prev };
+      let changed = false;
+
+      for (const key of Object.keys(next)) {
+        const p = parseInt(key, 10);
+        if (Math.abs(p - currentPage) > EVICTION_WINDOW) {
+           delete next[p];
+           changed = true;
+
+           // Also cancel if it's currently rendering
+           if (renderTasksRef.current[p]) {
+             try { renderTasksRef.current[p].cancel(); } catch { /* ignore */ }
+             delete renderTasksRef.current[p];
+           }
+        }
+      }
+      return changed ? next : prev;
+    });
+
+    // Render current and adjacent pages
+    for (let i = Math.max(0, currentPage - PREFETCH_WINDOW); i <= Math.min(numPages - 1, currentPage + PREFETCH_WINDOW); i++) {
+      if (!pageImages[i] && !renderTasksRef.current[i]) {
+        renderPage(pdfDoc, i);
+      }
+    }
+
+  }, [currentPage, pdfDoc, isOpen, numPages, renderPage, pageImages]);
+
+
   const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      containerRef.current?.requestFullscreen().catch(err => {
-        console.error(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
-      });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (!document.fullscreenElement && !(document as any).webkitFullscreenElement) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const el = containerRef.current as any;
+      if (el?.requestFullscreen) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        el.requestFullscreen().catch((err: any) => console.error(err));
+      } else if (el?.webkitRequestFullscreen) {
+        el.webkitRequestFullscreen();
+      }
       setIsFullscreen(true);
     } else {
-      document.exitFullscreen();
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } else if ((document as any).webkitExitFullscreen) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (document as any).webkitExitFullscreen();
+      }
       setIsFullscreen(false);
     }
   };
 
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setIsFullscreen(!!(document.fullscreenElement || (document as any).webkitFullscreenElement));
     };
 
     document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+    };
   }, []);
+
+  // Keyboard navigation
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+      // Note: react-pageflip handles its own internal keyboard events when focused,
+      // but we can add global ones if needed. For now, rely on its internal handling
+      // or implement if required.
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+
+  const onFlip = (e: { data: number }) => {
+    setCurrentPage(e.data);
+  };
 
   if (!isOpen || !doc) return null;
 
@@ -126,12 +282,14 @@ export function FlipbookViewer({ isOpen, docId, onClose }: FlipbookViewerProps) 
               onClick={toggleFullscreen}
               className="p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-200 dark:hover:bg-slate-800 dark:text-slate-400 dark:hover:text-slate-200 rounded-full transition-colors"
               title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+              aria-label={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
             >
               {isFullscreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
             </button>
             <button
               onClick={onClose}
               className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 dark:text-slate-400 rounded-full transition-colors"
+              aria-label="Close Flipbook"
             >
               <X className="w-5 h-5" />
             </button>
@@ -142,13 +300,11 @@ export function FlipbookViewer({ isOpen, docId, onClose }: FlipbookViewerProps) 
           {isLoading ? (
             <div className="flex flex-col items-center justify-center h-full text-slate-500 dark:text-slate-400">
               <Loader2 className="w-12 h-12 animate-spin mb-4 text-indigo-500" />
-              <p className="text-lg font-medium">Generating flipbook ({pageImages.length}/{Math.min(numPages, 10) || '?'})...</p>
-              {numPages > 10 && <p className="text-sm text-amber-500 mt-2 text-center max-w-sm">Note: Preview limited to first 10 pages to preserve browser memory.</p>}
+              <p className="text-lg font-medium">Initializing flipbook...</p>
             </div>
-          ) : pageImages.length > 0 ? (
+          ) : numPages > 0 ? (
             <div className="w-full h-full flex items-center justify-center">
-              {/* @ts-expect-error - HTMLFlipBook types are tricky */}
-              <HTMLFlipBook
+              <FlipBook
                 width={400}
                 height={550}
                 size="stretch"
@@ -160,21 +316,29 @@ export function FlipbookViewer({ isOpen, docId, onClose }: FlipbookViewerProps) 
                 showCover={true}
                 mobileScrollSupport={true}
                 className="shadow-2xl"
+                onFlip={onFlip}
               >
-                {pageImages.map((src, index) => (
-                  <div key={index} className="bg-white">
-                    <img
-                      src={src}
-                      alt={`Page ${index + 1}`}
-                      className="w-full h-full object-contain"
-                    />
+                {Array.from({ length: numPages }).map((_, index) => (
+                  <div key={index} className="bg-white flex items-center justify-center h-full w-full">
+                    {pageImages[index] ? (
+                      <img
+                        src={pageImages[index]}
+                        alt={`Page ${index + 1}`}
+                        className="w-full h-full object-contain"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center h-full w-full bg-slate-50 text-slate-400">
+                        <Loader2 className="w-8 h-8 animate-spin mb-2" />
+                        <span className="text-sm">Loading Page {index + 1}</span>
+                      </div>
+                    )}
                   </div>
                 ))}
-              </HTMLFlipBook>
+              </FlipBook>
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-red-500">
-              <p className="text-lg font-medium">Failed to generate flipbook</p>
+              <p className="text-lg font-medium">Failed to load PDF</p>
             </div>
           )}
         </div>
