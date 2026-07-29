@@ -198,10 +198,24 @@ function buildFlipbookHtml(opts: {
                     }
                 }
             }, { passive: false });
+
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowLeft') {
+                    if (pageFlip) pageFlip.flipPrev();
+                } else if (e.key === 'ArrowRight') {
+                    if (pageFlip) pageFlip.flipNext();
+                }
+            });
         });
 
         function initFlipbook() {
-            const container = document.getElementById('container');
+            let container = document.getElementById('container');
+            if (!container) {
+                container = document.createElement('div');
+                container.id = 'container';
+                container.className = 'flipbook-container';
+                document.getElementById('zoom-wrapper').appendChild(container);
+            }
             container.innerHTML = '';
             container.style.transform = 'translate(0px, 0px) scale(1)';
 
