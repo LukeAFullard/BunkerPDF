@@ -29,6 +29,98 @@ type HTMLFlipBookProps = {
 // Cast HTMLFlipBook to include the properties we need
 const FlipBook = HTMLFlipBook as unknown as React.ForwardRefExoticComponent<HTMLFlipBookProps & React.RefAttributes<unknown>>;
 
+function stripExt(name: string) {
+  return name.replace(/\.[^/.]+$/, "");
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function escapeHtml(unsafe: string) {
+  return unsafe
+       .replace(/&/g, "&amp;")
+       .replace(/</g, "&lt;")
+       .replace(/>/g, "&gt;")
+       .replace(/"/g, "&quot;")
+       .replace(/'/g, "&#039;");
+}
+
+function buildFlipbookHtml(opts: {
+  title: string;
+  pageSources: string[]; // either "images/page_001.jpg" or "data:image/jpeg;base64,..."
+  scriptTag: string;
+  showCover: boolean;
+  drawShadow: boolean;
+  isSinglePage: boolean;
+}) {
+  const { title, pageSources, scriptTag, showCover, drawShadow, isSinglePage } = opts;
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${escapeHtml(title)} - Flipbook</title>
+    <style>
+        body { margin: 0; padding: 0; background-color: #1e293b; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; font-family: sans-serif; }
+        .flipbook-container { width: 90vw; max-width: 1000px; height: 85vh; background: #0f172a; padding: 2rem; border-radius: 12px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); display: flex; justify-content: center; align-items: center; }
+        .page { background-color: white; box-shadow: inset 0 0 20px rgba(0,0,0,0.1); overflow: hidden; }
+        .page img { width: 100%; height: 100%; object-fit: contain; }
+        .loading { color: white; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="flipbook-container" id="container">
+        <div class="loading">Loading Flipbook...</div>
+    </div>
+
+    ${scriptTag}
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const container = document.getElementById('container');
+            container.innerHTML = '';
+
+            const pageSources = ${JSON.stringify(pageSources)};
+
+            pageSources.forEach((src, i) => {
+                const div = document.createElement('div');
+                div.className = 'page';
+                const img = document.createElement('img');
+                img.src = src;
+                img.alt = 'Page ' + (i + 1);
+                div.appendChild(img);
+                container.appendChild(div);
+            });
+
+            const pageFlip = new St.PageFlip(container, {
+                width: 400,
+                height: 550,
+                size: "stretch",
+                minWidth: 315,
+                maxWidth: 1000,
+                minHeight: 400,
+                maxHeight: 1533,
+                maxShadowOpacity: 0.5,
+                showCover: ${showCover},
+                drawShadow: ${drawShadow},
+                usePortrait: ${isSinglePage},
+                mobileScrollSupport: true
+            });
+
+            pageFlip.loadFromHTML(document.querySelectorAll('.page'));
+        });
+    </script>
+</body>
+</html>`;
+}
+
 interface FlipbookViewerProps {
   isOpen: boolean;
   docId: string | null;
@@ -60,6 +152,10 @@ export function FlipbookViewer({ isOpen, docId, onClose }: FlipbookViewerProps) 
   const [isSinglePage, setIsSinglePage] = useState(false);
   const [showCover, setShowCover] = useState(true);
   const [drawShadow, setDrawShadow] = useState(true);
+
+  type ExportFormat = 'zip' | 'html';
+  const [exportFormat, setExportFormat] = useState<ExportFormat>('zip');
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const flipBookRef = useRef<any>(null);
 
@@ -221,15 +317,6 @@ export function FlipbookViewer({ isOpen, docId, onClose }: FlipbookViewerProps) 
   }, [currentPage, pdfDoc, isOpen, numPages, renderPage, pageImages]);
 
 
-  const escapeHtml = (unsafe: string) => {
-    return unsafe
-         .replace(/&/g, "&amp;")
-         .replace(/</g, "&lt;")
-         .replace(/>/g, "&gt;")
-         .replace(/"/g, "&quot;")
-         .replace(/'/g, "&#039;");
-  };
-
   const handleExport = async () => {
     if (!doc || !pdfDoc || isExporting) return;
 
@@ -240,13 +327,17 @@ export function FlipbookViewer({ isOpen, docId, onClose }: FlipbookViewerProps) 
     const signal = exportAbortControllerRef.current.signal;
 
     try {
-      const zip = new JSZip();
-      const imgFolder = zip.folder("images");
-      if (!imgFolder) throw new Error("Could not create images folder in ZIP");
+      // --- Shared: render every page, but encode per format ---
+      const imagePaths: string[] = [];       // used by ZIP mode: "images/page_001.jpg"
+      const imageDataUrls: string[] = [];    // used by single-file mode: "data:image/jpeg;base64,..."
 
-      const imagePaths: string[] = [];
+      const zip = exportFormat === 'zip' ? new JSZip() : null;
+      const imgFolder = zip?.folder("images");
+      if (exportFormat === 'zip' && !imgFolder) {
+        throw new Error("Could not create images folder in ZIP");
+      }
 
-      // Render all pages to blobs and add to zip
+      // Render all pages
       for (let i = 1; i <= pdfDoc.numPages; i++) {
         if (signal.aborted) throw new Error("Export cancelled");
         if (!isOpen) throw new Error("Modal closed");
@@ -277,104 +368,62 @@ export function FlipbookViewer({ isOpen, docId, onClose }: FlipbookViewerProps) 
         await renderTask.promise;
         signal.removeEventListener('abort', abortHandler);
 
-        // Convert canvas to blob directly to save memory
-        const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8));
-        if (blob) {
-          const fileName = `page_${i.toString().padStart(3, '0')}.jpg`;
-          imgFolder.file(fileName, blob);
-          imagePaths.push(`images/${fileName}`);
-        }
-      }
-
-      // Fetch the page-flip js file for offline use
-      const jsFolder = zip.folder("js");
-      if (jsFolder) {
-        try {
-          const response = await fetch("https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.min.js");
-          if (response.ok) {
-            const jsContent = await response.text();
-            jsFolder.file("page-flip.browser.min.js", jsContent);
-          } else {
-             console.warn("Could not fetch page-flip.browser.min.js, falling back to CDN in HTML");
+        if (exportFormat === 'zip') {
+          // Convert canvas to blob directly to save memory
+          const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8));
+          if (blob) {
+            const fileName = `page_${i.toString().padStart(3, '0')}.jpg`;
+            imgFolder!.file(fileName, blob);
+            imagePaths.push(`images/${fileName}`);
           }
-        } catch (e) {
-          console.warn("Could not fetch page-flip.browser.min.js, falling back to CDN in HTML", e);
+        } else {
+          // Encode inline as a base64 data URL
+          imageDataUrls.push(canvas.toDataURL('image/jpeg', 0.8));
         }
       }
 
-      // Generate the HTML boilerplate
-      const htmlContent = `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${escapeHtml(doc.name)} - Flipbook</title>
-    <style>
-        body { margin: 0; padding: 0; background-color: #1e293b; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; font-family: sans-serif; }
-        .flipbook-container { width: 90vw; max-width: 1000px; height: 85vh; background: #0f172a; padding: 2rem; border-radius: 12px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); display: flex; justify-content: center; align-items: center; }
-        .page { background-color: white; box-shadow: inset 0 0 20px rgba(0,0,0,0.1); overflow: hidden; }
-        .page img { width: 100%; height: 100%; object-fit: contain; }
-        .loading { color: white; text-align: center; }
-    </style>
-</head>
-<body>
-    <div class="flipbook-container" id="container">
-        <div class="loading">Loading Flipbook...</div>
-    </div>
+      // --- Shared: get the page-flip script text (needed either way for offline support) ---
+      let pageFlipScriptText: string | null = null;
+      try {
+        const response = await fetch(
+          "https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.min.js"
+        );
+        if (response.ok) pageFlipScriptText = await response.text();
+      } catch (e) {
+        console.warn("Could not fetch page-flip.browser.min.js", e);
+      }
 
-    <!-- Load page-flip library locally for offline support, with CDN fallback -->
-    <script src="js/page-flip.browser.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.min.js';"></script>
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const container = document.getElementById('container');
-            container.innerHTML = ''; // Clear loading text
-
-            // Create DOM elements for pages
-            const imagePaths = ${JSON.stringify(imagePaths)};
-
-            imagePaths.forEach((path, i) => {
-                const div = document.createElement('div');
-                div.className = 'page';
-                const img = document.createElement('img');
-                img.src = path;
-                img.alt = 'Page ' + (i + 1);
-                div.appendChild(img);
-                container.appendChild(div);
-            });
-
-            // Initialize PageFlip
-            const pageFlip = new St.PageFlip(container, {
-                width: 400,
-                height: 550,
-                size: "stretch",
-                minWidth: 315,
-                maxWidth: 1000,
-                minHeight: 400,
-                maxHeight: 1533,
-                maxShadowOpacity: 0.5,
-                showCover: ${showCover},
-                drawShadow: ${drawShadow},
-                usePortrait: ${isSinglePage},
-                mobileScrollSupport: true
-            });
-
-            pageFlip.loadFromHTML(document.querySelectorAll('.page'));
+      if (exportFormat === 'zip') {
+        // --- Existing ZIP path ---
+        if (pageFlipScriptText) {
+          zip!.folder("js")!.file("page-flip.browser.min.js", pageFlipScriptText);
+        }
+        const htmlContent = buildFlipbookHtml({
+          title: doc.name,
+          pageSources: imagePaths,               // relative file paths
+          scriptTag: pageFlipScriptText
+            ? `<script src="js/page-flip.browser.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.min.js';"></script>`
+            : `<script src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.min.js"></script>`,
+          showCover, drawShadow, isSinglePage,
         });
-    </script>
-</body>
-</html>`;
+        zip!.file("index.html", htmlContent);
 
-      zip.file("index.html", htmlContent);
+        const zipBlob = await zip!.generateAsync({ type: "blob" });
+        downloadBlob(zipBlob, `${stripExt(doc.name)}_flipbook.zip`);
 
-      const zipBlob = await zip.generateAsync({ type: "blob" });
-      const url = URL.createObjectURL(zipBlob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${doc.name.replace(/\.[^/.]+$/, "")}_flipbook.zip`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      } else {
+        // --- New single-file path ---
+        const htmlContent = buildFlipbookHtml({
+          title: doc.name,
+          pageSources: imageDataUrls,             // base64 data URLs, embedded directly
+          scriptTag: pageFlipScriptText
+            ? `<script>${pageFlipScriptText}</script>`
+            : `<script src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.min.js"></script>`,
+          showCover, drawShadow, isSinglePage,
+        });
+        const htmlBlob = new Blob([htmlContent], { type: 'text/html' });
+        downloadBlob(htmlBlob, `${stripExt(doc.name)}_flipbook.html`);
+      }
 
     } catch (err: unknown) {
       if ((err as Error).message === "Export cancelled" || (err as Error).message === "Modal closed") {
@@ -519,6 +568,34 @@ export function FlipbookViewer({ isOpen, docId, onClose }: FlipbookViewerProps) 
                     />
                     <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-indigo-500 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-slate-600 peer-checked:bg-indigo-500"></div>
                   </label>
+
+                  <div className="pt-2 mt-1 border-t border-slate-100 dark:border-slate-700">
+                    <span className="text-sm text-slate-700 dark:text-slate-300 block mb-2">Export format</span>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="exportFormat"
+                          checked={exportFormat === 'zip'}
+                          onChange={() => setExportFormat('zip')}
+                        />
+                        ZIP (images + HTML)
+                      </label>
+                      <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="exportFormat"
+                          checked={exportFormat === 'html'}
+                          onChange={() => setExportFormat('html')}
+                        />
+                        Single HTML file
+                      </label>
+                    </div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
+                      ZIP: smaller download, extract before viewing.<br/>
+                      Single file: larger download, opens directly.
+                    </div>
+                  </div>
                 </div>
                 </>
               )}
