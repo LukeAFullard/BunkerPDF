@@ -131,10 +131,12 @@ function buildFlipbookHtml(opts: {
             initFlipbook();
 
             const wrapper = document.getElementById('zoom-wrapper');
-            const container = document.getElementById('container');
 
             function updateTransform() {
-                container.style.transform = \`translate(\${translateX}px, \${translateY}px) scale(\${scale})\`;
+                const currentContainer = document.getElementById('container');
+                if (currentContainer) {
+                    currentContainer.style.transform = \`translate(\${translateX}px, \${translateY}px) scale(\${scale})\`;
+                }
             }
 
             window.zoomIn = function() { scale += 0.2; updateTransform(); }
@@ -152,7 +154,7 @@ function buildFlipbookHtml(opts: {
                 setTimeout(() => {
                     initFlipbook();
                     if (pageFlip) {
-                        pageFlip.turnToPage(currentIndex);
+                        pageFlip.flip(currentIndex);
                     }
                     resetZoom();
                 }, 50);
