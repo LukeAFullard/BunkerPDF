@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import HTMLFlipBook from 'react-pageflip-enhanced';
-import { X, Loader2, Maximize2, Minimize2, Download, Settings } from 'lucide-react';
+import { X, Loader2, Maximize2, Minimize2, Download, Settings, ZoomIn, ZoomOut, RefreshCw } from 'lucide-react';
+import { TransformWrapper, TransformComponent, useControls } from 'react-zoom-pan-pinch';
 import JSZip from 'jszip';
 import { useFileStore } from '../../../store/fileStore';
 import { loadPdfDocument } from '../../../lib/pdfHelper';
@@ -66,11 +67,12 @@ function buildFlipbookHtml(opts: {
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
     <title>${escapeHtml(title)} - Flipbook</title>
     <style>
-        body { margin: 0; padding: 0; background-color: #1e293b; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; font-family: sans-serif; }
+        body { margin: 0; padding: 0; background-color: #1e293b; display: flex; justify-content: center; align-items: center; min-height: 100vh; overflow: auto; font-family: sans-serif; }
         .flipbook-container { width: 90vw; max-width: 1000px; height: 85vh; background: #0f172a; padding: 2rem; border-radius: 12px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); display: flex; justify-content: center; align-items: center; }
+        @media (max-width: 768px) { .flipbook-container { width: 100vw; height: 100vh; max-width: none; padding: 0; border-radius: 0; } }
         .page { background-color: white; box-shadow: inset 0 0 20px rgba(0,0,0,0.1); overflow: hidden; }
         .page img { width: 100%; height: 100%; object-fit: contain; }
         .loading { color: white; text-align: center; }
@@ -110,7 +112,7 @@ function buildFlipbookHtml(opts: {
                 maxShadowOpacity: 0.5,
                 showCover: ${showCover},
                 drawShadow: ${drawShadow},
-                usePortrait: ${isSinglePage},
+                usePortrait: ${isSinglePage ? 'true' : 'false'},
                 mobileScrollSupport: true
             });
 
@@ -119,6 +121,36 @@ function buildFlipbookHtml(opts: {
     </script>
 </body>
 </html>`;
+}
+
+function ZoomControls() {
+  const { zoomIn, zoomOut, resetTransform } = useControls();
+
+  return (
+    <div className="absolute top-4 left-4 z-10 flex gap-2 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm p-1.5 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700">
+      <button
+        onClick={() => zoomIn()}
+        className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 dark:text-slate-400 rounded-md transition-colors"
+        title="Zoom In"
+      >
+        <ZoomIn className="w-4 h-4" />
+      </button>
+      <button
+        onClick={() => zoomOut()}
+        className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 dark:text-slate-400 rounded-md transition-colors"
+        title="Zoom Out"
+      >
+        <ZoomOut className="w-4 h-4" />
+      </button>
+      <button
+        onClick={() => resetTransform()}
+        className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 dark:text-slate-400 rounded-md transition-colors"
+        title="Reset Zoom"
+      >
+        <RefreshCw className="w-4 h-4" />
+      </button>
+    </div>
+  );
 }
 
 interface FlipbookViewerProps {
@@ -654,11 +686,14 @@ export function FlipbookViewer({ isOpen, docId, onClose }: FlipbookViewerProps) 
               <p className="text-lg font-medium">Initializing flipbook...</p>
             </div>
           ) : numPages > 0 ? (
-            <div className="w-full h-full flex items-center justify-center">
-              <FlipBook
-                key={`${showCover}-${drawShadow}-${isSinglePage}`}
-                ref={flipBookRef}
-                width={400}
+            <TransformWrapper minScale={0.5} maxScale={5}>
+              <div className="w-full h-full flex items-center justify-center relative">
+                <ZoomControls />
+                <TransformComponent wrapperClass="!w-full !h-full flex items-center justify-center" contentClass="!w-full !h-full flex items-center justify-center">
+                  <FlipBook
+                    key={`${showCover}-${drawShadow}-${isSinglePage}`}
+                    ref={flipBookRef}
+                    width={400}
                 height={550}
                 size="stretch"
                 minWidth={315}
@@ -688,10 +723,12 @@ export function FlipbookViewer({ isOpen, docId, onClose }: FlipbookViewerProps) 
                         <span className="text-sm">Loading Page {index + 1}</span>
                       </div>
                     )}
-                  </div>
-                ))}
-              </FlipBook>
-            </div>
+                      </div>
+                    ))}
+                  </FlipBook>
+                </TransformComponent>
+              </div>
+            </TransformWrapper>
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-red-500">
               <p className="text-lg font-medium">Failed to load PDF</p>
