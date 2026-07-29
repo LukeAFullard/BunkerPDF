@@ -75,6 +75,7 @@ function buildFlipbookHtml(opts: {
         .controls button { padding: 0.5rem 1rem; border: none; background: transparent; color: #e2e8f0; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s; display: flex; align-items: center; justify-content: center; }
         .controls button:hover { background: #334155; color: #fff; }
         .controls svg { width: 18px; height: 18px; }
+        .controls select { padding: 0.25rem; border: 1px solid #475569; background: #1e293b; color: #e2e8f0; border-radius: 4px; outline: none; margin-left: 0.5rem; font-size: 14px; cursor: pointer; }
         .zoom-wrapper { width: 100vw; height: 100vh; overflow: hidden; display: flex; justify-content: center; align-items: center; cursor: grab; position: absolute; top: 0; left: 0; }
         .zoom-wrapper:active { cursor: grabbing; }
         .flipbook-container { width: 90vw; max-width: 1000px; height: 85vh; background: #0f172a; padding: 2rem; border-radius: 12px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); display: flex; justify-content: center; align-items: center; transition: transform 0.1s ease-out; transform-origin: center center; }
@@ -98,6 +99,9 @@ function buildFlipbookHtml(opts: {
         <button onclick="toggleLayout()" title="Toggle Layout (Single/Double Page)">
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="12" y1="3" x2="12" y2="21"></line></svg>
         </button>
+        <div style="display: flex; align-items: center; border-left: 1px solid #334155; margin-left: 0.5rem; padding-left: 0.5rem;">
+            <select id="page-selector" onchange="goToPage(this.value)" title="Go to Page"></select>
+        </div>
     </div>
     <div id="zoom-wrapper" class="zoom-wrapper">
         <div class="flipbook-container" id="container">
@@ -115,6 +119,15 @@ function buildFlipbookHtml(opts: {
         let translateX = 0, translateY = 0;
 
         document.addEventListener('DOMContentLoaded', function() {
+            const selector = document.getElementById('page-selector');
+            const pageSources = ${JSON.stringify(pageSources)};
+            pageSources.forEach((_, i) => {
+                const opt = document.createElement('option');
+                opt.value = i;
+                opt.text = "Page " + (i + 1);
+                selector.appendChild(opt);
+            });
+
             initFlipbook();
 
             const wrapper = document.getElementById('zoom-wrapper');
@@ -128,12 +141,27 @@ function buildFlipbookHtml(opts: {
             window.zoomOut = function() { scale = Math.max(0.2, scale - 0.2); updateTransform(); }
             window.resetZoom = function() { scale = 1; translateX = 0; translateY = 0; updateTransform(); }
             window.toggleLayout = function() {
+                let currentIndex = 0;
                 if (pageFlip) {
+                    currentIndex = pageFlip.getCurrentPageIndex();
                     pageFlip.destroy();
                 }
                 currentIsSinglePage = !currentIsSinglePage;
-                initFlipbook();
-                resetZoom();
+
+                // Use setTimeout to ensure DOM is flushed after destroy
+                setTimeout(() => {
+                    initFlipbook();
+                    if (pageFlip) {
+                        pageFlip.turnToPage(currentIndex);
+                    }
+                    resetZoom();
+                }, 50);
+            }
+
+            window.goToPage = function(pageIndex) {
+                if (pageFlip) {
+                    pageFlip.flip(parseInt(pageIndex));
+                }
             }
 
             wrapper.addEventListener('mousedown', (e) => {
@@ -205,6 +233,13 @@ function buildFlipbookHtml(opts: {
             });
 
             pageFlip.loadFromHTML(document.querySelectorAll('.page'));
+
+            pageFlip.on('flip', (e) => {
+                const selector = document.getElementById('page-selector');
+                if (selector) {
+                    selector.value = e.data;
+                }
+            });
         }
     </script>
 </body>
