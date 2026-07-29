@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
-import HTMLFlipBook from 'react-pageflip';
+import HTMLFlipBook from 'react-pageflip-enhanced';
 import { X, Loader2, Maximize2, Minimize2 } from 'lucide-react';
 import { useFileStore } from '../../../store/fileStore';
 import { loadPdfDocument } from '../../../lib/pdfHelper';
@@ -23,7 +23,7 @@ type HTMLFlipBookProps = {
 };
 
 // Cast HTMLFlipBook to include the properties we need
-const FlipBook = HTMLFlipBook as unknown as React.FC<HTMLFlipBookProps>;
+const FlipBook = HTMLFlipBook as unknown as React.ForwardRefExoticComponent<HTMLFlipBookProps & React.RefAttributes<unknown>>;
 
 interface FlipbookViewerProps {
   isOpen: boolean;
@@ -45,6 +45,8 @@ export function FlipbookViewer({ isOpen, docId, onClose }: FlipbookViewerProps) 
   const [currentPage, setCurrentPage] = useState(0);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const flipBookRef = useRef<any>(null);
 
   // Keep track of active render tasks to cancel them
   const renderTasksRef = useRef<Record<number, { cancel: () => void }>>({});
@@ -57,12 +59,7 @@ export function FlipbookViewer({ isOpen, docId, onClose }: FlipbookViewerProps) 
     let currentPdf: pdfjsLib.PDFDocumentProxy | null = null;
 
     // Clear previous state
-    setTimeout(() => {
-      setPageImages({});
-      setCurrentPage(0);
-      setPdfDoc(null);
-      setNumPages(0);
-    }, 0);
+
 
     // Cancel any stray renders
     Object.values(renderTasksRef.current).forEach(task => {
@@ -71,6 +68,10 @@ export function FlipbookViewer({ isOpen, docId, onClose }: FlipbookViewerProps) 
     renderTasksRef.current = {};
 
     const initDoc = async () => {
+      setPageImages({});
+      setCurrentPage(0);
+      setPdfDoc(null);
+      setNumPages(0);
       setIsLoading(true);
       try {
         const arrayBuffer = await doc.file.arrayBuffer();
@@ -249,10 +250,15 @@ export function FlipbookViewer({ isOpen, docId, onClose }: FlipbookViewerProps) 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         onClose();
+      } else if (e.key === 'ArrowLeft') {
+        if (flipBookRef.current?.pageFlip) {
+          flipBookRef.current.pageFlip().flipPrev();
+        }
+      } else if (e.key === 'ArrowRight') {
+        if (flipBookRef.current?.pageFlip) {
+          flipBookRef.current.pageFlip().flipNext();
+        }
       }
-      // Note: react-pageflip handles its own internal keyboard events when focused,
-      // but we can add global ones if needed. For now, rely on its internal handling
-      // or implement if required.
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -305,6 +311,7 @@ export function FlipbookViewer({ isOpen, docId, onClose }: FlipbookViewerProps) 
           ) : numPages > 0 ? (
             <div className="w-full h-full flex items-center justify-center">
               <FlipBook
+                ref={flipBookRef}
                 width={400}
                 height={550}
                 size="stretch"
