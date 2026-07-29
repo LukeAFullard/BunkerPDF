@@ -70,8 +70,14 @@ function buildFlipbookHtml(opts: {
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
     <title>${escapeHtml(title)} - Flipbook</title>
     <style>
-        body { margin: 0; padding: 0; background-color: #1e293b; display: flex; justify-content: center; align-items: center; min-height: 100vh; overflow: auto; font-family: sans-serif; }
-        .flipbook-container { width: 90vw; max-width: 1000px; height: 85vh; background: #0f172a; padding: 2rem; border-radius: 12px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); display: flex; justify-content: center; align-items: center; }
+        body { margin: 0; padding: 0; background-color: #1e293b; display: flex; flex-direction: column; min-height: 100vh; overflow: hidden; font-family: sans-serif; }
+        .controls { position: fixed; top: 1rem; left: 50%; transform: translateX(-50%); z-index: 100; display: flex; gap: 0.5rem; background: rgba(15, 23, 42, 0.9); padding: 0.5rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); border: 1px solid #334155; backdrop-filter: blur(4px); }
+        .controls button { padding: 0.5rem 1rem; border: none; background: transparent; color: #e2e8f0; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s; display: flex; align-items: center; justify-content: center; }
+        .controls button:hover { background: #334155; color: #fff; }
+        .controls svg { width: 18px; height: 18px; }
+        .zoom-wrapper { width: 100vw; height: 100vh; overflow: hidden; display: flex; justify-content: center; align-items: center; cursor: grab; position: absolute; top: 0; left: 0; }
+        .zoom-wrapper:active { cursor: grabbing; }
+        .flipbook-container { width: 90vw; max-width: 1000px; height: 85vh; background: #0f172a; padding: 2rem; border-radius: 12px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); display: flex; justify-content: center; align-items: center; transition: transform 0.1s ease-out; transform-origin: center center; }
         @media (max-width: 768px) { .flipbook-container { width: 100vw; height: 100vh; max-width: none; padding: 0; border-radius: 0; } }
         .page { background-color: white; box-shadow: inset 0 0 20px rgba(0,0,0,0.1); overflow: hidden; }
         .page img { width: 100%; height: 100%; object-fit: contain; }
@@ -79,15 +85,97 @@ function buildFlipbookHtml(opts: {
     </style>
 </head>
 <body>
-    <div class="flipbook-container" id="container">
-        <div class="loading">Loading Flipbook...</div>
+    <div class="controls">
+        <button onclick="zoomIn()" title="Zoom In">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
+        </button>
+        <button onclick="zoomOut()" title="Zoom Out">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
+        </button>
+        <button onclick="resetZoom()" title="Reset Zoom">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+        </button>
+        <button onclick="toggleLayout()" title="Toggle Layout (Single/Double Page)">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="12" y1="3" x2="12" y2="21"></line></svg>
+        </button>
+    </div>
+    <div id="zoom-wrapper" class="zoom-wrapper">
+        <div class="flipbook-container" id="container">
+            <div class="loading">Loading Flipbook...</div>
+        </div>
     </div>
 
     ${scriptTag}
     <script>
+        let pageFlip = null;
+        let currentIsSinglePage = ${isSinglePage ? 'true' : 'false'};
+        let scale = 1;
+        let isPanning = false;
+        let startX = 0, startY = 0;
+        let translateX = 0, translateY = 0;
+
         document.addEventListener('DOMContentLoaded', function() {
+            initFlipbook();
+
+            const wrapper = document.getElementById('zoom-wrapper');
+            const container = document.getElementById('container');
+
+            function updateTransform() {
+                container.style.transform = \`translate(\${translateX}px, \${translateY}px) scale(\${scale})\`;
+            }
+
+            window.zoomIn = function() { scale += 0.2; updateTransform(); }
+            window.zoomOut = function() { scale = Math.max(0.2, scale - 0.2); updateTransform(); }
+            window.resetZoom = function() { scale = 1; translateX = 0; translateY = 0; updateTransform(); }
+            window.toggleLayout = function() {
+                if (pageFlip) {
+                    pageFlip.destroy();
+                }
+                currentIsSinglePage = !currentIsSinglePage;
+                initFlipbook();
+                resetZoom();
+            }
+
+            wrapper.addEventListener('mousedown', (e) => {
+                if (e.target.closest('.controls')) return;
+                // Only pan if shift is pressed, or if clicking outside the flipbook
+                if (e.shiftKey || e.button === 1 || !e.target.closest('.stf__wrapper')) {
+                    isPanning = true;
+                    startX = e.clientX - translateX;
+                    startY = e.clientY - translateY;
+                    wrapper.style.cursor = 'grabbing';
+                    e.preventDefault();
+                }
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (!isPanning) return;
+                translateX = e.clientX - startX;
+                translateY = e.clientY - startY;
+                updateTransform();
+            });
+
+            window.addEventListener('mouseup', () => {
+                isPanning = false;
+                wrapper.style.cursor = 'grab';
+            });
+
+            wrapper.addEventListener('wheel', (e) => {
+                if (e.ctrlKey || e.metaKey) {
+                    e.preventDefault();
+                    if (e.deltaY < 0) {
+                        window.zoomIn();
+                    } else {
+                        window.zoomOut();
+                    }
+                }
+            }, { passive: false });
+        });
+
+        function initFlipbook() {
             const container = document.getElementById('container');
             container.innerHTML = '';
+            container.style.transform = 'translate(0px, 0px) scale(1)';
 
             const pageSources = ${JSON.stringify(pageSources)};
 
@@ -101,7 +189,7 @@ function buildFlipbookHtml(opts: {
                 container.appendChild(div);
             });
 
-            const pageFlip = new St.PageFlip(container, {
+            pageFlip = new St.PageFlip(container, {
                 width: 400,
                 height: 550,
                 size: "stretch",
@@ -112,12 +200,12 @@ function buildFlipbookHtml(opts: {
                 maxShadowOpacity: 0.5,
                 showCover: ${showCover},
                 drawShadow: ${drawShadow},
-                usePortrait: ${isSinglePage ? 'true' : 'false'},
+                usePortrait: currentIsSinglePage,
                 mobileScrollSupport: true
             });
 
             pageFlip.loadFromHTML(document.querySelectorAll('.page'));
-        });
+        }
     </script>
 </body>
 </html>`;
