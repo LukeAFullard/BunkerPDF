@@ -80,6 +80,7 @@ function buildFlipbookHtml(opts: {
         .zoom-wrapper:active { cursor: grabbing; }
         .flipbook-container { width: 90vw; max-width: 1000px; height: 85vh; background: #0f172a; padding: 2rem; border-radius: 12px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); display: flex; justify-content: center; align-items: center; transition: transform 0.1s ease-out; transform-origin: center center; }
         @media (max-width: 768px) { .flipbook-container { width: 100vw; height: 100vh; max-width: none; padding: 0; border-radius: 0; } }
+        .flipbook-container.single-page-mode { max-width: 60vh; width: 100%; }
         .page { background-color: white; box-shadow: inset 0 0 20px rgba(0,0,0,0.1); overflow: hidden; }
         .page img { width: 100%; height: 100%; object-fit: contain; }
         .loading { color: white; text-align: center; }
@@ -169,7 +170,7 @@ function buildFlipbookHtml(opts: {
             wrapper.addEventListener('mousedown', (e) => {
                 if (e.target.closest('.controls')) return;
                 // Only pan if shift is pressed, or if clicking outside the flipbook
-                if (e.shiftKey || e.button === 1 || !e.target.closest('.stf__wrapper')) {
+                if (scale > 1 || e.shiftKey || e.button === 1 || !e.target.closest('.stf__wrapper')) {
                     isPanning = true;
                     startX = e.clientX - translateX;
                     startY = e.clientY - translateY;
@@ -189,6 +190,31 @@ function buildFlipbookHtml(opts: {
                 isPanning = false;
                 wrapper.style.cursor = 'grab';
             });
+
+            wrapper.addEventListener('touchstart', (e) => {
+                if (e.target.closest('.controls')) return;
+                if (e.touches.length === 1 && (scale > 1 || !e.target.closest('.stf__wrapper'))) {
+                    isPanning = true;
+                    startX = e.touches[0].clientX - translateX;
+                    startY = e.touches[0].clientY - translateY;
+                }
+            }, { passive: false });
+
+            window.addEventListener('touchmove', (e) => {
+                if (!isPanning) return;
+                translateX = e.touches[0].clientX - startX;
+                translateY = e.touches[0].clientY - startY;
+                updateTransform();
+            }, { passive: false });
+
+            window.addEventListener('touchend', () => {
+                isPanning = false;
+            });
+
+            window.addEventListener('touchcancel', () => {
+                isPanning = false;
+            });
+
 
             wrapper.addEventListener('wheel', (e) => {
                 if (e.ctrlKey || e.metaKey) {
@@ -220,6 +246,12 @@ function buildFlipbookHtml(opts: {
             }
             container.innerHTML = '';
             container.style.transform = 'translate(0px, 0px) scale(1)';
+
+            if (currentIsSinglePage) {
+                container.classList.add('single-page-mode');
+            } else {
+                container.classList.remove('single-page-mode');
+            }
 
             const pageSources = ${JSON.stringify(pageSources)};
 
