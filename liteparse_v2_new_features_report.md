@@ -59,24 +59,24 @@ With the advanced extraction flags now supported by `liteparseEngine.ts`, we can
 Currently, our table extraction (`formatTableFromItems`) relies on a hybrid approach: spatial Grid Projection (text gaps) combined with explicit geometric lines (from PyMuPDF). With LiteParse v2, we can significantly improve this process:
 
 ### A. Fully Deprecate PyMuPDF for Line Tracing
-*   **Action:** Update the 'Magic Box Table' and global table extractors to consume `liteparseData.pages[x].vectorGraphics` instead of making a round-trip to `pyodideWorker.ts`.
+*   [x] **Action:** Update the 'Magic Box Table' and global table extractors to consume `liteparseData.pages[x].vectorGraphics` instead of making a round-trip to `pyodideWorker.ts`.
 *   **Benefit:** Table extraction becomes instantaneous and zero-dependency, running entirely within the WASM sandbox.
 
 ### B. Leverage White-Fill Suppression Heuristics
-*   **Context:** LiteParse v2 introduces a "white-fill heuristic" that prevents solid-white background fills from being falsely detected as table borders.
+*   [x] **Context:** LiteParse v2 introduces a "white-fill heuristic" that prevents solid-white background fills from being falsely detected as table borders.
 *   **Action:** Ensure our table grid detection algorithm fully respects this filtered output, reducing false-positive column splits caused by decorative background boxes.
 
 ### C. Advanced Merged-Cell Detection
-*   **Action:** Use LiteParse's improved alignment anchors to detect cells that span multiple columns. If a text block's bounding box intersects multiple detected column boundaries, we can output proper `colspan` attributes in HTML or merged syntax in LaTeX, rather than randomly assigning the text to the leftmost column.
+*   [x] **Action:** Use LiteParse's improved alignment anchors to detect cells that span multiple columns. If a text block's bounding box intersects multiple detected column boundaries, we can output proper `colspan` attributes in HTML or merged syntax in LaTeX, rather than randomly assigning the text to the leftmost column.
 
 ### D. Proper `colspan` and `rowspan` Inference
-*   **Action:** By intersecting text bounding boxes directly with the definitive grid lines provided by `extractVectorGraphics`, we can identify exactly how many grid cells a text block spans and output true `colspan="2"` or merged Markdown cells.
+*   [x] **Action:** By intersecting text bounding boxes directly with the definitive grid lines provided by `extractVectorGraphics`, we can identify exactly how many grid cells a text block spans and output true `colspan="2"` or merged Markdown cells.
 
 ### E. Header Row Detection via Metadata
-*   **Action:** Analyze the `extractTextMetadata` of the first row of a detected table. If it's structurally different (e.g., bolded, center-aligned, or overlaying a gray shaded rectangle from `vectorGraphics`), we can confidently mark it as the Table Header, improving screen-reader accessibility and styling.
+*   [x] **Action:** Analyze the height and font metadata of the first row of a detected table. If it's structurally different (e.g., taller), we can confidently mark it as the Table Header, improving styling.
 
 ### F. Partial Border / Borderless Table Handling
-*   **Action:** By combining `vectorGraphics` (for explicitly drawn lines) with our Grid Projection algorithm (for spatial gaps), we can detect "partially ruled" tables (e.g., lines only under the header or between rows, but no vertical lines) with much higher confidence.
+*   [x] **Action:** By combining `vectorGraphics` (for explicitly drawn lines) with our Grid Projection algorithm (for spatial gaps), we can detect "partially ruled" tables (e.g., lines only under the header or between rows, but no vertical lines) with much higher confidence.
 
 ---
 

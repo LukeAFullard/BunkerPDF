@@ -7,7 +7,6 @@ import { useFileStore } from '../../store/fileStore';
 import { cleanupPdfResources } from '../../lib/pdfCleanup';
 import { getConfiguredLiteParse, formatTableFromItems } from '../../lib/liteparseEngine';
 import type { LineItem } from '../../lib/liteparseEngine';
-import type { PyodideWorkerMessage, PyodideWorkerResponse } from '../../workers/pyodideWorker';
 
 interface InteractiveTableModalProps {
   isOpen: boolean;
@@ -44,16 +43,6 @@ export function InteractiveTableModal({ isOpen, docId, onClose }: InteractiveTab
 
   const renderTaskRef = useRef<pdfjsLib.RenderTask | null>(null);
   const pdfDocRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
-  const pyWorkerRef = useRef<Worker | null>(null);
-
-  useEffect(() => {
-    return () => {
-       if (pyWorkerRef.current) {
-          pyWorkerRef.current.terminate();
-          pyWorkerRef.current = null;
-       }
-    };
-  }, []);
 
   useEffect(() => {
     if (!isOpen || !doc) return;
@@ -82,7 +71,7 @@ export function InteractiveTableModal({ isOpen, docId, onClose }: InteractiveTab
         pdfDocRef.current = pdf;
         setTotalPages(pdf.numPages);
 
-        const engine = await getConfiguredLiteParse({ outputFormat: "json" });
+        const engine = await getConfiguredLiteParse({ outputFormat: "json", extractVectorGraphics: true });
         const result = await engine.parse(bytes);
 
         if (isMounted) {
@@ -113,37 +102,30 @@ export function InteractiveTableModal({ isOpen, docId, onClose }: InteractiveTab
     if (isOpen && pdfDocRef.current && liteparseData) {
       renderPage(currentPage, pdfDocRef.current);
 
-      if (doc) {
-        if (!pyWorkerRef.current) {
-          pyWorkerRef.current = new Worker(new URL('../../workers/pyodideWorker.ts', import.meta.url), { type: 'module' });
-        }
+      if (liteparseData && liteparseData.pages && liteparseData.pages[currentPage - 1]) {
+        const lines: LineItem[] = [];
+        const vectorGraphics = liteparseData.pages[currentPage - 1].vectorGraphics;
+        if (vectorGraphics && vectorGraphics.lines) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          vectorGraphics.lines.forEach((l: any) => {
+            const x0 = Math.min(l.x1, l.x2);
+            const y0 = Math.min(l.y1, l.y2);
+            const x1 = Math.max(l.x1, l.x2);
+            const y1 = Math.max(l.y1, l.y2);
 
-        const jobId = `lines-${doc.id}-${currentPage}`;
-
-        const handleWorkerMessage = (e: MessageEvent) => {
-          const response = e.data as PyodideWorkerResponse;
-          if (response.jobId === jobId) {
-            if (response.type === 'RESULT') {
-              setExtractedLines(response.result as LineItem[]);
+            // Only consider strictly horizontal or vertical lines
+            if (Math.abs(y0 - y1) < 2) {
+              lines.push({ x0, y0: (y0 + y1) / 2, x1, y1: (y0 + y1) / 2, type: 'horizontal' });
+            } else if (Math.abs(x0 - x1) < 2) {
+              lines.push({ x0: (x0 + x1) / 2, y0, x1: (x0 + x1) / 2, y1, type: 'vertical' });
             }
-            pyWorkerRef.current?.removeEventListener('message', handleWorkerMessage);
-          }
-        };
-
-        pyWorkerRef.current.addEventListener('message', handleWorkerMessage);
-
-        doc.file.arrayBuffer().then(buffer => {
-          pyWorkerRef.current?.postMessage({
-            type: 'EXTRACT_LINES',
-            jobId,
-            pdfBytes: new Uint8Array(buffer),
-            pageNum: currentPage
-          } as PyodideWorkerMessage);
-        });
+          });
+        }
+        setExtractedLines(lines);
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, zoomLevel]);
+  }, [currentPage, zoomLevel, liteparseData]);
 
   const renderPage = async (pageNum: number, pdf: pdfjsLib.PDFDocumentProxy) => {
     setIsLoading(true);
