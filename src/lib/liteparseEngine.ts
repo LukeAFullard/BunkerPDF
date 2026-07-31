@@ -201,7 +201,8 @@ export const extractMarkdownLiteparse = async (bytes: Uint8Array): Promise<strin
     extractVectorGraphics: true,
     extractImages: true,
     extractLinks: true,
-    extractTextMetadata: true
+    extractTextMetadata: true,
+    extractAnnotations: true
   });
   const result = await engine.parse(processedBytes);
 
@@ -239,7 +240,8 @@ export const extractMarkdownLiteparse = async (bytes: Uint8Array): Promise<strin
         page.textItems || [],
         explicitLines,
         pageImages,
-        anyResult.links?.filter((link: any) => link.page === pageNum)
+        anyResult.links?.filter((link: any) => link.page === pageNum),
+        (page as any).annotations || []
     );
     markdownPages.push(pageMarkdown);
   }
@@ -1587,7 +1589,7 @@ export const autoLinkBoxesLiteparse = async (
 
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const formatMarkdownFromItems = (textItems: any[], explicitLines?: LineItem[], images?: any[], links?: any[]): string => {
+export const formatMarkdownFromItems = (textItems: any[], explicitLines?: LineItem[], images?: any[], links?: any[], annotations?: any[]): string => {
   if ((!textItems || textItems.length === 0) && (!images || images.length === 0)) return "";
 
   // Deep clone text items to avoid mutating shared state
@@ -1916,6 +1918,38 @@ export const formatMarkdownFromItems = (textItems: any[], explicitLines?: LineIt
         }
       }
       currentProcessedCol.blocks.push({text: finalText, y: block.rows[0].y});
+    }
+  }
+
+  if (annotations && annotations.length > 0) {
+    for (const annot of annotations) {
+      if (annot.contents) {
+        const titleText = annot.title ? `**${annot.title}:** ` : '';
+        const markdownQuote = `> ${titleText}${annot.contents}`;
+
+        let targetX = annot.rect?.x ?? 0;
+        let targetY = annot.rect?.y ?? 0;
+
+        if (annot.quadpointRects && annot.quadpointRects.length > 0) {
+           targetX = annot.quadpointRects[0].x;
+           targetY = annot.quadpointRects[0].y;
+        }
+
+        let targetCol = processedColumns[0];
+        for (const col of processedColumns) {
+           if (targetX >= col.x - 50) {
+               targetCol = col;
+           } else {
+               break;
+           }
+        }
+
+        if (targetCol) {
+           targetCol.blocks.push({ text: markdownQuote, y: targetY });
+        } else {
+           processedColumns.push({ x: targetX, blocks: [{ text: markdownQuote, y: targetY }] });
+        }
+      }
     }
   }
 
