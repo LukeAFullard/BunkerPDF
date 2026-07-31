@@ -111,7 +111,7 @@ export function InteractiveDataDictionaryModal({ isOpen, docId, onClose }: Inter
           const parser = await getConfiguredLiteParse({ outputFormat: 'json' });
           const result = await parser.parse(new Uint8Array(arrayBuffer.slice(0)));
           if (isMounted) {
-            const data = JSON.parse(result);
+            const data = typeof result === 'string' ? JSON.parse(result) : result;
             setLiteparseData(data);
             extractKeyValuePairs(data, 1);
           }

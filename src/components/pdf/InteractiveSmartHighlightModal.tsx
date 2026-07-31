@@ -96,7 +96,7 @@ export function InteractiveSmartHighlightModal({ isOpen, docId, onClose, onApply
   const [currentPos, setCurrentPos] = useState({ x: 0, y: 0 });
 
   // Store LiteParse items per page
-  const [textItems, setTextItems] = useState<Record<string, unknown>[]>([]);
+  const [textItems, setTextItems] = useState<any[]>([]);
 
   const renderTaskRef = useRef<pdfjsLib.RenderTask | null>(null);
   const [pdfDoc, setPdfDoc] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
