@@ -210,7 +210,11 @@ export const extractMarkdownLiteparse = async (bytes: Uint8Array): Promise<strin
   const markdownPages = [];
 
   for (const page of result.pages) {
-    if (!page.textItems || page.textItems.length === 0) continue;
+    const pageNum = (page as any).page || 0;
+    const pageImages = (result as any).images?.filter((img: any) => img.page === pageNum);
+    const hasText = page.textItems && page.textItems.length > 0;
+
+    if (!hasText && (!pageImages || pageImages.length === 0)) continue;
 
     // Map vector graphics to LineItems
     let explicitLines: LineItem[] = [];
@@ -231,11 +235,10 @@ export const extractMarkdownLiteparse = async (bytes: Uint8Array): Promise<strin
 
     // We'll use result.links loosely as any since it might not be in ParseResult typings yet
     const anyResult = result as any;
-    const pageNum = (page as any).page || 0; // LiteParse uses 0-indexed or 1-indexed pages
     const pageMarkdown = formatMarkdownFromItems(
-        page.textItems,
+        page.textItems || [],
         explicitLines,
-        anyResult.images?.filter((img: any) => img.page === pageNum),
+        pageImages,
         anyResult.links?.filter((link: any) => link.page === pageNum)
     );
     markdownPages.push(pageMarkdown);
@@ -1585,7 +1588,7 @@ export const autoLinkBoxesLiteparse = async (
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const formatMarkdownFromItems = (textItems: any[], explicitLines?: LineItem[], images?: any[], links?: any[]): string => {
-  if (!textItems || textItems.length === 0) return "";
+  if ((!textItems || textItems.length === 0) && (!images || images.length === 0)) return "";
 
   // Deep clone text items to avoid mutating shared state
   const items = textItems.map(item => ({ ...item }));
@@ -1599,19 +1602,7 @@ export const formatMarkdownFromItems = (textItems: any[], explicitLines?: LineIt
 
       let hasUnderline = false;
       let hasStrikethrough = false;
-      let linkUrl = null;
 
-      if (links && links.length > 0) {
-        for (const link of links) {
-          // Check if text item center is within link bounding box
-          const midX = item.x + item.width / 2;
-          const midY = item.y + item.height / 2;
-          if (midX >= link.x && midX <= link.x + link.width && midY >= link.y && midY <= link.y + link.height) {
-            linkUrl = link.url;
-            break;
-          }
-        }
-      }
 
       for (const line of horizontalLines) {
         // Line spans the item horizontally (with 2px tolerance)
@@ -1634,12 +1625,10 @@ export const formatMarkdownFromItems = (textItems: any[], explicitLines?: LineIt
       } else if (hasUnderline) {
         item.text = `<u>${item.text}</u>`;
       }
-
-      if (linkUrl) {
-         item.text = `[${item.text}](${linkUrl})`;
-      }
     }
-  } else if (links && links.length > 0) {
+  }
+
+  if (links && links.length > 0) {
      for (const item of items) {
         let linkUrl = null;
         for (const link of links) {
