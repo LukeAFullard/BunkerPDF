@@ -13,15 +13,31 @@ let cachedEngineMarkdown: LiteParse | null = null;
 let lastOcrEnabled: boolean | null = null;
 
 
-export const getConfiguredLiteParse = async (options: { outputFormat?: 'json' | 'text' | 'markdown', extractLinks?: boolean } = {}): Promise<LiteParse> => {
+export const getConfiguredLiteParse = async (options: {
+  outputFormat?: 'json' | 'text' | 'markdown',
+  extractLinks?: boolean,
+  extractImages?: boolean,
+  extractAnnotations?: boolean,
+  extractFormFields?: boolean,
+  extractStructureTree?: boolean,
+  extractXfaPackets?: boolean,
+  extractContentBounds?: boolean,
+  extractVectorGraphics?: boolean,
+  extractTextMetadata?: boolean,
+  renderFormFields?: boolean
+} = {}): Promise<LiteParse> => {
   await initLiteParse();
   const ocrEnabled = useUIStore.getState().liteparseOcrEnabled;
   const format = options.outputFormat || 'json';
   const extractLinks = options.extractLinks ?? false;
 
+  const hasAdvancedOptions = options.extractLinks || options.extractImages || options.extractAnnotations ||
+    options.extractFormFields || options.extractStructureTree || options.extractXfaPackets ||
+    options.extractContentBounds || options.extractVectorGraphics || options.extractTextMetadata || options.renderFormFields;
+
   // We only cache basic engines without extra flags for now to avoid complexity.
-  // If extractLinks is requested, we create a fresh one or we could add more caching layers.
-  if (!extractLinks) {
+  // If advanced extraction is requested, we create a fresh one.
+  if (!hasAdvancedOptions) {
     if (lastOcrEnabled !== null && lastOcrEnabled !== ocrEnabled) {
       if (cachedEngineJson) { cachedEngineJson.free(); cachedEngineJson = null; }
       if (cachedEngineText) { cachedEngineText.free(); cachedEngineText = null; }
@@ -42,10 +58,19 @@ export const getConfiguredLiteParse = async (options: { outputFormat?: 'json' | 
   const engine = new LiteParse({
     outputFormat: format,
     ocrEnabled: false,
-    extractLinks: extractLinks,
+    extractLinks: options.extractLinks,
+    extractImages: options.extractImages,
+    extractAnnotations: options.extractAnnotations,
+    extractFormFields: options.extractFormFields,
+    extractStructureTree: options.extractStructureTree,
+    extractXfaPackets: options.extractXfaPackets,
+    extractContentBounds: options.extractContentBounds,
+    extractVectorGraphics: options.extractVectorGraphics,
+    extractTextMetadata: options.extractTextMetadata,
+    renderFormFields: options.renderFormFields,
   });
 
-  if (!extractLinks) {
+  if (!hasAdvancedOptions) {
     if (format === 'json') cachedEngineJson = engine;
     if (format === 'text') cachedEngineText = engine;
     if (format === 'markdown') cachedEngineMarkdown = engine;
@@ -710,6 +735,53 @@ export const analyzeLayoutLiteparse = async (bytes: Uint8Array, options: { extra
     extractLinks: options.extractLinks
   });
   return await engine.parse(processedBytes);
+};
+
+export const extractImagesLiteparse = async (bytes: Uint8Array): Promise<Uint8Array> => {
+  const processedBytes = await preprocessWithOcr(bytes);
+  const engine = await getConfiguredLiteParse({ outputFormat: 'json', extractImages: true });
+  const result = await engine.parse(processedBytes);
+
+  if (!result || !result.images || result.images.length === 0) {
+    throw new Error("No images found in the document.");
+  }
+
+  const JSZip = (await import('jszip')).default;
+  const zip = new JSZip();
+
+  for (let i = 0; i < result.images.length; i++) {
+    const image = result.images[i];
+    const imageBytes = new Uint8Array(image.bytes);
+    const extension = image.format ? image.format.toLowerCase() : 'png';
+    const imageName = image.name || `page${image.page}_img${i + 1}.${extension}`;
+    zip.file(imageName, imageBytes);
+  }
+
+  return await zip.generateAsync({ type: "uint8array" });
+};
+
+export const extractAnnotationsLiteparse = async (bytes: Uint8Array): Promise<string> => {
+  const processedBytes = await preprocessWithOcr(bytes);
+  const engine = await getConfiguredLiteParse({ outputFormat: 'json', extractAnnotations: true });
+  const result = await engine.parse(processedBytes);
+
+  if (!result || !result.pages) return JSON.stringify([]);
+
+  const allAnnotations: { page: number; type: string; content: string }[] = [];
+
+  result.pages.forEach((page: any, pageIdx: number) => {
+    if (page.annotations) {
+      page.annotations.forEach((annot: any) => {
+        allAnnotations.push({
+          page: pageIdx + 1,
+          type: annot.subtype || 'Unknown',
+          content: annot.contents || annot.uri || ''
+        });
+      });
+    }
+  });
+
+  return JSON.stringify(allAnnotations);
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
