@@ -410,6 +410,7 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
       if (rowBoundaries.length > 0) {
         // Calculate spatial rows count for confidence check
         const rowTolerance = 5;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const spatialRows: { items: any[], y: number }[] = [];
         for (const item of textItems) {
           let foundRow = false;
@@ -634,25 +635,44 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
     }
 
     const tableGrid: string[][] = [];
+    const tableGridSpans: number[][] = [];
 
     for (const row of table.rows) {
       const gridRow: string[] = Array(columns.length).fill('');
+      const spanRow: number[] = Array(columns.length).fill(1);
+
       for (const item of row.items) {
         const itemMid = item.x + item.width / 2;
-        let colIndex = 0;
-        let minDiff = Infinity;
+        let startIndex = -1;
+        let endIndex = -1;
+
+        // Find which columns the item intersects
         for (let i = 0; i < columns.length; i++) {
           const col = columns[i];
+          // Item intersects column if it starts before col ends AND ends after col starts
           if (item.x <= col.end && (item.x + item.width) >= col.start) {
-            colIndex = i;
-            break;
+            if (startIndex === -1) startIndex = i;
+            endIndex = i;
           }
-          const colMid = (col.start + col.end) / 2;
-          const diff = Math.abs(colMid - itemMid);
-          if (diff < minDiff) {
-            minDiff = diff;
-            colIndex = i;
+        }
+
+        let colIndex = startIndex;
+        let span = 1;
+
+        // If it didn't intersect nicely, fallback to nearest mid point
+        if (startIndex === -1) {
+          let minDiff = Infinity;
+          for (let i = 0; i < columns.length; i++) {
+            const col = columns[i];
+            const colMid = (col.start + col.end) / 2;
+            const diff = Math.abs(colMid - itemMid);
+            if (diff < minDiff) {
+              minDiff = diff;
+              colIndex = i;
+            }
           }
+        } else {
+          span = (endIndex - startIndex) + 1;
         }
 
         const cleanedText = item.text.replace(/(\r\n|\n|\r)/gm, " ");
@@ -660,9 +680,13 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
           gridRow[colIndex] += " " + cleanedText;
         } else {
           gridRow[colIndex] = cleanedText;
+          if (span > 1) {
+             spanRow[colIndex] = span;
+          }
         }
       }
       tableGrid.push(gridRow);
+      tableGridSpans.push(spanRow);
     }
 
     // Safety-net post-process: merge mutually exclusive adjacent columns ONLY if we didn't use explicit lines
@@ -695,24 +719,79 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
         }
     }
 
+    // Header Row Detection Heuristic
+    let hasHeader = false;
+    if (table.rows.length >= 2) {
+       const row0Height = table.rows[0].items.length > 0 ? table.rows[0].items.reduce((sum, it) => sum + (it.height || 0), 0) / table.rows[0].items.length : 0;
+       const row1Height = table.rows[1].items.length > 0 ? table.rows[1].items.reduce((sum, it) => sum + (it.height || 0), 0) / table.rows[1].items.length : 0;
+
+       if (row0Height > row1Height * 1.1) {
+          hasHeader = true;
+       }
+    }
+
     if (format === 'csv') {
-      const csvRows = tableGrid.map(row => row.map(cell => `"${cell.replace(/"/g, '""')}"`).join(','));
+      const csvRows = tableGrid.map((row, rIdx) => {
+         const spans = tableGridSpans[rIdx];
+         const outRow = [];
+         for (let i = 0; i < row.length; i++) {
+            outRow.push(`"${row[i].replace(/"/g, '""')}"`);
+            // Fill spanned cells with empty strings
+            if (spans[i] > 1) {
+               for (let j = 1; j < spans[i]; j++) {
+                  outRow.push('""');
+                  i++; // skip next processing
+               }
+            }
+         }
+         return outRow.join(',');
+      });
       allTablesOutput.push(csvRows.join('\n'));
     } else if (format === 'markdown') {
       let md = "";
       for (let i = 0; i < tableGrid.length; i++) {
         const row = tableGrid[i];
-        md += "| " + row.join(" | ") + " |\n";
+        const spans = tableGridSpans[i];
+        const outRow = [];
+
+        for (let j = 0; j < row.length; j++) {
+           outRow.push(row[j] || ' '); // Markdown tables need some whitespace for empty cells
+           if (spans[j] > 1) {
+              for (let s = 1; s < spans[j]; s++) {
+                 outRow.push(' '); // Leave spanned columns blank
+                 j++;
+              }
+           }
+        }
+
+        md += "| " + outRow.join(" | ") + " |\n";
+
         if (i === 0) {
-          md += "|" + row.map(() => "---").join("|") + "|\n";
+          md += "|" + outRow.map(() => "---").join("|") + "|\n";
         }
       }
       allTablesOutput.push(md);
     } else if (format === 'latex') {
       const colCount = tableGrid.length > 0 ? tableGrid[0].length : 0;
       let latex = "\\begin{tabular}{|" + "c|".repeat(colCount) + "}\n\\hline\n";
-      for (const row of tableGrid) {
-        latex += row.join(" & ") + " \\\\\n\\hline\n";
+      for (let i = 0; i < tableGrid.length; i++) {
+        const row = tableGrid[i];
+        const spans = tableGridSpans[i];
+        const outRow = [];
+
+        for (let j = 0; j < row.length; j++) {
+           let isHeader = (i === 0 && hasHeader);
+           let content = row[j];
+           if (isHeader) content = `\\textbf{${content}}`;
+
+           if (spans[j] > 1) {
+              outRow.push(`\\multicolumn{${spans[j]}}{c|}{${content}}`);
+              j += (spans[j] - 1); // skip spanned
+           } else {
+              outRow.push(content);
+           }
+        }
+        latex += outRow.join(" & ") + " \\\\\n\\hline\n";
       }
       latex += "\\end{tabular}";
       allTablesOutput.push(latex);
@@ -812,24 +891,7 @@ export const extractLinksLiteparse = async (bytes: Uint8Array): Promise<any[]> =
 export const extractTablesLiteparse = async (bytes: Uint8Array, format: 'csv' | 'markdown' | 'latex'): Promise<string> => {
   const processedBytes = await preprocessWithOcr(bytes);
 
-  // For Markdown, we use the superior native LiteParse markdown engine which uses
-  // the Grid Projection Algorithm to identify tables with much higher accuracy.
-  if (format === 'markdown') {
-    const engine = await getConfiguredLiteParse({ outputFormat: "markdown" });
-    const result = await engine.parse(processedBytes);
-    const md = result.text || "";
-
-    // Extract only the table portions from the full markdown if possible,
-    // or just return the markdown. For now, since this tool is specifically for tables,
-    // we'll try to find the table blocks.
-    const tableBlocks = md.match(/\|(.+)\|(\r?\n)\|[ \-|]+\|(\r?\n)(\|(.+)\|(\r?\n?))+/g);
-    if (tableBlocks) {
-      return tableBlocks.join("\n\n---\n\n");
-    }
-    // Fallback if no markdown tables found natively
-  }
-
-  const engine = await getConfiguredLiteParse({ outputFormat: "json" });
+  const engine = await getConfiguredLiteParse({ outputFormat: "json", extractVectorGraphics: true });
   const result = await engine.parse(processedBytes);
 
   if (!result || !result.pages) return "";
@@ -838,7 +900,26 @@ export const extractTablesLiteparse = async (bytes: Uint8Array, format: 'csv' | 
 
   for (const page of result.pages) {
     if (!page.textItems || page.textItems.length === 0) continue;
-    const tableStr = formatTableFromItems(page.textItems, format, true);
+
+    const lines: LineItem[] = [];
+    const vectorGraphics = page.vectorGraphics;
+    if (vectorGraphics && vectorGraphics.lines) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vectorGraphics.lines.forEach((l: any) => {
+        const x0 = Math.min(l.x1, l.x2);
+        const y0 = Math.min(l.y1, l.y2);
+        const x1 = Math.max(l.x1, l.x2);
+        const y1 = Math.max(l.y1, l.y2);
+
+        if (Math.abs(y0 - y1) < 2) {
+          lines.push({ x0, y0: (y0+y1)/2, x1, y1: (y0+y1)/2, type: 'horizontal' });
+        } else if (Math.abs(x0 - x1) < 2) {
+          lines.push({ x0: (x0+x1)/2, y0, x1: (x0+x1)/2, y1, type: 'vertical' });
+        }
+      });
+    }
+
+    const tableStr = formatTableFromItems(page.textItems, format, true, lines);
     if (tableStr) allTablesOutput.push(tableStr);
   }
 
