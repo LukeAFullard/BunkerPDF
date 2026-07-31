@@ -29,7 +29,6 @@ export const getConfiguredLiteParse = async (options: {
   await initLiteParse();
   const ocrEnabled = useUIStore.getState().liteparseOcrEnabled;
   const format = options.outputFormat || 'json';
-  const extractLinks = options.extractLinks ?? false;
 
   const hasAdvancedOptions = options.extractLinks || options.extractImages || options.extractAnnotations ||
     options.extractFormFields || options.extractStructureTree || options.extractXfaPackets ||
@@ -1287,7 +1286,7 @@ export const autoRedactLayoutLiteparse = async (
     let maxFontSize = 0;
     if (layoutTypes.includes('largest-text')) {
       for (const item of page.textItems) {
-        if (item.fontSize > maxFontSize) maxFontSize = item.fontSize;
+        if (item.fontSize && item.fontSize > maxFontSize) maxFontSize = item.fontSize;
       }
     }
 
@@ -1296,7 +1295,7 @@ export const autoRedactLayoutLiteparse = async (
       // Let's rely on LiteParse's Y which typically starts 0 at top.
       const isHeader = item.y < headerThreshold;
       const isFooter = item.y > footerThreshold;
-      const isLargest = layoutTypes.includes('largest-text') && (item.fontSize >= maxFontSize - 1);
+      const isLargest = layoutTypes.includes('largest-text') && item.fontSize !== undefined && (item.fontSize >= maxFontSize - 1);
 
       if ((layoutTypes.includes('header') && isHeader) ||
           (layoutTypes.includes('footer') && isFooter) ||
