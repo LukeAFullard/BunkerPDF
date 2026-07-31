@@ -1796,7 +1796,27 @@ export const formatMarkdownFromItems = (textItems: any[], explicitLines?: LineIt
       for (let j = 0; j < row.items.length; j++) {
          const item = row.items[j];
          let itemText = item.text;
-         if (item.fontName?.toLowerCase().includes("bold")) {
+         const fontNameLower = item.fontName?.toLowerCase() || "";
+
+         if (fontNameLower.includes("mono") || fontNameLower.includes("courier") || fontNameLower.includes("consolas") || fontNameLower.includes("typewriter")) {
+            if (!itemText.includes("`") && !itemText.startsWith("~~") && !itemText.startsWith("<u>")) {
+               if (itemText.startsWith("[")) {
+                  itemText = itemText.replace(/\[(.*?)\]/, "[`$1`]");
+               } else {
+                  itemText = `\`${itemText}\``;
+               }
+            }
+         } else if (fontNameLower.includes("italic") || fontNameLower.includes("oblique")) {
+            if (!itemText.includes("*") && !itemText.startsWith("~~") && !itemText.startsWith("<u>")) {
+               if (itemText.startsWith("[")) {
+                  itemText = itemText.replace(/\[(.*?)\]/, "[*$1*]");
+               } else {
+                  itemText = `*${itemText}*`;
+               }
+            }
+         }
+
+         if (fontNameLower.includes("bold")) {
             rowHasBold = true;
             // Only wrap in bold if it isn't already wrapped in markdown links or other simple formatting at the start
             // To be safer, we could just wrap it, but it might interfere with link markdown.
@@ -1810,6 +1830,10 @@ export const formatMarkdownFromItems = (textItems: any[], explicitLines?: LineIt
                   itemText = `**${itemText}**`;
                }
             }
+         }
+
+         if (item.fillColor && item.fillColor !== "#000000" && item.fillColor !== "black") {
+             itemText = `<span style="color: ${item.fillColor}">${itemText}</span>`;
          }
 
          rowString += itemText;

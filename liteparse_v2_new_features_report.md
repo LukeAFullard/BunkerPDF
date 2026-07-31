@@ -44,7 +44,7 @@ With the advanced extraction flags now supported by `liteparseEngine.ts`, we can
 *   **The Problem:** Page numbers, headers, and footers pollute the reading flow in continuous Markdown/HTML.
 *   **The Solution:** We can analyze bounding boxes across multiple pages—if elements at the exact top/bottom margins repeat across pages, we can intelligently exclude them from the Markdown/HTML export.
 
-### Advanced Text Styling & Code Block Detection (`extractTextMetadata`)
+### [x] Advanced Text Styling & Code Block Detection (`extractTextMetadata`)
 *   **The Problem:** Standard text extraction fails to capture semantic meaning derived from font families and colors.
 *   **The Solution:** Beyond just bold/italic, we can use font family metadata to detect monospace fonts and automatically wrap them in Markdown ` \`\`\` ` code blocks or HTML `<pre><code>`. We can also extract text color (`fill color`) to retain emphasis in HTML via `<span style="color: ...">`.
 
