@@ -36,7 +36,7 @@ With the advanced extraction flags now supported by `liteparseEngine.ts`, we can
 *   **The Problem:** Basic text extraction often loses embedded URLs.
 *   **The Solution:** By utilizing `extractLinks`, we can accurately map bounding boxes to URLs and dynamically inject `[text](url)` into Markdown and `<a href="url">text</a>` into HTML, preserving document interconnectivity.
 
-### Annotation & Comment Injection (`extractAnnotations`)
+### [x] Annotation & Comment Injection (`extractAnnotations`)
 *   **The Problem:** PDFs often contain rich review data (highlights, sticky notes) that are ignored during text extraction.
 *   **The Solution:** We can use `extractAnnotations` to extract these and inject them as Markdown blockquotes (e.g., `> Reviewer Comment: ...`) or HTML sidebars/tooltips.
 
