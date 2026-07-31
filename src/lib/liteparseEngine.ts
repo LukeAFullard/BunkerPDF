@@ -196,27 +196,68 @@ export const extractAllPagesTextLiteparse = async (bytes: Uint8Array): Promise<s
 
 export const extractMarkdownLiteparse = async (bytes: Uint8Array): Promise<string> => {
   const processedBytes = await preprocessWithOcr(bytes);
-  // Use the new native LiteParse markdown engine
-  const engine = await getConfiguredLiteParse({ outputFormat: "markdown" });
+  const engine = await getConfiguredLiteParse({
+    outputFormat: "json",
+    extractVectorGraphics: true,
+    extractImages: true,
+    extractLinks: true,
+    extractTextMetadata: true
+  });
   const result = await engine.parse(processedBytes);
 
-  return result.text || "";
+  if (!result || !result.pages) return "";
+
+  const markdownPages = [];
+
+  for (const page of result.pages) {
+    const pageNum = (page as any).page || 0;
+    const pageImages = (result as any).images?.filter((img: any) => img.page === pageNum);
+    const hasText = page.textItems && page.textItems.length > 0;
+
+    if (!hasText && (!pageImages || pageImages.length === 0)) continue;
+
+    // Map vector graphics to LineItems
+    let explicitLines: LineItem[] = [];
+    if (page.vectorGraphics && page.vectorGraphics.lines) {
+      explicitLines = page.vectorGraphics.lines.map((l: any) => {
+        let typeVal: "horizontal" | "vertical" | "unknown" = "unknown";
+        if (Math.abs(l.y1 - l.y2) < 2) typeVal = "horizontal";
+        else if (Math.abs(l.x1 - l.x2) < 2) typeVal = "vertical";
+        return {
+          x0: l.x1,
+          y0: l.y1,
+          x1: l.x2,
+          y1: l.y2,
+          type: typeVal
+        };
+      }).filter((l: any) => l.type !== 'unknown') as LineItem[];
+    }
+
+    // We'll use result.links loosely as any since it might not be in ParseResult typings yet
+    const anyResult = result as any;
+    const pageMarkdown = formatMarkdownFromItems(
+        page.textItems || [],
+        explicitLines,
+        pageImages,
+        anyResult.links?.filter((link: any) => link.page === pageNum)
+    );
+    markdownPages.push(pageMarkdown);
+  }
+
+  return markdownPages.join("\n\n---\n\n");
 };
 
 export const extractHtmlLiteparse = async (bytes: Uint8Array): Promise<string> => {
-  const processedBytes = await preprocessWithOcr(bytes);
+  // Use our new highly enriched custom markdown compiler (which already pre-processes OCR)
+  const markdownText = await extractMarkdownLiteparse(bytes);
 
-  // Use the native markdown engine which creates semantic structure
-  const engine = await getConfiguredLiteParse({ outputFormat: "markdown" });
-  const result = await engine.parse(processedBytes);
-
-  if (!result || !result.text) return "";
+  if (!markdownText) return "";
 
   const { marked } = await import('marked');
   const DOMPurify = (await import('dompurify')).default;
 
   // Parse the semantic markdown into HTML
-  const rawHtml = await marked.parse(result.text);
+  const rawHtml = await marked.parse(markdownText);
 
   // Define a basic CSS template for accessibility and reading
   const css = `
@@ -1546,8 +1587,8 @@ export const autoLinkBoxesLiteparse = async (
 
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const formatMarkdownFromItems = (textItems: any[], explicitLines?: LineItem[]): string => {
-  if (!textItems || textItems.length === 0) return "";
+export const formatMarkdownFromItems = (textItems: any[], explicitLines?: LineItem[], images?: any[], links?: any[]): string => {
+  if ((!textItems || textItems.length === 0) && (!images || images.length === 0)) return "";
 
   // Deep clone text items to avoid mutating shared state
   const items = textItems.map(item => ({ ...item }));
@@ -1561,6 +1602,7 @@ export const formatMarkdownFromItems = (textItems: any[], explicitLines?: LineIt
 
       let hasUnderline = false;
       let hasStrikethrough = false;
+
 
       for (const line of horizontalLines) {
         // Line spans the item horizontally (with 2px tolerance)
@@ -1584,6 +1626,23 @@ export const formatMarkdownFromItems = (textItems: any[], explicitLines?: LineIt
         item.text = `<u>${item.text}</u>`;
       }
     }
+  }
+
+  if (links && links.length > 0) {
+     for (const item of items) {
+        let linkUrl = null;
+        for (const link of links) {
+          const midX = item.x + item.width / 2;
+          const midY = item.y + item.height / 2;
+          if (midX >= link.x && midX <= link.x + link.width && midY >= link.y && midY <= link.y + link.height) {
+            linkUrl = link.url;
+            break;
+          }
+        }
+        if (linkUrl) {
+           item.text = `[${item.text}](${linkUrl})`;
+        }
+     }
   }
 
   // 1. Calculate median font size
@@ -1701,7 +1760,12 @@ export const formatMarkdownFromItems = (textItems: any[], explicitLines?: LineIt
 
   const markdownLines: string[] = [];
 
+  // We will process columns to generate blocks
+  const processedColumns: { x: number, blocks: { text: string, y: number }[] }[] = [];
+
   for (const col of columns) {
+    const currentProcessedCol = { x: col.x, blocks: [] as {text: string, y: number}[] };
+    processedColumns.push(currentProcessedCol);
     // Group into rows WITHIN the column
     const colRows: { items: any[], y: number }[] = [];
     for (const item of col.items) {
@@ -1729,13 +1793,29 @@ export const formatMarkdownFromItems = (textItems: any[], explicitLines?: LineIt
 
       for (let j = 0; j < row.items.length; j++) {
          const item = row.items[j];
-         rowString += item.text;
+         let itemText = item.text;
+         if (item.fontName?.toLowerCase().includes("bold")) {
+            rowHasBold = true;
+            // Only wrap in bold if it isn't already wrapped in markdown links or other simple formatting at the start
+            // To be safer, we could just wrap it, but it might interfere with link markdown.
+            // A simple heuristic: if it's a link, we can make the inner text bold, but it's complex here.
+            // Let's just allow it for now, except if it's already formatting.
+            if (!itemText.includes("**") && !itemText.startsWith("~~") && !itemText.startsWith("<u>")) {
+               if (itemText.startsWith("[")) {
+                  // Link logic: [text](url) -> [**text**](url)
+                  itemText = itemText.replace(/\[(.*?)\]/, "[**$1**]");
+               } else {
+                  itemText = `**${itemText}**`;
+               }
+            }
+         }
+
+         rowString += itemText;
+
          if ((item.fontSize || 12) > rowMaxFontSize) {
            rowMaxFontSize = item.fontSize || 12;
          }
-         if (item.fontName?.toLowerCase().includes("bold")) {
-           rowHasBold = true;
-         }
+
          if (j < row.items.length - 1) {
             if (row.items[j+1].x - (item.x + item.width) > 3) {
                rowString += " ";
@@ -1813,7 +1893,7 @@ export const formatMarkdownFromItems = (textItems: any[], explicitLines?: LineIt
       }
 
       if (isList) {
-         markdownLines.push(blockText);
+         currentProcessedCol.blocks.push({text: blockText, y: block.rows[0].y});
          continue;
       }
 
@@ -1823,21 +1903,67 @@ export const formatMarkdownFromItems = (textItems: any[], explicitLines?: LineIt
       const isBold = block.rows.some(row => row.text.length > 0 && row.text.toUpperCase() === row.text) ||
                      block.rows.some(row => row.isBold);
 
+      let finalText = blockText;
       if (block.rows.length <= 3) {
         if (relativeSize >= 1.5 || sizeDiff >= 6 || (block.maxFontSize >= 20)) {
-          markdownLines.push(`# ${blockText}`);
+          finalText = `# ${blockText}`;
         } else if (relativeSize >= 1.3 || sizeDiff >= 4 || (block.maxFontSize >= 16)) {
-          markdownLines.push(`## ${blockText}`);
+          finalText = `## ${blockText}`;
         } else if (relativeSize >= 1.15 || sizeDiff >= 2 || (block.maxFontSize >= 14 && isBold)) {
-          markdownLines.push(`### ${blockText}`);
+          finalText = `### ${blockText}`;
         } else if (isBold && block.rows.length === 1 && blockText.length < 60) {
-          markdownLines.push(`#### ${blockText}`);
-        } else {
-          markdownLines.push(blockText);
+          finalText = `#### ${blockText}`;
         }
-      } else {
-        markdownLines.push(blockText);
       }
+      currentProcessedCol.blocks.push({text: finalText, y: block.rows[0].y});
+    }
+  }
+
+  if (images && images.length > 0) {
+    for (const img of images) {
+       let base64 = "";
+       if (img.bytes) {
+         try {
+           const uint8Array = new Uint8Array(img.bytes);
+           const chunkSize = 0x8000;
+           for (let i = 0; i < uint8Array.length; i += chunkSize) {
+             base64 += String.fromCharCode.apply(null, uint8Array.slice(i, i + chunkSize) as any);
+           }
+           base64 = btoa(base64);
+         } catch (e) {
+           console.error("Failed to convert image to base64", e);
+         }
+       }
+       if (base64) {
+         const imgFormat = img.format?.toLowerCase() || 'png';
+         const markdownImg = `![Image](data:image/${imgFormat};base64,${base64})`;
+
+         // Insert image into the correct column based on X, or just as a block in the first column
+         // Actually, since images can span columns, we should probably insert them into the reading flow.
+         // A simple heuristic: find the column where the image starts.
+         let targetCol = processedColumns[0];
+         for (const col of processedColumns) {
+            if (img.x >= col.x - 50) {
+                targetCol = col;
+            } else {
+                break;
+            }
+         }
+
+         if (targetCol) {
+            targetCol.blocks.push({ text: markdownImg, y: img.y });
+         } else {
+            processedColumns.push({ x: img.x, blocks: [{ text: markdownImg, y: img.y }] });
+         }
+       }
+    }
+  }
+
+  // Now properly order reading order by column, then block y
+  for (const col of processedColumns) {
+    col.blocks.sort((a, b) => a.y - b.y);
+    for (const b of col.blocks) {
+      markdownLines.push(b.text);
     }
   }
 

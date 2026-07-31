@@ -96,7 +96,7 @@ Currently, our Markdown extraction (`extractMarkdownLiteparse`) relies purely on
 
 ### C. Custom Spatial-to-Markdown Compiler
 *   **Context:** Currently, `extractMarkdownLiteparse` relies on LiteParse's native Markdown output, which might miss complex tables or inline images.
-*   **Action:** Request the `json` output from LiteParse, which gives us everything (`textItems`, `vectorGraphics`, `images`, `metadata`), and build a **custom Markdown renderer** in TypeScript. This gives us absolute control: we can inject our superior `formatTableFromItems` logic for tables, base64 data URIs for `extractImages` exactly where they appear vertically, and format text using precise `extractTextMetadata` tags.
+*   [x] **Action:** Request the `json` output from LiteParse, which gives us everything (`textItems`, `vectorGraphics`, `images`, `metadata`), and build a **custom Markdown renderer** in TypeScript. This gives us absolute control: we can inject our superior `formatTableFromItems` logic for tables, base64 data URIs for `extractImages` exactly where they appear vertically, and format text using precise `extractTextMetadata` tags.
 
 ### D. CSS Grid / Absolute Hybrid HTML Export
 *   **Context:** When a Tagged PDF lacks a semantic structure tree (`extractStructureTree`), translating standard PDF layouts to HTML often ruins multi-column articles.
