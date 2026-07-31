@@ -1,4 +1,5 @@
 import { PDFDocument, PDFDict, PDFName, PDFRef } from 'pdf-lib';
+import { getConfiguredLiteParse } from './liteparseEngine';
 
 export async function analyzeDocumentHealth(file: File): Promise<{
   needsOcr: boolean;
@@ -7,54 +8,27 @@ export async function analyzeDocumentHealth(file: File): Promise<{
 }> {
   try {
     const arrayBuffer = await file.arrayBuffer();
-    const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
 
+    let needsOcr = false;
     let hasSelectableText = false;
-    let hasForms = false;
 
-    // Check first 3 pages for fonts in their Resources dictionary
-    const pages = pdfDoc.getPages();
-    const pagesToCheck = Math.min(3, pages.length);
+    // Check complexity using LiteParse engine
+    const engine = await getConfiguredLiteParse({});
+    const stats = await engine.isComplex(new Uint8Array(arrayBuffer));
 
-    for (let i = 0; i < pagesToCheck; i++) {
-      const page = pages[i];
-
-      // Page resources might be inherited, so we check the page node and its ancestors
-      let resources = page.node.get(PDFName.of('Resources'));
-      let parentRef = page.node.get(PDFName.of('Parent'));
-      while (!resources && parentRef instanceof PDFRef) {
-        const parentDict = pdfDoc.context.lookup(parentRef);
-        if (parentDict instanceof PDFDict) {
-          resources = parentDict.get(PDFName.of('Resources'));
-          parentRef = parentDict.get(PDFName.of('Parent'));
-        } else {
-          break;
-        }
+    for (const pageStat of stats) {
+      if (pageStat.needsOcr) {
+        needsOcr = true;
       }
-
-      if (resources) {
-        let resDict = resources;
-        if (resDict instanceof PDFRef) {
-           resDict = pdfDoc.context.lookup(resDict) as PDFDict;
-        }
-
-        if (resDict instanceof PDFDict) {
-          const fonts = resDict.get(PDFName.of('Font'));
-          if (fonts) {
-             let fontsDict = fonts;
-             if (fontsDict instanceof PDFRef) {
-                fontsDict = pdfDoc.context.lookup(fontsDict) as PDFDict;
-             }
-             if (fontsDict instanceof PDFDict && fontsDict.entries().length > 0) {
-               hasSelectableText = true;
-               break;
-             }
-          }
-        }
+      if (pageStat.textLength > 0) {
+        hasSelectableText = true;
       }
     }
 
-    // Check for forms (AcroForm dictionary in Catalog)
+    // Check for forms (AcroForm dictionary in Catalog) using pdf-lib
+    const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+    let hasForms = false;
+
     const acroForm = pdfDoc.catalog.get(PDFName.of('AcroForm'));
     if (acroForm) {
        let formDict = acroForm;
@@ -68,7 +42,7 @@ export async function analyzeDocumentHealth(file: File): Promise<{
     }
 
     return {
-      needsOcr: !hasSelectableText,
+      needsOcr,
       hasSelectableText,
       hasForms
     };
