@@ -101,6 +101,7 @@ Currently, our Markdown extraction (`extractMarkdownLiteparse`) relies purely on
 ### D. CSS Grid / Absolute Hybrid HTML Export
 *   **Context:** When a Tagged PDF lacks a semantic structure tree (`extractStructureTree`), translating standard PDF layouts to HTML often ruins multi-column articles.
 *   **Action:** Use the `json` output's exact X/Y coordinates to generate HTML that utilizes **CSS Grid** or relative-absolute positioning to maintain high visual fidelity to the original PDF, while embedding `extractVectorGraphics` as an underlying `<svg>` layer for perfect borders and visual dividers.
+
 ## 4. Other Features Found in Documentation
 
 ### Multi-Format Input Support (Native Image Conversion)

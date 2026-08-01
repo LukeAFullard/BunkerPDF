@@ -23,21 +23,24 @@ export async function analyzeDocumentHealth(file: File): Promise<{
     }
 
     const needsOcr = !hasSelectableText;
-
-    // Check for forms (AcroForm dictionary in Catalog) using pdf-lib
-    const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
     let hasForms = false;
 
-    const acroForm = pdfDoc.catalog.get(PDFName.of('AcroForm'));
-    if (acroForm) {
-       let formDict = acroForm;
-       if (formDict instanceof PDFRef) {
-          formDict = pdfDoc.context.lookup(formDict) as PDFDict;
-       }
-       if (formDict instanceof PDFDict) {
-         const fields = formDict.get(PDFName.of('Fields'));
-         hasForms = !!fields;
-       }
+    // Check for forms (AcroForm dictionary in Catalog) using pdf-lib
+    // Only parse if the file is a PDF, otherwise pdf-lib will throw an error
+    if (file.type === 'application/pdf') {
+      const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+
+      const acroForm = pdfDoc.catalog.get(PDFName.of('AcroForm'));
+      if (acroForm) {
+         let formDict = acroForm;
+         if (formDict instanceof PDFRef) {
+            formDict = pdfDoc.context.lookup(formDict) as PDFDict;
+         }
+         if (formDict instanceof PDFDict) {
+           const fields = formDict.get(PDFName.of('Fields'));
+           hasForms = !!fields;
+         }
+      }
     }
 
     return {
