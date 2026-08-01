@@ -101,3 +101,16 @@ Currently, our Markdown extraction (`extractMarkdownLiteparse`) relies purely on
 ### D. CSS Grid / Absolute Hybrid HTML Export
 *   **Context:** When a Tagged PDF lacks a semantic structure tree (`extractStructureTree`), translating standard PDF layouts to HTML often ruins multi-column articles.
 *   **Action:** Use the `json` output's exact X/Y coordinates to generate HTML that utilizes **CSS Grid** or relative-absolute positioning to maintain high visual fidelity to the original PDF, while embedding `extractVectorGraphics` as an underlying `<svg>` layer for perfect borders and visual dividers.
+## 4. Other Features Found in Documentation
+
+### Multi-Format Input Support (Native Image Conversion)
+*   **The Problem:** Previously, parsing required inputs to strictly be PDFs.
+*   **The Solution:** LiteParse now supports automatic conversion of various document formats to PDF before parsing. This includes native support for converting images (.jpg, .jpeg, .png, .gif, .bmp, .tiff, .webp, .svg) directly in Rust, without requiring `imagemagick` (as of v2.8.0), as well as converting office documents via LibreOffice.
+
+### Screenshot Generation
+*   **The Problem:** Generating visual representations of pages for agents typically required separate rendering tools.
+*   **The Solution:** LiteParse provides native screenshot generation. This allows generating high-quality page screenshots for LLM agents to extract visual information that text alone cannot capture. Furthermore, the screenshot results carry metadata such as `is_solid_fill` (detecting blank pages) and `rects` (solid same-color rectangles and lines).
+
+### Flexible OCR System
+*   **The Problem:** Integrating OCR often meant locking into a single engine or dealing with heavy dependencies.
+*   **The Solution:** LiteParse offers a flexible OCR system with built-in Tesseract support, and the ability to plug in any HTTP OCR server (like EasyOCR or PaddleOCR) through a standard API specification.

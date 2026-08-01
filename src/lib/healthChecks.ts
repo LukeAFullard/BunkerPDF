@@ -9,7 +9,6 @@ export async function analyzeDocumentHealth(file: File): Promise<{
   try {
     const arrayBuffer = await file.arrayBuffer();
 
-    let needsOcr = false;
     let hasSelectableText = false;
 
     // Check complexity using LiteParse engine
@@ -17,13 +16,13 @@ export async function analyzeDocumentHealth(file: File): Promise<{
     const stats = await engine.isComplex(new Uint8Array(arrayBuffer));
 
     for (const pageStat of stats) {
-      if (pageStat.needsOcr) {
-        needsOcr = true;
-      }
       if (pageStat.textLength > 0) {
         hasSelectableText = true;
+        break; // If we find text on any page, we consider it to have selectable text
       }
     }
+
+    const needsOcr = !hasSelectableText;
 
     // Check for forms (AcroForm dictionary in Catalog) using pdf-lib
     const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
