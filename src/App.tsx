@@ -53,7 +53,6 @@ import type {
   PyodideWorkerMessage,
   PyodideWorkerResponse,
 } from "./workers/pyodideWorker";
-import { ImageReorderRail, type ImageItem } from "./components/ui/ImageReorderRail";
 import { convertImagesToPdf } from "./lib/engineA";
 import { SettingsDropdown } from "./components/ui/SettingsDropdown";
 import { extractParagraphsLiteparse, extractTextLiteparse, extractAllPagesTextLiteparse, extractMarkdownLiteparse, extractHtmlLiteparse, editParagraphLiteparse, extractTablesLiteparse, redactDocumentLiteparse, redactBoxesLiteparse, diffMergedHighlightPdfLiteparse, diffHighlightPdfLiteparse, autoRedactLayoutLiteparse, extractImagesLiteparse, extractAnnotationsLiteparse } from "./lib/liteparseEngine";
@@ -75,12 +74,7 @@ function App() {
     }
 
     if (imageFiles.length > 0) {
-      const newItems = imageFiles.map((file) => ({
-        id: crypto.randomUUID(),
-        file,
-        previewUrl: URL.createObjectURL(file),
-      }));
-      setPendingImages((prev) => [...prev, ...newItems]);
+      handleImagesDropped(imageFiles);
     }
 
     if (pdfFiles.length === 0) {
@@ -364,8 +358,6 @@ function App() {
 
   const [thumbnailCache, setThumbnailCache] = useState<Record<string, string>>({});
 
-  const [pendingImages, setPendingImages] = useState<ImageItem[]>([]);
-  const [imageFitMode, setImageFitMode] = useState<'fit' | 'original' | 'a4'>('a4');
   const [inputState, setInputState] = useState<{
     isOpen: boolean;
     title: string;
@@ -1692,6 +1684,81 @@ function App() {
     }
   };
 
+  const handleImagesDropped = async (files: File[]) => {
+    let isCancelled = false;
+    startProcessing(`Converting ${files.length} image(s) to PDF...`, true, () => {
+      isCancelled = true;
+      stopProcessing();
+    });
+
+    const parsedDocs: PDFDocument[] = [];
+
+    for (const file of files) {
+      if (isCancelled) break;
+
+      try {
+        const pdfBytes = await convertImagesToPdf([file], 'original');
+        if (isCancelled) break;
+
+        const standardBuffer = new Uint8Array(pdfBytes.length);
+        standardBuffer.set(pdfBytes);
+        const newName = file.name.replace(/\.[^/.]+$/, ".pdf");
+        const newFile = new File([standardBuffer], newName, { type: "application/pdf" });
+
+        let pageCount;
+        let isEncrypted = false;
+        let isCorrupt = false;
+
+        try {
+          const { getPdfInfo } = await import('./lib/pdfProcessing');
+          const info = await getPdfInfo(newFile);
+          pageCount = info.pageCount;
+          isEncrypted = info.isEncrypted;
+        } catch (e: unknown) {
+          console.error(`Failed to parse converted PDF info`, e);
+          if (e instanceof Error && e.message === 'CORRUPT_PDF') {
+            isCorrupt = true;
+          }
+        }
+
+        if (isCorrupt) {
+          setErrorState({
+            isOpen: true,
+            title: "Conversion Error",
+            message: `The converted image PDF for ${file.name} appears to be corrupted.`,
+          });
+          continue;
+        }
+
+        parsedDocs.push({
+          id: crypto.randomUUID(),
+          file: newFile,
+          name: newFile.name,
+          size: newFile.size,
+          lastModified: newFile.lastModified,
+          pageCount,
+          isEncrypted,
+          isCorrupt,
+          operations: [],
+        });
+
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : "An error occurred during image conversion.";
+        setErrorState({
+          isOpen: true,
+          title: `Image Conversion Failed: ${file.name}`,
+          message,
+        });
+      }
+    }
+
+    if (!isCancelled && parsedDocs.length > 0) {
+      addDocuments(parsedDocs);
+    }
+
+    stopProcessing();
+  };
+
   const handleDocxDropped = async (files: File[]) => {
     for (const file of files) {
       let isCancelled = false;
@@ -2546,64 +2613,8 @@ function App() {
                 setErrorState({ isOpen: true, title, message })
               }
               onDocxDropped={handleDocxDropped}
-              onImagesDropped={(files) => {
-                const newItems = files.map((file) => ({
-                  id: crypto.randomUUID(),
-                  file,
-                  previewUrl: URL.createObjectURL(file),
-                }));
-                setPendingImages((prev) => [...prev, ...newItems]);
-              }}
+              onImagesDropped={handleImagesDropped}
             />
-            {pendingImages.length > 0 && (
-              <ImageReorderRail
-                images={pendingImages}
-                setImages={setPendingImages}
-                onConvert={async () => {
-                  try {
-                    startProcessing("Converting images to PDF...", false, () => stopProcessing());
-                    const files = pendingImages.map((i) => i.file);
-                    const pdfBytes = await convertImagesToPdf(files, imageFitMode);
-
-                    const newFileName = `${files[0].name.replace(/\.[^/.]+$/, "")}-combined-${Date.now()}.pdf`;
-                    // ensure ArrayBuffer compatibility
-                    const standardBuffer = new Uint8Array(pdfBytes.length);
-                    standardBuffer.set(pdfBytes);
-
-                    const blob = new Blob([standardBuffer], { type: "application/pdf" });
-                    const newFile = new File([blob], newFileName, { type: "application/pdf", lastModified: Date.now() });
-
-                    const { getPdfInfo } = await import('./lib/pdfProcessing');
-                    const info = await getPdfInfo(newFile);
-
-                    addDocuments([{
-                      id: crypto.randomUUID(),
-                      file: newFile,
-                      name: newFile.name,
-                      size: newFile.size,
-                      lastModified: newFile.lastModified,
-                      pageCount: info.pageCount,
-                      operations: [],
-                    }]);
-
-                    pendingImages.forEach(img => URL.revokeObjectURL(img.previewUrl));
-                    setPendingImages([]);
-                    stopProcessing();
-                  } catch (e: unknown) {
-                    stopProcessing();
-                    const message = e instanceof Error ? e.message : "An error occurred.";
-                    setErrorState({ isOpen: true, title: "Image Conversion Failed", message });
-                  }
-                }}
-                onCancel={() => {
-                  pendingImages.forEach(img => URL.revokeObjectURL(img.previewUrl));
-                  setPendingImages([]);
-                }}
-                fitMode={imageFitMode}
-                setFitMode={setImageFitMode}
-                isProcessing={isGlobalProcessing}
-              />
-            )}
           </div>
         </div>
       ) : (
@@ -2617,55 +2628,6 @@ function App() {
               </div>
             </div>
 
-            {pendingImages.length > 0 && (
-              <ImageReorderRail
-                images={pendingImages}
-                setImages={setPendingImages}
-                onConvert={async () => {
-                  try {
-                    startProcessing("Converting images to PDF...", false, () => stopProcessing());
-                    const files = pendingImages.map((i) => i.file);
-                    const pdfBytes = await convertImagesToPdf(files, imageFitMode);
-
-                    const newFileName = `${files[0].name.replace(/\.[^/.]+$/, "")}-combined-${Date.now()}.pdf`;
-                    // ensure ArrayBuffer compatibility
-                    const standardBuffer = new Uint8Array(pdfBytes.length);
-                    standardBuffer.set(pdfBytes);
-
-                    const blob = new Blob([standardBuffer], { type: "application/pdf" });
-                    const newFile = new File([blob], newFileName, { type: "application/pdf", lastModified: Date.now() });
-
-                    const { getPdfInfo } = await import('./lib/pdfProcessing');
-                    const info = await getPdfInfo(newFile);
-
-                    addDocuments([{
-                      id: crypto.randomUUID(),
-                      file: newFile,
-                      name: newFile.name,
-                      size: newFile.size,
-                      lastModified: newFile.lastModified,
-                      pageCount: info.pageCount,
-                      operations: [],
-                    }]);
-
-                    pendingImages.forEach(img => URL.revokeObjectURL(img.previewUrl));
-                    setPendingImages([]);
-                    stopProcessing();
-                  } catch (e: unknown) {
-                    stopProcessing();
-                    const message = e instanceof Error ? e.message : "An error occurred.";
-                    setErrorState({ isOpen: true, title: "Image Conversion Failed", message });
-                  }
-                }}
-                onCancel={() => {
-                  pendingImages.forEach(img => URL.revokeObjectURL(img.previewUrl));
-                  setPendingImages([]);
-                }}
-                fitMode={imageFitMode}
-                setFitMode={setImageFitMode}
-                isProcessing={isGlobalProcessing}
-              />
-            )}
 
             <div className="flex gap-4 items-center mt-4">
 
