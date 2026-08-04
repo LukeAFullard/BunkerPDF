@@ -41,6 +41,8 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
   const [extractedText, setExtractedText] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [copiedImage, setCopiedImage] = useState(false);
+  const [imageCopyQuality, setImageCopyQuality] = useState(2);
+  const [isCopyingImage, setIsCopyingImage] = useState(false);
   const [marginThresholdPercent, setMarginThresholdPercent] = useState(12);
   const [selectWholeLine, setSelectWholeLine] = useState(false);
   const [copyFormat, setCopyFormat] = useState<'text' | 'markdown'>('text');
@@ -584,23 +586,41 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
   };
 
   const handleCopyImage = async () => {
-    if (!selectionBox || !canvasRef.current) return;
+    if (!selectionBox || !pdfDocRef.current) return;
+    setIsCopyingImage(true);
     try {
+      const page = await pdfDocRef.current.getPage(currentPage);
+
+      // Calculate coordinates in unscaled PDF points
+      const unscaledX = selectionBox.x / overlayScale;
+      const unscaledY = selectionBox.y / overlayScale;
+      const unscaledW = selectionBox.w / overlayScale;
+      const unscaledH = selectionBox.h / overlayScale;
+
+      const scale = imageCopyQuality;
+      const viewport = page.getViewport({ scale });
+
       const tempCanvas = document.createElement('canvas');
       const tempCtx = tempCanvas.getContext('2d');
       if (!tempCtx) throw new Error('Could not get 2d context for temporary canvas');
 
-      const scaleX = canvasRef.current.width / (canvasRef.current.clientWidth || 1);
-      const scaleY = canvasRef.current.height / (canvasRef.current.clientHeight || 1);
+      const outputWidth = Math.ceil(unscaledW * scale);
+      const outputHeight = Math.ceil(unscaledH * scale);
 
-      tempCanvas.width = selectionBox.w * scaleX;
-      tempCanvas.height = selectionBox.h * scaleY;
+      tempCanvas.width = outputWidth;
+      tempCanvas.height = outputHeight;
 
-      tempCtx.drawImage(
-        canvasRef.current,
-        selectionBox.x * scaleX, selectionBox.y * scaleY, selectionBox.w * scaleX, selectionBox.h * scaleY,
-        0, 0, selectionBox.w * scaleX, selectionBox.h * scaleY
-      );
+      // Translate context so that (unscaledX, unscaledY) becomes (0, 0)
+      const transform = [1, 0, 0, 1, -unscaledX * scale, -unscaledY * scale];
+
+      const renderContext = {
+        canvasContext: tempCtx,
+        transform: transform,
+        viewport: viewport,
+      };
+
+      // @ts-expect-error Types mismatch in pdfjs-dist
+      await page.render(renderContext).promise;
 
       tempCanvas.toBlob(async (blob) => {
         if (blob) {
@@ -616,9 +636,11 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
             console.error('Failed to copy image to clipboard:', err);
           }
         }
+        setIsCopyingImage(false);
       }, 'image/png');
     } catch (err) {
       console.error('Error copying image:', err);
+      setIsCopyingImage(false);
     }
   };
 
@@ -790,7 +812,20 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
         <div className="w-1/3 bg-gray-50 flex flex-col border-l border-gray-200">
           <div className="p-4 border-b border-gray-200 flex flex-col gap-2 bg-white">
              <h3 className="font-bold text-gray-800">Formatting Preserved Copy</h3>
-             <div className="flex items-center gap-2">
+             <div className="flex items-center gap-2 justify-between">
+               <label className="text-xs font-medium text-gray-600 whitespace-nowrap">Image Copy Quality:</label>
+               <select
+                 value={imageCopyQuality}
+                 onChange={(e) => setImageCopyQuality(parseInt(e.target.value))}
+                 className="text-xs border border-gray-300 rounded px-2 py-1 text-gray-700 bg-white"
+               >
+                 <option value={1}>1x (Standard)</option>
+                 <option value={2}>2x (High)</option>
+                 <option value={3}>3x (Ultra)</option>
+                 <option value={4}>4x (Maximum)</option>
+               </select>
+             </div>
+             <div className="flex items-center gap-2 mt-1">
                <label className="text-xs font-medium text-gray-600 whitespace-nowrap">Header/Footer Omission Margin:</label>
                <input
                  type="range"
@@ -932,11 +967,11 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
                </button>
                <button
                  onClick={handleCopyImage}
-                 disabled={!selectionBox }
+                 disabled={!selectionBox || isCopyingImage}
                  className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-gray-600 text-white rounded-xl font-medium hover:bg-gray-700 disabled:opacity-50 transition-colors shadow-sm text-sm"
                >
-                 {copiedImage ? <Check className="w-4 h-4 text-green-300" /> : <ImageIcon className="w-4 h-4" />}
-                 {copiedImage ? 'Image Copied!' : 'Copy Image'}
+                 {copiedImage ? <Check className="w-4 h-4 text-green-300" /> : isCopyingImage ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImageIcon className="w-4 h-4" />}
+                 {copiedImage ? 'Image Copied!' : isCopyingImage ? 'Copying...' : 'Copy Image'}
                </button>
              </div>
 
