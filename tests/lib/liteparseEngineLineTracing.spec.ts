@@ -23,7 +23,7 @@ describe('formatTableFromItems - Line Tracing Hybrid', () => {
             { text: "D", x: 30, y: 30, width: 10, height: 10 }
         ];
 
-        const md = formatTableFromItems(items, 'markdown', true, []);
+        const { text: md } = formatTableFromItems(items, 'markdown', true, []);
         expect(md).toContain("| A | B |");
         expect(md).toContain("| C | D |");
     });
@@ -40,7 +40,7 @@ describe('formatTableFromItems - Line Tracing Hybrid', () => {
             { x0: 32, x1: 32, y0: 0, y1: 50, type: 'vertical' }
         ];
 
-        const md = formatTableFromItems(items, 'markdown', true, lines);
+        const { text: md } = formatTableFromItems(items, 'markdown', true, lines);
         expect(md).toContain("| Col1 | Col2 |");
     });
 
@@ -56,7 +56,7 @@ describe('formatTableFromItems - Line Tracing Hybrid', () => {
             { x0: 0, x1: 100, y0: 15, y1: 15, type: 'horizontal' }
         ];
 
-        const md = formatTableFromItems(items, 'markdown', false, lines);
+        const { text: md } = formatTableFromItems(items, 'markdown', false, lines);
         expect(md).toContain("| Row1 |");
         expect(md).toContain("| Cell1 |");
     });
@@ -86,7 +86,7 @@ describe('formatTableFromItems - Line Tracing Hybrid', () => {
             { x0: 65, x1: 65, y0: 0, y1: 60, type: 'vertical' }
         ];
 
-        const md = formatTableFromItems(items, 'markdown', false, lines);
+        const { text: md } = formatTableFromItems(items, 'markdown', false, lines);
 
         // Merged should combine with nothing, it's just missing a bottom border.
         // The cell text might just be empty in the first row or Merged is merged down or up.
@@ -109,7 +109,7 @@ describe('formatTableFromItems - Line Tracing Hybrid', () => {
             { x0: 0, x1: 100, y0: 20, y1: 20, type: 'horizontal' }
         ];
 
-        const md = formatTableFromItems(items, 'markdown', false, lines);
+        const { text: md } = formatTableFromItems(items, 'markdown', false, lines);
 
         // It should merge rows properly and effectively reconstruct the spatial rows anyway
         // Wait, because we are adding fake boundaries, there are no actual lines for those fallback boundaries!
@@ -145,7 +145,7 @@ describe('formatTableFromItems - Line Tracing Hybrid', () => {
             { x0: 5, x1: 5, y0: 0, y1: 100, type: 'vertical' }
         ];
 
-        const md = formatTableFromItems(items5, 'markdown', false, lines);
+        const { text: md } = formatTableFromItems(items5, 'markdown', false, lines);
 
         // If fallback occurs, it correctly identifies 5 columns.
         expect(md).toContain("| Col1 | Col2 | Col3 | Col4 | Col5 |");

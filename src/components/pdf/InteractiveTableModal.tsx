@@ -258,7 +258,7 @@ export function InteractiveTableModal({ isOpen, docId, onClose }: InteractiveTab
     if (intersectingItems.length > 0) {
       // Use our backend function, telling it NOT to require multiple columns,
       // since the user explicitly drew a box around this specific content.
-      const tableStr = formatTableFromItems(intersectingItems, format, false, extractedLines);
+      const { text: tableStr } = formatTableFromItems(intersectingItems, format, false, extractedLines);
       setExtractedTable(tableStr);
     } else {
       setExtractedTable(null);

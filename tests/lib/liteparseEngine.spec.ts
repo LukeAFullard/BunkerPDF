@@ -11,7 +11,7 @@ describe('formatTableFromItems (Borderless-table row-merge heuristic)', () => {
       { x: 100, y: 150, width: 30, height: 10, text: 'Row' }
     ];
 
-    const markdown = formatTableFromItems(textItems, 'markdown');
+    const { text: markdown } = formatTableFromItems(textItems, 'markdown');
 
     // Check if the output has properly merged the wrapped lines.
     // Given the logic, the second row with 'More' should be merged into the first row 'Data'.
@@ -25,7 +25,7 @@ describe('formatTableFromItems (Borderless-table row-merge heuristic)', () => {
         { x: 10, y: 150, width: 20, height: 10, text: 'Next' },
         { x: 100, y: 150, width: 30, height: 10, text: 'Row' }
     ];
-    const markdown = formatTableFromItems(textItems, 'markdown');
+    const { text: markdown } = formatTableFromItems(textItems, 'markdown');
     expect(markdown).toContain('Data');
     expect(markdown).toContain('Next');
     expect(markdown).not.toContain('Data Next');
@@ -40,7 +40,7 @@ describe('formatTableFromItems (Borderless-table row-merge heuristic)', () => {
       { x: 100, y: 150, width: 30, height: 10, text: 'Row' }
     ];
 
-    const markdown = formatTableFromItems(textItems, 'markdown');
+    const { text: markdown } = formatTableFromItems(textItems, 'markdown');
     expect(markdown).not.toContain('Data More');
   });
 
@@ -53,7 +53,7 @@ describe('formatTableFromItems (Borderless-table row-merge heuristic)', () => {
     ];
     // Shuffle the items
     const shuffled = [textItems[0], textItems[2], textItems[1], textItems[3]];
-    const markdown = formatTableFromItems(shuffled, 'markdown');
+    const { text: markdown } = formatTableFromItems(shuffled, 'markdown');
 
     // It should merge Part1 and Part2 in the correct X order
     expect(markdown).toContain('Part1 More Part2');
