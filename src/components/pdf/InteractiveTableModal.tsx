@@ -105,39 +105,42 @@ export function InteractiveTableModal({ isOpen, docId, onClose }: InteractiveTab
   useEffect(() => {
     if (isOpen && pdfDocRef.current && liteparseData) {
       renderPage(currentPage, pdfDocRef.current);
-
-      if (liteparseData && liteparseData.pages && liteparseData.pages[currentPage - 1]) {
-        const lines: LineItem[] = [];
-        const vectorGraphics = liteparseData.pages[currentPage - 1].vectorGraphics;
-        if (vectorGraphics && vectorGraphics.lines) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          vectorGraphics.lines.forEach((l: any) => {
-            const x0 = Math.min(l.x1, l.x2);
-            const y0 = Math.min(l.y1, l.y2);
-            const x1 = Math.max(l.x1, l.x2);
-            const y1 = Math.max(l.y1, l.y2);
-
-            // Skip lines that aren't actually visible/structural
-            const opacity = l.opacity ?? l.strokeAlpha ?? 1;
-            const strokeWidth = l.strokeWidth ?? l.width ?? 1;
-            const color = l.strokeColor ?? l.color;
-            const isNearWhite = color && isBackgroundColor(color);
-
-            if (opacity < 0.05 || isNearWhite) return; // don't add invisible lines
-
-            // Only consider strictly horizontal or vertical lines
-            if (Math.abs(y0 - y1) < 2) {
-              lines.push({ x0, y0: (y0 + y1) / 2, x1, y1: (y0 + y1) / 2, type: 'horizontal', strokeWidth, opacity, color });
-            } else if (Math.abs(x0 - x1) < 2) {
-              lines.push({ x0: (x0 + x1) / 2, y0, x1: (x0 + x1) / 2, y1, type: 'vertical', strokeWidth, opacity, color });
-            }
-          });
-        }
-        setExtractedLines(lines);
-      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, zoomLevel, liteparseData]);
+
+  useEffect(() => {
+    if (isOpen && liteparseData && liteparseData.pages && liteparseData.pages[currentPage - 1]) {
+      const lines: LineItem[] = [];
+      const vectorGraphics = liteparseData.pages[currentPage - 1].vectorGraphics;
+      if (vectorGraphics && vectorGraphics.lines) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        vectorGraphics.lines.forEach((l: any) => {
+          const x0 = Math.min(l.x1, l.x2);
+          const y0 = Math.min(l.y1, l.y2);
+          const x1 = Math.max(l.x1, l.x2);
+          const y1 = Math.max(l.y1, l.y2);
+
+          // Skip lines that aren't actually visible/structural
+          const opacity = l.opacity ?? l.strokeAlpha ?? 1;
+          const strokeWidth = l.strokeWidth ?? l.width ?? 1;
+          const color = l.strokeColor ?? l.color;
+          const isNearWhite = color && isBackgroundColor(color);
+
+          if (opacity < 0.05 || isNearWhite) return; // don't add invisible lines
+
+          // Only consider strictly horizontal or vertical lines
+          if (Math.abs(y0 - y1) < 2) {
+            lines.push({ x0, y0: (y0 + y1) / 2, x1, y1: (y0 + y1) / 2, type: 'horizontal', strokeWidth, opacity, color });
+          } else if (Math.abs(x0 - x1) < 2) {
+            lines.push({ x0: (x0 + x1) / 2, y0, x1: (x0 + x1) / 2, y1, type: 'vertical', strokeWidth, opacity, color });
+          }
+        });
+      }
+      setExtractedLines(lines);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, currentPage, liteparseData]);
 
   const handleLineClick = (e: React.MouseEvent, index: number) => {
     e.stopPropagation();
@@ -259,6 +262,17 @@ export function InteractiveTableModal({ isOpen, docId, onClose }: InteractiveTab
       return !(lpRight < item.x || lpX > itemRight || lpBottom < item.y || lpY > itemBottom);
     });
 
+    // Filter lines that intersect the drawn box
+    const intersectingLines = extractedLines.filter((line) => {
+      const lx0 = Math.min(line.x0, line.x1);
+      const ly0 = Math.min(line.y0, line.y1);
+      const lx1 = Math.max(line.x0, line.x1);
+      const ly1 = Math.max(line.y0, line.y1);
+
+      return !(lx1 < lpX || lx0 > lpRight || ly1 < lpY || ly0 > lpBottom);
+    });
+
+
     if (intersectingItems.length > 0) {
       setIsExtracting(true);
       try {
@@ -268,7 +282,7 @@ export function InteractiveTableModal({ isOpen, docId, onClose }: InteractiveTab
           intersectingItems,
           format,
           false,
-          extractedLines
+          intersectingLines
         );
         setExtractedTable(result.text);
         setConfidence(result.confidence);
