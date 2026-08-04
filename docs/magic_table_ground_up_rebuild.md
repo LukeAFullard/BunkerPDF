@@ -680,8 +680,8 @@ next:
 
 1. [x] **§2.1** — one-line fix, enable `extractTextMetadata` for tables. Ship
    immediately, zero risk.
-2. **§2.2** — schema audit (no code change, just logging). Determines
-   whether §4.2 uses real fill rects or the text-color fallback.
+2. [x] **§2.2** — schema audit (no code change, just logging). Determines
+   whether §4.2 uses real fill rects or the text-color fallback. *(Audit completed: `vectorGraphics` contains `shapes` and `lines` but no `rects` or `fills`, so we must use the text-color fallback for §4.2).*
 3. **§4.5** — unconditional empty-column cleanup. Small, additive, fixes
    Bug #1 alone.
 4. **§4.4** — dense-row column inference. Fixes Bug #2 alone.
