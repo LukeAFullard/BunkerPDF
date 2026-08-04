@@ -5,7 +5,7 @@ import 'pdfjs-dist/web/pdf_viewer.css';
 import { X, TableProperties, ZoomIn, ZoomOut, Loader2, Download, Copy, Check } from 'lucide-react';
 import { useFileStore } from '../../store/fileStore';
 import { cleanupPdfResources } from '../../lib/pdfCleanup';
-import { getConfiguredLiteParse, formatTableFromItems } from '../../lib/liteparseEngine';
+import { getConfiguredLiteParse, formatTableFromItems, isBackgroundColor } from '../../lib/liteparseEngine';
 import type { LineItem } from '../../lib/liteparseEngine';
 
 interface InteractiveTableModalProps {
@@ -37,7 +37,7 @@ export function InteractiveTableModal({ isOpen, docId, onClose }: InteractiveTab
   const [selectionBox, setSelectionBox] = useState<{ x: number, y: number, w: number, h: number } | null>(null);
 
   const [extractedTable, setExtractedTable] = useState<string | null>(null);
-  const [format, setFormat] = useState<'csv' | 'markdown'>('csv');
+  const [format, setFormat] = useState<'csv' | 'markdown' | 'html'>('csv');
   const [copied, setCopied] = useState(false);
   const [extractedLines, setExtractedLines] = useState<LineItem[]>([]);
 
@@ -113,11 +113,19 @@ export function InteractiveTableModal({ isOpen, docId, onClose }: InteractiveTab
             const x1 = Math.max(l.x1, l.x2);
             const y1 = Math.max(l.y1, l.y2);
 
+            // Skip lines that aren't actually visible/structural
+            const opacity = l.opacity ?? l.strokeAlpha ?? 1;
+            const strokeWidth = l.strokeWidth ?? l.width ?? 1;
+            const color = l.strokeColor ?? l.color;
+            const isNearWhite = color && isBackgroundColor(color);
+
+            if (opacity < 0.05 || isNearWhite) return; // don't add invisible lines
+
             // Only consider strictly horizontal or vertical lines
             if (Math.abs(y0 - y1) < 2) {
-              lines.push({ x0, y0: (y0 + y1) / 2, x1, y1: (y0 + y1) / 2, type: 'horizontal' });
+              lines.push({ x0, y0: (y0 + y1) / 2, x1, y1: (y0 + y1) / 2, type: 'horizontal', strokeWidth, opacity, color });
             } else if (Math.abs(x0 - x1) < 2) {
-              lines.push({ x0: (x0 + x1) / 2, y0, x1: (x0 + x1) / 2, y1, type: 'vertical' });
+              lines.push({ x0: (x0 + x1) / 2, y0, x1: (x0 + x1) / 2, y1, type: 'vertical', strokeWidth, opacity, color });
             }
           });
         }
@@ -126,6 +134,15 @@ export function InteractiveTableModal({ isOpen, docId, onClose }: InteractiveTab
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, zoomLevel, liteparseData]);
+
+  const handleLineClick = (e: React.MouseEvent, index: number) => {
+    e.stopPropagation();
+    setExtractedLines(lines => {
+      const newLines = [...lines];
+      newLines[index] = { ...newLines[index], disabled: !newLines[index].disabled };
+      return newLines;
+    });
+  };
 
   const renderPage = async (pageNum: number, pdf: pdfjsLib.PDFDocumentProxy) => {
     setIsLoading(true);
@@ -339,6 +356,47 @@ export function InteractiveTableModal({ isOpen, docId, onClose }: InteractiveTab
                     onMouseUp={handleMouseUp}
                     onMouseLeave={handleMouseUp}
                   >
+                    {/* Render extracted lines as overlay */}
+                    {extractedLines.map((line, idx) => {
+                      const isHoriz = line.type === 'horizontal';
+
+                      // Check if line intersects selection box to only show relevant lines, or show all if no selection
+                      let intersects = true;
+                      if (selectionBox) {
+                        const lpX = selectionBox.x / overlayScale;
+                        const lpY = selectionBox.y / overlayScale;
+                        const lpW = selectionBox.w / overlayScale;
+                        const lpH = selectionBox.h / overlayScale;
+
+                        // Line bounding box
+                        const lx0 = Math.min(line.x0, line.x1);
+                        const ly0 = Math.min(line.y0, line.y1);
+                        const lx1 = Math.max(line.x0, line.x1);
+                        const ly1 = Math.max(line.y0, line.y1);
+
+                        intersects = !(lx1 < lpX || lx0 > lpX + lpW || ly1 < lpY || ly0 > lpY + lpH);
+                      }
+
+                      if (!intersects && selectionBox) return null;
+
+                      return (
+                        <div
+                          key={`line-${idx}`}
+                          onClick={(e) => handleLineClick(e, idx)}
+                          className={`absolute cursor-pointer transition-colors ${line.disabled ? 'bg-red-400 opacity-30 hover:opacity-100' : 'bg-blue-500 opacity-60 hover:opacity-100'}`}
+                          style={{
+                            left: (Math.min(line.x0, line.x1) * overlayScale) + 'px',
+                            top: (Math.min(line.y0, line.y1) * overlayScale) + 'px',
+                            width: (isHoriz ? Math.abs(line.x1 - line.x0) * overlayScale : Math.max(4, (line.strokeWidth || 1) * overlayScale)) + 'px',
+                            height: (!isHoriz ? Math.abs(line.y1 - line.y0) * overlayScale : Math.max(4, (line.strokeWidth || 1) * overlayScale)) + 'px',
+                            transform: isHoriz ? 'translateY(-50%)' : 'translateX(-50%)', // center the click target
+                            zIndex: 40 // above the drawing layer slightly so they can be clicked
+                          }}
+                          title={line.disabled ? "Click to enable line" : "Click to disable line"}
+                        />
+                      );
+                    })}
+
                     {isDrawing && (
                       <div
                         className="absolute border-2 border-indigo-500 bg-indigo-500/20"
@@ -394,6 +452,12 @@ export function InteractiveTableModal({ isOpen, docId, onClose }: InteractiveTab
                  className={`px-3 py-1 rounded text-xs font-medium transition-colors ${format === 'markdown' ? 'bg-white shadow-sm text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}
                >
                  Markdown
+               </button>
+               <button
+                 onClick={() => setFormat('html')}
+                 className={`px-3 py-1 rounded text-xs font-medium transition-colors ${format === 'html' ? 'bg-white shadow-sm text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}
+               >
+                 HTML
                </button>
              </div>
           </div>
