@@ -734,9 +734,27 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
             columns.push({ start: prev, end: maxX });
         }
     } else {
-        // Build column intervals using overlapping bounding boxes
+        // --- Stage 1: classify rows as "dense" (structural) vs "spanning" ---
+        // Compute table content width for the span-fraction threshold.
+        const tableContentWidth = maxX - minX;
+        const SPAN_WIDTH_FRACTION = 0.6; // item wider than 60% of table => spanning candidate
+
+        const isSpanningRow = (row: typeof table.rows[number]) => {
+          if (row.items.length <= 1) return true;
+          const widest = Math.max(...row.items.map(it => it.width));
+          return tableContentWidth > 0 && widest / tableContentWidth > SPAN_WIDTH_FRACTION;
+        };
+
+        let denseRows = table.rows.filter(row => !isSpanningRow(row));
+        // Fallback: if everything got classified as spanning (pathological/very
+        // sparse table), use all rows so we don't end up with zero columns.
+        if (denseRows.length === 0) {
+          denseRows = table.rows;
+        }
+
+        // --- Stage 2: infer column boundaries from dense rows only ---
         const intervals: { start: number, end: number }[] = [];
-        for (const row of table.rows) {
+        for (const row of denseRows) {
           for (const item of row.items) {
             intervals.push({ start: item.x, end: item.x + item.width });
           }
@@ -744,7 +762,7 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
         intervals.sort((a, b) => a.start - b.start);
 
         if (intervals.length > 0) {
-          let currentInterval = intervals[0];
+          let currentInterval = { ...intervals[0] };
           for (let i = 1; i < intervals.length; i++) {
             const nextInterval = intervals[i];
             // Merge if overlapping or within a small gutter (5px)
@@ -752,11 +770,14 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
               currentInterval.end = Math.max(currentInterval.end, nextInterval.end);
             } else {
               columns.push(currentInterval);
-              currentInterval = nextInterval;
+              currentInterval = { ...nextInterval };
             }
           }
           columns.push(currentInterval);
         }
+        // Stage 3 (assigning ALL rows, including spanning ones, to these
+        // columns) is handled by the existing unchanged item-assignment loop
+        // below — no further change needed there.
     }
 
     const tableGrid: string[][] = [];
@@ -881,9 +902,9 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
     }
 
     // Unconditional cleanup: drop columns that are empty in every single row.
-    // Safe regardless of how columns were derived (traced lines or spatial
-    // clustering) because a wholly-empty column can never be losing data.
-    if (tableGrid.length > 0) {
+    // Safe on both Path A (line-traced) and Path B (spatial) because a
+    // wholly-empty column can never contain data that would be lost.
+    if (tableGrid.length > 0 && tableGrid[0].length > 1) {
       const numCols = tableGrid[0].length;
       const emptyColIndexes: number[] = [];
       for (let c = 0; c < numCols; c++) {
@@ -891,15 +912,17 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
         if (isEmpty) emptyColIndexes.push(c);
       }
 
-      if (emptyColIndexes.length > 0) {
-        // Remove from highest index to lowest so earlier indexes stay valid.
-        for (let i = emptyColIndexes.length - 1; i >= 0; i--) {
-          const c = emptyColIndexes[i];
-          tableGrid.forEach(row => row.splice(c, 1));
-          tableGridSpans.forEach(row => row.splice(c, 1));
-          tableRowSpansMap.forEach(row => row.splice(c, 1));
-          columns.splice(c, 1);
-        }
+      // Never remove every column — always keep at least 1.
+      const maxRemovable = numCols - 1;
+      const toRemove = emptyColIndexes.slice(0, maxRemovable);
+
+      // Remove from highest index to lowest so earlier indexes stay valid.
+      for (let i = toRemove.length - 1; i >= 0; i--) {
+        const c = toRemove[i];
+        tableGrid.forEach(row => row.splice(c, 1));
+        tableGridSpans.forEach(row => row.splice(c, 1));
+        tableRowSpansMap.forEach(row => row.splice(c, 1));
+        columns.splice(c, 1);
       }
     }
 
