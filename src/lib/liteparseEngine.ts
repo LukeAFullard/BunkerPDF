@@ -1,4 +1,4 @@
-import { fromLines } from './lineTracingMath';
+import { fromLines, buildGridFromIntersections } from './lineTracingMath';
 import init, { LiteParse } from "@llamaindex/liteparse-wasm";
 import { useUIStore } from '../store/uiStore';
 import { ocrPdf } from './ocrEngine';
@@ -84,6 +84,45 @@ export interface LineItem {
   x1: number;
   y1: number;
   type: 'horizontal' | 'vertical';
+  strokeWidth?: number;
+  opacity?: number;
+  color?: string;
+  disabled?: boolean;
+}
+
+export function isBackgroundColor(color?: string): boolean {
+  if (!color) return false;
+  // Handle hex colors
+  if (color.startsWith('#')) {
+      let r, g, b;
+      if (color.length === 4) {
+          r = parseInt(color[1] + color[1], 16);
+          g = parseInt(color[2] + color[2], 16);
+          b = parseInt(color[3] + color[3], 16);
+      } else if (color.length === 7) {
+          r = parseInt(color.substring(1, 3), 16);
+          g = parseInt(color.substring(3, 5), 16);
+          b = parseInt(color.substring(5, 7), 16);
+      } else if (color.length === 9) { // #rrggbbaa
+          r = parseInt(color.substring(1, 3), 16);
+          g = parseInt(color.substring(3, 5), 16);
+          b = parseInt(color.substring(5, 7), 16);
+      }
+      if (r !== undefined && g !== undefined && b !== undefined) {
+          return r > 240 && g > 240 && b > 240;
+      }
+  }
+  // Handle rgb/rgba colors
+  if (color.startsWith('rgb')) {
+      const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+      if (match) {
+          const r = parseInt(match[1]);
+          const g = parseInt(match[2]);
+          const b = parseInt(match[3]);
+          return r > 240 && g > 240 && b > 240;
+      }
+  }
+  return false;
 }
 
 export const initLiteParse = async (): Promise<void> => {
@@ -427,7 +466,7 @@ export const editParagraphLiteparse = async (bytes: Uint8Array, searchText: stri
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown' | 'latex', requiresMultipleColumns = true, explicitLines?: LineItem[]): string => {
+export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown' | 'latex' | 'html', requiresMultipleColumns = true, explicitLines?: LineItem[]): string => {
   if (!textItems || textItems.length === 0) return "";
 
   // 1. Calculate the table bounding box for line filtering
@@ -448,7 +487,7 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
   // Determine row boundaries
   let rowBoundaries: number[] = [];
   if (useLines) {
-      rowBoundaries = fromLines(explicitLines, 'horizontal', tableXSpan);
+      rowBoundaries = fromLines(explicitLines, 'horizontal');
 
       if (rowBoundaries.length > 0) {
         // Calculate spatial rows count for confidence check
@@ -469,13 +508,44 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
           }
         }
 
-        const geometricRowCount = rowBoundaries.length + 1;
-        const spatialRowCount = spatialRows.length;
+        spatialRows.sort((a, b) => a.y - b.y);
 
-        if (geometricRowCount < spatialRowCount * 0.5) {
-          console.warn(`[LineTracing] Row confidence low: geometric (${geometricRowCount}) vs spatial (${spatialRowCount}). Falling back to spatial.`);
-          rowBoundaries = []; // Force fallback
+        // Instead of a global fallback, locally fallback for row bands where geometric and spatial differ.
+        const mergedBoundaries: number[] = [];
+        let rIdx = 0;
+        let sIdx = 0;
+
+        // Very basic local fallback: if a spatial boundary doesn't align with a geometric one, keep it.
+        // So we merge spatial and geometric boundaries, but only spatial boundaries that are far enough from geometric.
+        for (let i = 0; i < spatialRows.length - 1; i++) {
+            const currentSpatialY = spatialRows[i].y;
+            const nextSpatialY = spatialRows[i+1].y;
+
+            // Wait, we should use the bottom of current and top of next to find mid.
+            const currentBottom = spatialRows[i].items.reduce((max, it) => Math.max(max, it.y + it.height), currentSpatialY);
+            const nextTop = spatialRows[i+1].items.reduce((min, it) => Math.min(min, it.y), nextSpatialY);
+
+            let midY = (currentBottom + nextTop) / 2;
+
+            // If they overlap or there is no gap, fallback to simple Y average
+            if (nextTop <= currentBottom) {
+                 midY = (currentSpatialY + nextSpatialY) / 2;
+            }
+
+            // Is there a geometric boundary near this midY?
+            const nearGeometric = rowBoundaries.some(b => Math.abs(b - midY) < 15);
+            if (!nearGeometric) {
+                // If there isn't a geometric line separating these two distinct spatial rows,
+                // we should insert a fallback boundary. This means the lines drawn are sparse.
+                mergedBoundaries.push(midY);
+            }
         }
+
+        for (const b of rowBoundaries) {
+            mergedBoundaries.push(b);
+        }
+        mergedBoundaries.sort((a, b) => a - b);
+        rowBoundaries = mergedBoundaries;
       }
   }
 
@@ -530,9 +600,11 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
   // Sort items within each row by X coordinate
   rows.forEach(row => row.items.sort((a, b) => a.x - b.x));
 
-
-  // Second pass: merge wrapped lines into the row above (only if not using explicit lines for rows)
-  if (rowBoundaries.length === 0) {
+  // Second pass: merge wrapped lines into the row above
+  // Run this locally on lines that do not have an explicit boundary separating them.
+  // We can just rely on the fallback bounds to not split these lines in the first place,
+  // but if we are using explicit lines and one is missing, this acts as a safety net.
+  if (rowBoundaries.length === 0 || useLines) {
     // 1. Calculate typical gap
     const gaps: number[] = [];
     for (let i = 0; i < rows.length - 1; i++) {
@@ -550,7 +622,16 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
         const rowB = rows[i + 1];
         const gap = rowB.y - rowA.y;
 
-        if (gap < medianGap * 0.8 || gap <= 15) {
+        // Prevent merging if there is a verified line separating them!
+        let hasSeparatingLine = false;
+        if (useLines && explicitLines) {
+           const midY = (rowA.y + rowB.y) / 2;
+           hasSeparatingLine = explicitLines.some(l =>
+              l.type === 'horizontal' && !l.disabled && Math.abs(l.y0 - midY) < gap / 2 + 5
+           );
+        }
+
+        if (!hasSeparatingLine && (gap < medianGap * 0.8 || gap <= 15)) {
           let allSubset = true;
           for (const itemB of rowB.items) {
             let foundOverlap = false;
@@ -596,14 +677,14 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
     tables.push({ rows: currentTable });
   }
 
-  const allTablesOutput: string[] = [];
+  const allFormattedTablesOutput: string[] = [];
 
   for (const table of tables) {
     let columns: { start: number, end: number }[] = [];
     let colBoundaries: number[] = [];
 
     if (useLines) {
-        colBoundaries = fromLines(explicitLines, 'vertical', tableYSpan);
+        colBoundaries = fromLines(explicitLines, 'vertical');
 
         if (colBoundaries.length > 0) {
           // Calculate spatial columns count for confidence check
@@ -630,12 +711,33 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
             spatialColCount++;
           }
 
-          const geometricColCount = colBoundaries.length + 1;
+          // We can apply the same local fallback for columns as we did for rows
+          const mergedColBoundaries: number[] = [];
 
-          if (geometricColCount < spatialColCount * 0.5) {
-            console.warn(`[LineTracing] Column confidence low: geometric (${geometricColCount}) vs spatial (${spatialColCount}). Falling back to spatial.`);
-            colBoundaries = []; // Force fallback
+          if (intervals.length > 0) {
+            let currentInterval = intervals[0];
+            for (let i = 1; i < intervals.length; i++) {
+              const nextInterval = intervals[i];
+              if (nextInterval.start <= currentInterval.end + 5) {
+                currentInterval.end = Math.max(currentInterval.end, nextInterval.end);
+              } else {
+                const midX = (currentInterval.end + nextInterval.start) / 2;
+
+                const nearGeometric = colBoundaries.some(b => Math.abs(b - midX) < 15);
+                if (!nearGeometric) {
+                    mergedColBoundaries.push(midX);
+                }
+
+                currentInterval = nextInterval;
+              }
+            }
           }
+
+          for (const b of colBoundaries) {
+              mergedColBoundaries.push(b);
+          }
+          mergedColBoundaries.sort((a, b) => a - b);
+          colBoundaries = mergedColBoundaries;
         }
     }
 
@@ -679,7 +781,36 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
 
     const tableGrid: string[][] = [];
     const tableGridSpans: number[][] = [];
+    const tableRowSpansMap: number[][] = [];
 
+    // We compute rowSpans mapping here.
+    // rowSpans[r][c] tells us if row `r` in column `c` is separated from row `r-1` in column `c`.
+    // If it's NOT separated (edgeExists is false), it should be merged with row `r-1`.
+    let rowSpans: number[][] = [];
+    if (useLines && rowBoundaries.length > 0) {
+      const hLines = explicitLines?.filter(l => l.type === 'horizontal' && !l.disabled) || [];
+      // If hLines is empty but we have fallback boundaries, we shouldn't merge everything!
+      // Actually, if we have local fallback boundaries inserted, they don't correspond to real lines.
+      // We should only merge if we are sure there is no line AND we were expecting one.
+      // A simple fix for sparse borders (where we insert fallback boundaries) is to treat all fallback boundaries as "edges".
+
+      // We can create dummy lines for the fallback boundaries.
+      // The `fromLines` method returns true geometric lines. `rowBoundaries` has some fallback lines.
+      // Let's create an augmented list of hLines that includes full-width fallback lines.
+      // For now, if we have fewer hLines than boundaries, let's just not merge.
+      if (hLines.length > 0) {
+          const augmentedLines = [...hLines];
+          for (const rb of rowBoundaries) {
+              const hasLine = augmentedLines.some(l => Math.abs(l.y0 - rb) < 15);
+              if (!hasLine) {
+                 augmentedLines.push({ x0: minX, x1: maxX, y0: rb, y1: rb, type: 'horizontal' });
+              }
+          }
+          rowSpans = buildGridFromIntersections(augmentedLines, rowBoundaries, columns, minY);
+      }
+    }
+
+    let rIdx = 0;
     for (const row of table.rows) {
       const gridRow: string[] = Array(columns.length).fill('');
       const spanRow: number[] = Array(columns.length).fill(1);
@@ -728,8 +859,45 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
           }
         }
       }
+
+      const trsRow: number[] = Array(columns.length).fill(1);
+
+      if (rIdx > 0 && rowSpans.length >= rIdx && rowSpans[rIdx - 1]) {
+         const spansForBoundary = rowSpans[rIdx - 1];
+         for (let c = 0; c < columns.length; c++) {
+            if (spansForBoundary[c] === 0) {
+               // No boundary separating this cell from the one above it.
+               // Merge it upwards.
+
+               // Find the top-most row that this cell belongs to
+               let topR = rIdx - 1;
+               while (topR > 0 && rowSpans[topR - 1][c] === 0) {
+                  topR--;
+               }
+
+               // Increment rowspan of the top-most cell
+               tableRowSpansMap[topR][c] += 1;
+
+               // Set this cell's rowspan to 0 to indicate it's merged
+               trsRow[c] = 0;
+
+               // Also concatenate text upwards for markdown/csv fallback
+               if (gridRow[c]) {
+                   if (tableGrid[topR][c]) {
+                       tableGrid[topR][c] += " " + gridRow[c];
+                   } else {
+                       tableGrid[topR][c] = gridRow[c];
+                   }
+                   gridRow[c] = ""; // clear it here
+               }
+            }
+         }
+      }
+
       tableGrid.push(gridRow);
       tableGridSpans.push(spanRow);
+      tableRowSpansMap.push(trsRow);
+      rIdx++;
     }
 
     // Safety-net post-process: merge mutually exclusive adjacent columns ONLY if we didn't use explicit lines
@@ -773,7 +941,43 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
        }
     }
 
-    if (format === 'csv') {
+    if (format === 'html') {
+      let html = "<table>\n";
+      for (let i = 0; i < tableGrid.length; i++) {
+        const row = tableGrid[i];
+        const spans = tableGridSpans[i];
+        const rowSpansMap = tableRowSpansMap[i];
+
+        let rowHtml = "  <tr>\n";
+        for (let j = 0; j < row.length; j++) {
+           const colSpan = spans[j];
+           const rowSpan = rowSpansMap[j];
+
+           if (rowSpan === 0) {
+               // Cell is merged upwards, skip rendering it
+               continue;
+           }
+
+           const isHeader = (i === 0 && hasHeader);
+           const cellTag = isHeader ? "th" : "td";
+
+           let attrs = "";
+           if (colSpan > 1) attrs += ` colspan="${colSpan}"`;
+           if (rowSpan > 1) attrs += ` rowspan="${rowSpan}"`;
+
+           rowHtml += `    <${cellTag}${attrs}>${row[j].trim() || "&nbsp;"}</${cellTag}>\n`;
+
+           // Skip merged columns
+           if (colSpan > 1) {
+              j += (colSpan - 1);
+           }
+        }
+        rowHtml += "  </tr>\n";
+        html += rowHtml;
+      }
+      html += "</table>";
+      allFormattedTablesOutput.push(html);
+    } else if (format === 'csv') {
       const csvRows = tableGrid.map((row, rIdx) => {
          const spans = tableGridSpans[rIdx];
          const outRow = [];
@@ -789,7 +993,7 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
          }
          return outRow.join(',');
       });
-      allTablesOutput.push(csvRows.join('\n'));
+      allFormattedTablesOutput.push(csvRows.join('\n'));
     } else if (format === 'markdown') {
       let md = "";
       for (let i = 0; i < tableGrid.length; i++) {
@@ -813,7 +1017,7 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
           md += "|" + outRow.map(() => "---").join("|") + "|\n";
         }
       }
-      allTablesOutput.push(md);
+      allFormattedTablesOutput.push(md);
     } else if (format === 'latex') {
       const colCount = tableGrid.length > 0 ? tableGrid[0].length : 0;
       let latex = "\\begin{tabular}{|" + "c|".repeat(colCount) + "}\n\\hline\n";
@@ -837,11 +1041,11 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
         latex += outRow.join(" & ") + " \\\\\n\\hline\n";
       }
       latex += "\\end{tabular}";
-      allTablesOutput.push(latex);
+      allFormattedTablesOutput.push(latex);
     }
   }
 
-  return allTablesOutput.join("\n\n---\n\n");
+  return allFormattedTablesOutput.join("\n\n---\n\n");
 };
 
 /**
@@ -931,7 +1135,7 @@ export const extractLinksLiteparse = async (bytes: Uint8Array): Promise<any[]> =
   return allLinks;
 };
 
-export const extractTablesLiteparse = async (bytes: Uint8Array, format: 'csv' | 'markdown' | 'latex'): Promise<string> => {
+export const extractTablesLiteparse = async (bytes: Uint8Array, format: 'csv' | 'markdown' | 'latex' | 'html'): Promise<string> => {
   const processedBytes = await preprocessWithOcr(bytes);
 
   const engine = await getConfiguredLiteParse({ outputFormat: "json", extractVectorGraphics: true });
@@ -954,10 +1158,18 @@ export const extractTablesLiteparse = async (bytes: Uint8Array, format: 'csv' | 
         const x1 = Math.max(l.x1, l.x2);
         const y1 = Math.max(l.y1, l.y2);
 
+        // Skip lines that aren't actually visible/structural
+        const opacity = l.opacity ?? l.strokeAlpha ?? 1;
+        const strokeWidth = l.strokeWidth ?? l.width ?? 1;
+        const color = l.strokeColor ?? l.color;
+        const isNearWhite = color && isBackgroundColor(color);
+
+        if (opacity < 0.05 || isNearWhite) return; // don't add invisible lines
+
         if (Math.abs(y0 - y1) < 2) {
-          lines.push({ x0, y0: (y0+y1)/2, x1, y1: (y0+y1)/2, type: 'horizontal' });
+          lines.push({ x0, y0: (y0+y1)/2, x1, y1: (y0+y1)/2, type: 'horizontal', strokeWidth, opacity, color });
         } else if (Math.abs(x0 - x1) < 2) {
-          lines.push({ x0: (x0+x1)/2, y0, x1: (x0+x1)/2, y1, type: 'vertical' });
+          lines.push({ x0: (x0+x1)/2, y0, x1: (x0+x1)/2, y1, type: 'vertical', strokeWidth, opacity, color });
         }
       });
     }
