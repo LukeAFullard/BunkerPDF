@@ -880,6 +880,29 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
       rIdx++;
     }
 
+    // Unconditional cleanup: drop columns that are empty in every single row.
+    // Safe regardless of how columns were derived (traced lines or spatial
+    // clustering) because a wholly-empty column can never be losing data.
+    if (tableGrid.length > 0) {
+      const numCols = tableGrid[0].length;
+      const emptyColIndexes: number[] = [];
+      for (let c = 0; c < numCols; c++) {
+        const isEmpty = tableGrid.every(row => row[c] === '');
+        if (isEmpty) emptyColIndexes.push(c);
+      }
+
+      if (emptyColIndexes.length > 0) {
+        // Remove from highest index to lowest so earlier indexes stay valid.
+        for (let i = emptyColIndexes.length - 1; i >= 0; i--) {
+          const c = emptyColIndexes[i];
+          tableGrid.forEach(row => row.splice(c, 1));
+          tableGridSpans.forEach(row => row.splice(c, 1));
+          tableRowSpansMap.forEach(row => row.splice(c, 1));
+          columns.splice(c, 1);
+        }
+      }
+    }
+
     // Safety-net post-process: merge mutually exclusive adjacent columns ONLY if we didn't use explicit lines
     if (colBoundaries.length === 0) {
         let merged = true;
