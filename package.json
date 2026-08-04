@@ -8,7 +8,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:tables": "vitest run scripts/testTableExtraction.test.ts --config vitest.config.node.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -64,6 +65,7 @@
     "postcss": "^8.5.14",
     "rollup": "^4.60.3",
     "tailwindcss": "^4.2.4",
+    "tsx": "^4.23.5",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.3",
     "vite": "^8.0.10",
