@@ -688,7 +688,7 @@ next:
 5. [x] **§4.2 + §4.3** — header-band classification and merge/split guards.
    Fixes Bug #3. Do this after 3–4 since it's the most involved change.
 6. [x] **§5** — confidence scoring. Needed before §6 has anything to trigger on.
-7. **§8** — build the fixture suite now, using the fixes above as the first
+7. [x] **§8** — build the fixture suite now, using the fixes above as the first
    passing cases, before starting Tier 2.
 8. **§6 + §7** — Tier 2 vision fallback and UI surfacing. Largest, riskiest
    piece; do it last, once Tier 1 is solid and has a safety net (fixtures)
