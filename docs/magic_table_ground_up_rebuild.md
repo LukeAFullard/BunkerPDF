@@ -693,6 +693,9 @@ next:
 8. **§6 + §7** — Tier 2 vision fallback and UI surfacing. Largest, riskiest
    piece; do it last, once Tier 1 is solid and has a safety net (fixtures)
    to catch regressions.
+   - [x] **§6.1 & §6.2** — Table Transformer ONNX model and worker script
+   - [x] **§6.3** — Image rendering crop for the bounding box
+   - [ ] **§6.4 & §7** — Orchestration, confidence store, and UI
 
 ---
 
