@@ -465,9 +465,31 @@ export const editParagraphLiteparse = async (bytes: Uint8Array, searchText: stri
   return await pdfDoc.save();
 };
 
+function scoreConfidence(grid: string[][], rows: { items: any[]; isHeaderBand?: boolean }[]): { confidence: number; reasons: string[] } {
+  const reasons: string[] = [];
+  let score = 1.0;
+
+  if (grid.length === 0) return { confidence: 0, reasons: ["No rows detected"] };
+
+  const colCounts = grid.map(row => row.filter(c => c !== '').length);
+  const mean = colCounts.reduce((a,b) => a+b, 0) / colCounts.length;
+  const variance = colCounts.reduce((a,b) => a + (b-mean)**2, 0) / colCounts.length;
+  if (variance > mean) { score -= 0.3; reasons.push("High variance in populated cells per row"); }
+
+  const totalCells = grid.length * grid[0].length;
+  const emptyCells = grid.flat().filter(c => c === '').length;
+  const emptyRatio = emptyCells / totalCells;
+  if (emptyRatio > 0.5) { score -= 0.3; reasons.push(`${Math.round(emptyRatio*100)}% of cells are empty`); }
+
+  const singleColRows = rows.filter(r => !r.isHeaderBand && r.items.length === 1).length;
+  if (singleColRows / rows.length > 0.3) { score -= 0.2; reasons.push("Many rows have only one detected column"); }
+
+  return { confidence: Math.max(0, score), reasons };
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown' | 'latex' | 'html', requiresMultipleColumns = true, explicitLines?: LineItem[]): string => {
-  if (!textItems || textItems.length === 0) return "";
+export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown' | 'latex' | 'html', requiresMultipleColumns = true, explicitLines?: LineItem[]): { text: string; confidence: number; confidenceReasons: string[] } => {
+  if (!textItems || textItems.length === 0) return { text: "", confidence: 1, confidenceReasons: [] };
 
   // 1. Calculate the table bounding box for line filtering
   let minX = Infinity; let maxX = -Infinity;
@@ -698,6 +720,8 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
   }
 
   const allFormattedTablesOutput: string[] = [];
+  let overallConfidence = 1.0;
+  const allConfidenceReasons: string[] = [];
 
   for (const table of tables) {
     const columns: { start: number, end: number }[] = [];
@@ -982,6 +1006,16 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
         }
     }
 
+    const { confidence, reasons } = scoreConfidence(tableGrid, table.rows);
+    if (confidence < overallConfidence) {
+        overallConfidence = confidence;
+    }
+    for (const reason of reasons) {
+        if (!allConfidenceReasons.includes(reason)) {
+            allConfidenceReasons.push(reason);
+        }
+    }
+
     // Header Row Detection Heuristic
     let hasHeader = false;
     if (table.rows.length >= 2) {
@@ -1097,7 +1131,11 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
     }
   }
 
-  return allFormattedTablesOutput.join("\n\n---\n\n");
+  return {
+    text: allFormattedTablesOutput.join("\n\n---\n\n"),
+    confidence: overallConfidence,
+    confidenceReasons: allConfidenceReasons
+  };
 };
 
 /**
@@ -1230,7 +1268,7 @@ export const extractTablesLiteparse = async (bytes: Uint8Array, format: 'csv' | 
       });
     }
 
-    const tableStr = formatTableFromItems(page.textItems, format, true, lines);
+    const { text: tableStr } = formatTableFromItems(page.textItems, format, true, lines);
     if (tableStr) allTablesOutput.push(tableStr);
   }
 
@@ -1981,7 +2019,7 @@ export const formatMarkdownFromItems = (textItems: any[], explicitLines?: LineIt
   // A strict heuristic: Needs at least 2 distinct columns, at least 3 rows,
   // and the aligned rows must make up the majority of the multi-item rows.
   if (columnsX.length >= 2 && tempRows.length >= 3 && alignedRowsCount >= 2 && alignedRowsCount / tempRows.length >= 0.5) {
-      const tableMarkdown = formatTableFromItems(items, 'markdown', true, explicitLines);
+      const { text: tableMarkdown } = formatTableFromItems(items, 'markdown', true, explicitLines);
       if (tableMarkdown.trim()) {
         return tableMarkdown.trim();
       }

@@ -682,12 +682,12 @@ next:
    immediately, zero risk.
 2. [x] **§2.2** — schema audit (no code change, just logging). Determines
    whether §4.2 uses real fill rects or the text-color fallback. *(Audit completed: `vectorGraphics` contains `shapes` and `lines` but no `rects` or `fills`, so we must use the text-color fallback for §4.2).*
-3. **§4.5** — unconditional empty-column cleanup. Small, additive, fixes
+3. [x] **§4.5** — unconditional empty-column cleanup. Small, additive, fixes
    Bug #1 alone.
-4. **§4.4** — dense-row column inference. Fixes Bug #2 alone.
+4. [x] **§4.4** — dense-row column inference. Fixes Bug #2 alone.
 5. [x] **§4.2 + §4.3** — header-band classification and merge/split guards.
    Fixes Bug #3. Do this after 3–4 since it's the most involved change.
-6. **§5** — confidence scoring. Needed before §6 has anything to trigger on.
+6. [x] **§5** — confidence scoring. Needed before §6 has anything to trigger on.
 7. **§8** — build the fixture suite now, using the fixes above as the first
    passing cases, before starting Tier 2.
 8. **§6 + §7** — Tier 2 vision fallback and UI surfacing. Largest, riskiest
