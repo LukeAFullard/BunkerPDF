@@ -1225,6 +1225,40 @@ export const extractLinksLiteparse = async (bytes: Uint8Array): Promise<any[]> =
   return allLinks;
 };
 
+export const renderTableRegionToImage = async (bytes: Uint8Array, pageNum: number, bounds: { minX: number; maxX: number; minY: number; maxY: number }): Promise<ImageData> => {
+  const pdfjsLib = await import('pdfjs-dist');
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+
+  const loadingTask = pdfjsLib.getDocument(bytes.slice(0));
+  const pdf = await loadingTask.promise;
+  const page = await pdf.getPage(pageNum);
+
+  // Add some padding to bounds
+  const pad = 10;
+  const minX = Math.max(0, bounds.minX - pad);
+  const minY = Math.max(0, bounds.minY - pad);
+  const width = bounds.maxX - bounds.minX + pad * 2;
+  const height = bounds.maxY - bounds.minY + pad * 2;
+
+  const viewport = page.getViewport({ scale: 2, offsetX: -minX * 2, offsetY: -minY * 2 });
+  const canvas = document.createElement('canvas');
+
+  canvas.width = width * 2; // scale 2
+  canvas.height = height * 2; // scale 2
+  const ctx = canvas.getContext('2d')!;
+
+  // @ts-ignore - type definitions can vary
+  await page.render({ canvasContext: ctx, viewport }).promise;
+
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+  // Cleanup
+  page.cleanup();
+  await pdf.destroy();
+
+  return imageData;
+}
+
 export const extractTablesLiteparse = async (bytes: Uint8Array, format: 'csv' | 'markdown' | 'latex' | 'html'): Promise<string> => {
   const processedBytes = await preprocessWithOcr(bytes);
 
