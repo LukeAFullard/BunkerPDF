@@ -1,6 +1,7 @@
 import type { LineItem } from './liteparseEngine';
 
 export const DEDUPE_THRESHOLD_PX = 2.0;
+
 export function filterAndDeduplicateLines(lines: LineItem[], type: 'horizontal' | 'vertical'): LineItem[] {
   // Filter by type and ignore disabled lines
   const typedLines = lines.filter(l => l.type === type && !l.disabled);
@@ -73,8 +74,7 @@ export const MIN_RULE_FRACTION_LOCAL = 0.75;
 export function buildGridFromIntersections(
   hLines: LineItem[],
   rowYs: number[],
-  colXs: { start: number; end: number }[],
-  tableYStart: number
+  colXs: { start: number; end: number }[]
 ): number[][] {
   const rowSpans: number[][] = [];
 

@@ -49,7 +49,7 @@ export function SearchModal({ isOpen, onClose, onIndexDocuments, onRunOcr }: Sea
     }
 
     let isMounted = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+
     setIsAnalyzingHealth(true);
 
     const checkDocs = async () => {

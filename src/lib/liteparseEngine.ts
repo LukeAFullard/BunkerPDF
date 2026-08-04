@@ -478,9 +478,6 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
       if (item.y < minY) minY = item.y;
       if (item.y + item.height > maxY) maxY = item.y + item.height;
   }
-  const tableXSpan = { start: minX, end: maxX };
-  const tableYSpan = { start: minY, end: maxY };
-
   const enableLineTracing = useUIStore.getState().enableLineTracing;
   const useLines = enableLineTracing && explicitLines && explicitLines.length > 0;
 
@@ -512,8 +509,6 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
 
         // Instead of a global fallback, locally fallback for row bands where geometric and spatial differ.
         const mergedBoundaries: number[] = [];
-        let rIdx = 0;
-        let sIdx = 0;
 
         // Very basic local fallback: if a spatial boundary doesn't align with a geometric one, keep it.
         // So we merge spatial and geometric boundaries, but only spatial boundaries that are far enough from geometric.
@@ -569,7 +564,7 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
       // Look for an existing row with this index based on boundary
       const boundaryY = rowIndex > 0 ? rowBoundaries[rowIndex - 1] + 1 : minY;
 
-      let matchedRow = rows.find(r => r.y === boundaryY);
+      const matchedRow = rows.find(r => r.y === boundaryY);
       if (matchedRow) {
           matchedRow.items.push(item);
           foundRow = true;
@@ -680,7 +675,7 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
   const allFormattedTablesOutput: string[] = [];
 
   for (const table of tables) {
-    let columns: { start: number, end: number }[] = [];
+    const columns: { start: number, end: number }[] = [];
     let colBoundaries: number[] = [];
 
     if (useLines) {
@@ -695,21 +690,6 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
             }
           }
           intervals.sort((a, b) => a.start - b.start);
-
-          let spatialColCount = 0;
-          if (intervals.length > 0) {
-            let currentInterval = intervals[0];
-            for (let i = 1; i < intervals.length; i++) {
-              const nextInterval = intervals[i];
-              if (nextInterval.start <= currentInterval.end + 5) {
-                currentInterval.end = Math.max(currentInterval.end, nextInterval.end);
-              } else {
-                spatialColCount++;
-                currentInterval = nextInterval;
-              }
-            }
-            spatialColCount++;
-          }
 
           // We can apply the same local fallback for columns as we did for rows
           const mergedColBoundaries: number[] = [];
@@ -806,7 +786,7 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
                  augmentedLines.push({ x0: minX, x1: maxX, y0: rb, y1: rb, type: 'horizontal' });
               }
           }
-          rowSpans = buildGridFromIntersections(augmentedLines, rowBoundaries, columns, minY);
+      rowSpans = buildGridFromIntersections(augmentedLines, rowBoundaries, columns);
       }
     }
 
@@ -1027,7 +1007,7 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
         const outRow = [];
 
         for (let j = 0; j < row.length; j++) {
-           let isHeader = (i === 0 && hasHeader);
+           const isHeader = (i === 0 && hasHeader);
            let content = row[j];
            if (isHeader) content = `\\textbf{${content}}`;
 
@@ -1244,7 +1224,7 @@ export const editBoxesLiteparse = async (
   return await pdfDoc.save();
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 export const redactBoxesLiteparse = async (
   bytes: Uint8Array,
   boxesToRedact: { pageNum: number; x: number; y: number; width: number; height: number }[]
@@ -1273,7 +1253,7 @@ export const redactBoxesLiteparse = async (
   return await pdfDoc.save();
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 export const redactDocumentLiteparse = async (bytes: Uint8Array, redactions: string[]): Promise<Uint8Array> => {
   const engine = await getConfiguredLiteParse({ outputFormat: "json" });
   const result = await engine.parse(bytes);
@@ -1592,7 +1572,7 @@ export const formatParagraphFromItems = (textItems: any[]): string => {
   return finalString.trim();
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 export const autoRedactLayoutLiteparse = async (
   bytes: Uint8Array,
   layoutTypes: ('header' | 'footer' | 'largest-text')[]
