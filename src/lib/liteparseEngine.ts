@@ -1164,7 +1164,11 @@ export const extractLinksLiteparse = async (bytes: Uint8Array): Promise<any[]> =
 export const extractTablesLiteparse = async (bytes: Uint8Array, format: 'csv' | 'markdown' | 'latex' | 'html'): Promise<string> => {
   const processedBytes = await preprocessWithOcr(bytes);
 
-  const engine = await getConfiguredLiteParse({ outputFormat: "json", extractVectorGraphics: true });
+  const engine = await getConfiguredLiteParse({
+    outputFormat: "json",
+    extractVectorGraphics: true,
+    extractTextMetadata: true,
+  });
   const result = await engine.parse(processedBytes);
 
   if (!result || !result.pages) return "";

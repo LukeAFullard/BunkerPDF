@@ -678,7 +678,7 @@ edge cases) to resurface three times in slightly different forms.
 Do these in order — each stage is independently shippable and de-risks the
 next:
 
-1. **§2.1** — one-line fix, enable `extractTextMetadata` for tables. Ship
+1. [x] **§2.1** — one-line fix, enable `extractTextMetadata` for tables. Ship
    immediately, zero risk.
 2. **§2.2** — schema audit (no code change, just logging). Determines
    whether §4.2 uses real fill rects or the text-color fallback.
