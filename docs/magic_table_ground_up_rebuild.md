@@ -685,7 +685,7 @@ next:
 3. **§4.5** — unconditional empty-column cleanup. Small, additive, fixes
    Bug #1 alone.
 4. **§4.4** — dense-row column inference. Fixes Bug #2 alone.
-5. **§4.2 + §4.3** — header-band classification and merge/split guards.
+5. [x] **§4.2 + §4.3** — header-band classification and merge/split guards.
    Fixes Bug #3. Do this after 3–4 since it's the most involved change.
 6. **§5** — confidence scoring. Needed before §6 has anything to trigger on.
 7. **§8** — build the fixture suite now, using the fixes above as the first

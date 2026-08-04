@@ -529,7 +529,8 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
 
             // Is there a geometric boundary near this midY?
             const nearGeometric = rowBoundaries.some(b => Math.abs(b - midY) < 15);
-            if (!nearGeometric) {
+            const MIN_MEANINGFUL_GAP = 8;
+            if (!nearGeometric && (nextTop - currentBottom) >= MIN_MEANINGFUL_GAP) {
                 // If there isn't a geometric line separating these two distinct spatial rows,
                 // we should insert a fallback boundary. This means the lines drawn are sparse.
                 mergedBoundaries.push(midY);
@@ -545,7 +546,7 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
   }
 
   const rowTolerance = 5; // pixels
-  const rows: { items: typeof textItems, y: number }[] = [];
+  const rows: { items: typeof textItems, y: number, isHeaderBand?: boolean }[] = [];
 
   for (const item of textItems) {
     const itemMidY = item.y + item.height / 2;
@@ -595,6 +596,25 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
   // Sort items within each row by X coordinate
   rows.forEach(row => row.items.sort((a, b) => a.x - b.x));
 
+  // Classify header bands before row boundary or merge logic runs
+  const tableWidth = maxX - minX;
+  const HEADER_BAND_WIDTH_FRACTION = 0.8;
+  rows.forEach(row => {
+    if (tableWidth <= 0) return;
+    const widest = Math.max(...row.items.map((it: any) => it.width || 0));
+    const isWideSingleItem = row.items.length === 1 && widest / tableWidth >= HEADER_BAND_WIDTH_FRACTION;
+
+    // We proxy isLightColor by checking if text sits on a dark filled band.
+    // Using isBackgroundColor which returns true for light colors.
+    const looksLikeHeaderStyle = row.items.some((it: any) => {
+      const fontNameLower = (it.fontName || '').toLowerCase();
+      const isBold = fontNameLower.includes("bold");
+      return isBold || (it.fillColor && isBackgroundColor(it.fillColor));
+    });
+
+    row.isHeaderBand = isWideSingleItem && looksLikeHeaderStyle;
+  });
+
   // Second pass: merge wrapped lines into the row above
   // Run this locally on lines that do not have an explicit boundary separating them.
   // We can just rely on the fallback bounds to not split these lines in the first place,
@@ -626,7 +646,12 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
            );
         }
 
+        if (rowA.isHeaderBand || rowB.isHeaderBand) continue;
+
         if (!hasSeparatingLine && (gap < medianGap * 0.8 || gap <= 15)) {
+          const isSpanningRowMerge = rowB.items.length === 1 && tableWidth > 0 && rowB.items[0].width / tableWidth >= 0.6;
+          const structurallyCompatible = Math.abs(rowA.items.length - rowB.items.length) <= 1 || (rowB.items.length === 1 && !isSpanningRowMerge);
+
           let allSubset = true;
           for (const itemB of rowB.items) {
             let foundOverlap = false;
@@ -642,7 +667,7 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
             }
           }
 
-          if (allSubset) {
+          if (allSubset && structurallyCompatible) {
             rowA.items.push(...rowB.items);
             rows.splice(i + 1, 1);
             mergedAnyRow = true;
@@ -740,6 +765,7 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
         const SPAN_WIDTH_FRACTION = 0.6; // item wider than 60% of table => spanning candidate
 
         const isSpanningRow = (row: typeof table.rows[number]) => {
+          if (row.isHeaderBand) return true;
           if (row.items.length <= 1) return true;
           const widest = Math.max(...row.items.map(it => it.width));
           return tableContentWidth > 0 && widest / tableContentWidth > SPAN_WIDTH_FRACTION;
