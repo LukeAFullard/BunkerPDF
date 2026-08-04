@@ -20,6 +20,10 @@ interface UIState {
   setLiteparseOcrEnabled: (enabled: boolean) => void;
   enableLineTracing: boolean;
   setEnableLineTracing: (enabled: boolean) => void;
+  tier2Enabled: boolean;
+  setTier2Enabled: (enabled: boolean) => void;
+  confidenceThreshold: number;
+  setConfidenceThreshold: (threshold: number) => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -38,6 +42,10 @@ export const useUIStore = create<UIState>()(
   setLiteparseOcrEnabled: (enabled) => set({ liteparseOcrEnabled: enabled }),
   enableLineTracing: true,
   setEnableLineTracing: (enabled) => set({ enableLineTracing: enabled }),
+  tier2Enabled: true,
+  setTier2Enabled: (enabled) => set({ tier2Enabled: enabled }),
+  confidenceThreshold: 0.6,
+  setConfidenceThreshold: (threshold) => set({ confidenceThreshold: threshold }),
     }),
     {
       name: 'bunkerpdf-ui-storage',
@@ -45,7 +53,9 @@ export const useUIStore = create<UIState>()(
         complexityMode: state.complexityMode,
         extractionMethod: state.extractionMethod,
         liteparseOcrEnabled: state.liteparseOcrEnabled,
-        enableLineTracing: state.enableLineTracing
+        enableLineTracing: state.enableLineTracing,
+        tier2Enabled: state.tier2Enabled,
+        confidenceThreshold: state.confidenceThreshold
       }),
     }
   )
