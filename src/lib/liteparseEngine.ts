@@ -488,6 +488,111 @@ function scoreConfidence(grid: string[][], rows: { items: any[]; isHeaderBand?: 
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const recognizeTableStructure = async (
+  pageProxy: any, // PDFPageProxy from pdfjs-dist
+  textItems: any[],
+  format: 'csv' | 'markdown' | 'latex' | 'html',
+  requiresMultipleColumns = true,
+  explicitLines?: LineItem[]
+): Promise<{ text: string; confidence: number; confidenceReasons: string[]; source: 'geometry' | 'vision-fallback' }> => {
+  const settings = useUIStore.getState();
+  const tier1Result = formatTableFromItems(textItems, format, requiresMultipleColumns, explicitLines);
+
+  if (tier1Result.confidence >= settings.confidenceThreshold || !settings.tier2Enabled) {
+    return { ...tier1Result, source: 'geometry' };
+  }
+
+  // Tier 2 Fallback
+  try {
+    let minX = Infinity; let maxX = -Infinity;
+    let minY = Infinity; let maxY = -Infinity;
+    for (const item of textItems) {
+      if (item.x < minX) minX = item.x;
+      if (item.x + item.width > maxX) maxX = item.x + item.width;
+      if (item.y < minY) minY = item.y;
+      if (item.y + item.height > maxY) maxY = item.y + item.height;
+    }
+
+    // add padding
+    minX = Math.max(0, minX - 10);
+    minY = Math.max(0, minY - 10);
+    maxX += 10;
+    maxY += 10;
+
+    // use the one at line 1344 if pageProxy is not available, but here we can just rename the local one
+    const image = await renderTableRegionToImageFromProxy(pageProxy, { minX, minY, maxX, maxY });
+
+    const { recognizeTableStructureWorker } = await import('./tableStructureEngine');
+    const detections = await recognizeTableStructureWorker(image);
+
+    if (detections && detections.length > 0) {
+      const { text } = mapVisionStructureToGrid(detections, textItems, format, { minX, minY, maxX, maxY });
+      return {
+        text,
+        confidence: 0.85,
+        confidenceReasons: ["Resolved via local vision fallback"],
+        source: 'vision-fallback'
+      };
+    }
+  } catch (error) {
+    console.error("Table vision fallback failed:", error);
+  }
+
+  return { ...tier1Result, source: 'geometry' };
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const renderTableRegionToImageFromProxy = async (page: any, bounds: { minX: number; maxX: number; minY: number; maxY: number }): Promise<ImageData> => {
+  const scale = 2.0;
+  const viewport = page.getViewport({ scale });
+
+  const width = Math.ceil((bounds.maxX - bounds.minX) * scale);
+  const height = Math.ceil((bounds.maxY - bounds.minY) * scale);
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d')!;
+
+  const transform = [1, 0, 0, 1, -bounds.minX * scale, -bounds.minY * scale];
+
+  await page.render({
+    canvasContext: ctx,
+    viewport,
+    transform,
+  }).promise;
+
+  return ctx.getImageData(0, 0, width, height);
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mapVisionStructureToGrid = (detections: any[], textItems: any[], format: 'csv' | 'markdown' | 'latex' | 'html', bounds: { minX: number; maxX: number; minY: number; maxY: number }) => {
+  // Actually TATR outputs unnormalized coords based on the input image size, which was scaled by 2.0.
+  const scaleDown = 1 / 2.0;
+
+  const explicitLines: any[] = [];
+
+  for (const det of detections) {
+    const box = det.box; // { xmin, ymin, xmax, ymax } on the canvas image
+    const xmin = bounds.minX + box.xmin * scaleDown;
+    const ymin = bounds.minY + box.ymin * scaleDown;
+    const xmax = bounds.minX + box.xmax * scaleDown;
+    const ymax = bounds.minY + box.ymax * scaleDown;
+
+    if (det.label === 'table column') {
+      explicitLines.push({ type: 'vertical', x: xmin, y: ymin, x1: xmin, y1: ymin, x2: xmin, y2: ymax, strokeWidth: 1, color: '#000000', opacity: 1, disabled: false });
+      explicitLines.push({ type: 'vertical', x: xmax, y: ymin, x1: xmax, y1: ymin, x2: xmax, y2: ymax, strokeWidth: 1, color: '#000000', opacity: 1, disabled: false });
+    } else if (det.label === 'table row') {
+      explicitLines.push({ type: 'horizontal', x: xmin, y: ymin, x1: xmin, y1: ymin, x2: xmax, y2: ymin, strokeWidth: 1, color: '#000000', opacity: 1, disabled: false });
+      explicitLines.push({ type: 'horizontal', x: xmin, y: ymax, x1: xmin, y1: ymax, x2: xmax, y2: ymax, strokeWidth: 1, color: '#000000', opacity: 1, disabled: false });
+    }
+  }
+
+  // Call the Tier 1 extractor with these forced explicit lines
+  return formatTableFromItems(textItems, format, false, explicitLines);
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown' | 'latex' | 'html', requiresMultipleColumns = true, explicitLines?: LineItem[]): { text: string; confidence: number; confidenceReasons: string[] } => {
   if (!textItems || textItems.length === 0) return { text: "", confidence: 1, confidenceReasons: [] };
 

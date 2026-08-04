@@ -14,32 +14,43 @@ async function getTableModel() {
 }
 
 export type TableWorkerMessage = {
-  imageData: ImageData;
-  requestId: string;
+  type: 'INIT' | 'DETECT';
+  imageData?: ImageData;
+  jobId: string;
 };
 
 export type TableWorkerResponse = {
-  requestId: string;
+  type: 'READY' | 'RESULT' | 'ERROR';
+  jobId: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   detections?: any[];
   error?: string;
 };
 
 self.onmessage = async (e: MessageEvent<TableWorkerMessage>) => {
-  const { imageData, requestId } = e.data;
+  const { type, imageData, jobId } = e.data;
 
   try {
-    const model = await getTableModel();
-    const detections = await model(imageData, { threshold: 0.7 });
+    if (type === 'INIT') {
+      await getTableModel();
+      self.postMessage({ type: 'READY', jobId } satisfies TableWorkerResponse);
+    } else if (type === 'DETECT') {
+      const model = await getTableModel();
+      if (!imageData) throw new Error('No image provided for detection');
 
-    self.postMessage({
-      requestId,
-      detections
-    } satisfies TableWorkerResponse);
+      const detections = await model(imageData, { threshold: 0.7 });
+
+      self.postMessage({
+        type: 'RESULT',
+        jobId,
+        detections
+      } satisfies TableWorkerResponse);
+    }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {
     self.postMessage({
-      requestId,
+      type: 'ERROR',
+      jobId,
       error: error.message
     } satisfies TableWorkerResponse);
   }

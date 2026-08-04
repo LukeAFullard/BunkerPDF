@@ -5,7 +5,7 @@ import 'pdfjs-dist/web/pdf_viewer.css';
 import { X, TableProperties, ZoomIn, ZoomOut, Loader2, Download, Copy, Check } from 'lucide-react';
 import { useFileStore } from '../../store/fileStore';
 import { cleanupPdfResources } from '../../lib/pdfCleanup';
-import { getConfiguredLiteParse, formatTableFromItems, isBackgroundColor } from '../../lib/liteparseEngine';
+import { getConfiguredLiteParse, recognizeTableStructure, isBackgroundColor } from '../../lib/liteparseEngine';
 import type { LineItem } from '../../lib/liteparseEngine';
 
 interface InteractiveTableModalProps {
@@ -40,6 +40,10 @@ export function InteractiveTableModal({ isOpen, docId, onClose }: InteractiveTab
   const [format, setFormat] = useState<'csv' | 'markdown' | 'html'>('csv');
   const [copied, setCopied] = useState(false);
   const [extractedLines, setExtractedLines] = useState<LineItem[]>([]);
+  const [confidence, setConfidence] = useState<number | null>(null);
+  const [confidenceReasons, setConfidenceReasons] = useState<string[]>([]);
+  const [extractionSource, setExtractionSource] = useState<'geometry' | 'vision-fallback' | null>(null);
+  const [isExtracting, setIsExtracting] = useState(false);
 
   const renderTaskRef = useRef<pdfjsLib.RenderTask | null>(null);
   const pdfDocRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
@@ -232,8 +236,8 @@ export function InteractiveTableModal({ isOpen, docId, onClose }: InteractiveTab
     }
   };
 
-  const extractRegion = (x: number, y: number, w: number, h: number) => {
-    if (!liteparseData || overlayScale <= 0) return;
+  const extractRegion = async (x: number, y: number, w: number, h: number) => {
+    if (!liteparseData || overlayScale <= 0 || !pdfDocRef.current) return;
 
     // Map overlay coordinates back to LiteParse PDF coordinates
     const lpX = x / overlayScale;
@@ -256,12 +260,31 @@ export function InteractiveTableModal({ isOpen, docId, onClose }: InteractiveTab
     });
 
     if (intersectingItems.length > 0) {
-      // Use our backend function, telling it NOT to require multiple columns,
-      // since the user explicitly drew a box around this specific content.
-      const { text: tableStr } = formatTableFromItems(intersectingItems, format, false, extractedLines);
-      setExtractedTable(tableStr);
+      setIsExtracting(true);
+      try {
+        const pageProxy = await pdfDocRef.current.getPage(currentPage);
+        const result = await recognizeTableStructure(
+          pageProxy,
+          intersectingItems,
+          format,
+          false,
+          extractedLines
+        );
+        setExtractedTable(result.text);
+        setConfidence(result.confidence);
+        setConfidenceReasons(result.confidenceReasons);
+        setExtractionSource(result.source);
+      } catch (err) {
+        console.error("Extraction error", err);
+        setExtractedTable(null);
+      } finally {
+        setIsExtracting(false);
+      }
     } else {
       setExtractedTable(null);
+      setConfidence(null);
+      setConfidenceReasons([]);
+      setExtractionSource(null);
     }
   };
 
@@ -468,14 +491,33 @@ export function InteractiveTableModal({ isOpen, docId, onClose }: InteractiveTab
                 <TableProperties className="w-8 h-8 text-gray-400 mx-auto mb-3" />
                 <p className="text-sm text-gray-500">Draw a box around a table on the PDF to extract it instantly.</p>
               </div>
+            ) : isExtracting ? (
+               <div className="text-center py-12 px-4 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 h-full flex flex-col items-center justify-center text-gray-500">
+                  <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mb-2" />
+                  <p className="text-sm">Extracting table...</p>
+               </div>
             ) : !extractedTable ? (
                <div className="text-center py-12 px-4 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 h-full flex flex-col justify-center text-gray-500 text-sm">
                   No text found in that region.
                </div>
             ) : (
-              <pre className="text-xs p-4 bg-gray-50 border border-gray-200 rounded-lg overflow-x-auto whitespace-pre-wrap font-mono text-gray-800">
-                 {extractedTable}
-              </pre>
+              <div className="flex flex-col gap-4">
+                 {confidence !== null && confidence < 0.85 && (
+                   <div className={`p-3 rounded border text-sm flex flex-col gap-1 ${confidence < 0.6 && extractionSource !== 'vision-fallback' ? 'bg-red-50 border-red-200 text-red-800' : 'bg-yellow-50 border-yellow-200 text-yellow-800'}`}>
+                      <div className="font-semibold">
+                         {confidence < 0.6 && extractionSource !== 'vision-fallback' ? "Low Confidence Extraction" : "Extraction verify suggested"} ({(confidence * 100).toFixed(0)}%)
+                      </div>
+                      {confidenceReasons.length > 0 && (
+                        <ul className="list-disc list-inside text-xs mt-1">
+                          {confidenceReasons.map((r, i) => <li key={i}>{r}</li>)}
+                        </ul>
+                      )}
+                   </div>
+                 )}
+                 <pre className="text-xs p-4 bg-gray-50 border border-gray-200 rounded-lg overflow-x-auto whitespace-pre-wrap font-mono text-gray-800">
+                    {extractedTable}
+                 </pre>
+              </div>
             )}
           </div>
 
