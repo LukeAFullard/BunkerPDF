@@ -778,7 +778,7 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
     gaps.sort((a, b) => a - b);
     const medianGap = gaps.length > 0 ? gaps[Math.floor(gaps.length / 2)] : 20;
 
-    const SPAN_WIDTH_FRACTION_ROW = 0.6;
+    const SPAN_WIDTH_FRACTION_ROW = useUIStore.getState().spanWidthFractionRow ?? 0.6;
     const rowColumnGroupCount = (row: typeof rows[number]): number => {
       const sortedItems = [...row.items].sort((a, b) => a.x - b.x);
       let groups = 0;
@@ -824,7 +824,7 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
       const prev = col1WidthByGroup.get(row.boundaryGroup) ?? 0;
       col1WidthByGroup.set(row.boundaryGroup, Math.max(prev, leftmost.width));
     });
-    const COLUMN1_OVERFLOW_FACTOR = 1.75;
+    const COLUMN1_OVERFLOW_FACTOR = useUIStore.getState().spanningLabelOverflowFactor ?? 1.75;
 
     // A "spanning" row (a section/case label like "Case 2 (regulated)") is
     // identified by width, not by being exactly one text item. Real PDFs
@@ -844,7 +844,7 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
     // large enough to look like a real column break) keeps this from
     // misfiring on genuine multi-column rows whose first and last items just
     // happen to be far apart.
-    const isWideSpanningRow = (row: typeof rows[number], idx: number) => {
+    const isWideSpanningRow = (row: typeof rows[number], _idx: number) => {
       if (rowColumnGroupCount(row) !== 1) return false;
       const start = Math.min(...row.items.map((it: any) => it.x));
       const end = Math.max(...row.items.map((it: any) => it.x + it.width));
