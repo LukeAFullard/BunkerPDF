@@ -34,7 +34,10 @@ const fixtures = [
   '01-noisy-lines-fee-schedule',
   '02-spanning-rows-water-temp',
   '03-colored-header-bands',
-  '04-plain-control-table'
+  '04-plain-control-table',
+  '05-wrapped-cells-header-band',
+  '06-multi-section-header-bands',
+  '07-no-lines-wrapped'
 ];
 
 for (const fixture of fixtures) {
