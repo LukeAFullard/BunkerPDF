@@ -19,6 +19,10 @@ interface UIState {
   liteparseOcrEnabled: boolean;
   setLiteparseOcrEnabled: (enabled: boolean) => void;
   enableLineTracing: boolean;
+  spanningLabelOverflowFactor: number;
+  setSpanningLabelOverflowFactor: (v: number) => void;
+  spanWidthFractionRow: number;
+  setSpanWidthFractionRow: (v: number) => void;
   setEnableLineTracing: (enabled: boolean) => void;
   tier2Enabled: boolean;
   setTier2Enabled: (enabled: boolean) => void;
@@ -41,6 +45,10 @@ export const useUIStore = create<UIState>()(
   liteparseOcrEnabled: false,
   setLiteparseOcrEnabled: (enabled) => set({ liteparseOcrEnabled: enabled }),
   enableLineTracing: true,
+  spanningLabelOverflowFactor: 1.75,
+  setSpanningLabelOverflowFactor: (v) => set({ spanningLabelOverflowFactor: v }),
+  spanWidthFractionRow: 0.6,
+  setSpanWidthFractionRow: (v) => set({ spanWidthFractionRow: v }),
   setEnableLineTracing: (enabled) => set({ enableLineTracing: enabled }),
   tier2Enabled: true,
   setTier2Enabled: (enabled) => set({ tier2Enabled: enabled }),
@@ -54,6 +62,8 @@ export const useUIStore = create<UIState>()(
         extractionMethod: state.extractionMethod,
         liteparseOcrEnabled: state.liteparseOcrEnabled,
         enableLineTracing: state.enableLineTracing,
+        spanningLabelOverflowFactor: state.spanningLabelOverflowFactor,
+        spanWidthFractionRow: state.spanWidthFractionRow,
         tier2Enabled: state.tier2Enabled,
         confidenceThreshold: state.confidenceThreshold
       }),
