@@ -844,6 +844,24 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
     // large enough to look like a real column break) keeps this from
     // misfiring on genuine multi-column rows whose first and last items just
     // happen to be far apart.
+    // Section/case labels are frequently styled distinctly (bold or italic) even
+    // when they're neither wide nor much wider than column 1 - this is the
+    // signal a human reader actually uses. Require ALL items in the row to
+    // match (not just some) so a normal data row that happens to contain one
+    // bold/italic value isn't misclassified - a genuine divider label has no
+    // plain-styled content mixed in.
+    const looksStyledAsLabel = (row: typeof rows[number]) => {
+      if (row.items.length === 0) return false;
+      const combinedText = row.items.map((it: any) => it.text).join(' ').trim();
+      // Guard against short bold/italic units or codes (e.g. "kg", "m²") being
+      // misread as section labels - require something phrase-like.
+      if (combinedText.length < 6) return false;
+      return row.items.every((it: any) => {
+        const fontNameLower = (it.fontName || '').toLowerCase();
+        return fontNameLower.includes('bold') || fontNameLower.includes('italic') || fontNameLower.includes('oblique');
+      });
+    };
+
     const isWideSpanningRow = (row: typeof rows[number], _idx: number) => {
       if (rowColumnGroupCount(row) !== 1) return false;
       const start = Math.min(...row.items.map((it: any) => it.x));
@@ -852,6 +870,7 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
       if (tableWidth > 0 && width / tableWidth >= SPAN_WIDTH_FRACTION_ROW) return true;
       const col1Width = col1WidthByGroup.get(row.boundaryGroup);
       if (col1Width && width >= col1Width * COLUMN1_OVERFLOW_FACTOR) return true;
+      if (useUIStore.getState().enableStyledSpanningLabel && looksStyledAsLabel(row)) return true;
       return false;
     };
 

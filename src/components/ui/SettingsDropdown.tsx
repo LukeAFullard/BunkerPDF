@@ -7,7 +7,7 @@ import { twMerge } from 'tailwind-merge';
 export function SettingsDropdown() {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const { extractionMethod, setExtractionMethod, complexityMode, setComplexityMode, spanningLabelOverflowFactor, setSpanningLabelOverflowFactor, spanWidthFractionRow, setSpanWidthFractionRow, enableLineTracing, setEnableLineTracing } = useUIStore();
+  const { extractionMethod, setExtractionMethod, complexityMode, setComplexityMode, spanningLabelOverflowFactor, setSpanningLabelOverflowFactor, spanWidthFractionRow, setSpanWidthFractionRow, enableLineTracing, setEnableLineTracing, enableStyledSpanningLabel, setEnableStyledSpanningLabel } = useUIStore();
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -111,6 +111,15 @@ export function SettingsDropdown() {
                     className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                   />
                   <span className="text-sm font-medium">Use Line Tracing</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={enableStyledSpanningLabel}
+                    onChange={(e) => setEnableStyledSpanningLabel(e.target.checked)}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm font-medium">Use Font Styles for Divider Labels</span>
                 </label>
                 <div>
                   <div className="flex justify-between items-center mb-1">

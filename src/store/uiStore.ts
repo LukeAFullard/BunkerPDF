@@ -22,6 +22,8 @@ interface UIState {
   spanningLabelOverflowFactor: number;
   setSpanningLabelOverflowFactor: (v: number) => void;
   spanWidthFractionRow: number;
+  enableStyledSpanningLabel: boolean;
+  setEnableStyledSpanningLabel: (enabled: boolean) => void;
   setSpanWidthFractionRow: (v: number) => void;
   setEnableLineTracing: (enabled: boolean) => void;
   tier2Enabled: boolean;
@@ -48,6 +50,8 @@ export const useUIStore = create<UIState>()(
   spanningLabelOverflowFactor: 1.75,
   setSpanningLabelOverflowFactor: (v) => set({ spanningLabelOverflowFactor: v }),
   spanWidthFractionRow: 0.6,
+  enableStyledSpanningLabel: false,
+  setEnableStyledSpanningLabel: (enabled) => set({ enableStyledSpanningLabel: enabled }),
   setSpanWidthFractionRow: (v) => set({ spanWidthFractionRow: v }),
   setEnableLineTracing: (enabled) => set({ enableLineTracing: enabled }),
   tier2Enabled: true,
@@ -64,6 +68,7 @@ export const useUIStore = create<UIState>()(
         enableLineTracing: state.enableLineTracing,
         spanningLabelOverflowFactor: state.spanningLabelOverflowFactor,
         spanWidthFractionRow: state.spanWidthFractionRow,
+        enableStyledSpanningLabel: state.enableStyledSpanningLabel,
         tier2Enabled: state.tier2Enabled,
         confidenceThreshold: state.confidenceThreshold
       }),
