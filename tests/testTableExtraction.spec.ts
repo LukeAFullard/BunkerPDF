@@ -37,7 +37,8 @@ const fixtures = [
   '04-plain-control-table',
   '05-wrapped-cells-header-band',
   '06-multi-section-header-bands',
-  '07-no-lines-wrapped'
+  '07-no-lines-wrapped',
+  '08-split-spanning-label'
 ];
 
 for (const fixture of fixtures) {

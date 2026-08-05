@@ -673,7 +673,7 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
   }
 
   const rowTolerance = 5; // pixels
-  const rows: { items: typeof textItems, y: number, isHeaderBand?: boolean, boundaryGroup: number }[] = [];
+  const rows: { items: typeof textItems, y: number, isHeaderBand?: boolean, boundaryGroup: number, isSpanningDivider?: boolean }[] = [];
 
   // Which row-boundary interval (if any) an item's midpoint falls into.
   // Boundaries are sorted Y coordinates of horizontal lines (real geometric
@@ -790,8 +790,70 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
       }
       return groups;
     };
-    const isWideSpanningRow = (row: typeof rows[number]) =>
-      row.items.length === 1 && tableWidth > 0 && row.items[0].width / tableWidth >= SPAN_WIDTH_FRACTION_ROW;
+    const anchorIndex: (number | null)[] = rows.map((row, idx) =>
+      (row.isHeaderBand || rowColumnGroupCount(row) >= 2) ? idx : null
+    );
+
+    // The first row of each boundary group is very often a column-header row
+    // ("Item | Amount") rather than the start of a wrapped data cell - real
+    // headers usually read as an anchor themselves (2+ columns) but sit right
+    // above the first data row, which can be equidistant from the header and
+    // from the data row's own anchor line. Deprioritize the group's first row
+    // as a merge target so ties resolve toward the data row below it instead
+    // of pulling a data label up into the header; only fall back to it if it
+    // is truly the sole reachable anchor.
+    const firstRowIndexOfGroup = new Map<number, number>();
+    rows.forEach((row, idx) => {
+      if (!firstRowIndexOfGroup.has(row.boundaryGroup)) firstRowIndexOfGroup.set(row.boundaryGroup, idx);
+    });
+    const isGroupFirstRow = (idx: number) => firstRowIndexOfGroup.get(rows[idx].boundaryGroup) === idx;
+
+    // Reference width for "column 1" (the leftmost item) in each boundary
+    // group, taken from actual anchor rows (excluding the group's first row,
+    // which is usually a short header word like "Item" and a poor proxy for
+    // real data width). Used below to catch section/case labels ("Case 2
+    // (regulated)") that are much wider than normal column-1 content even
+    // though they don't reach the SPAN_WIDTH_FRACTION_ROW share of the whole
+    // table - which happens often on wide, many-column tables where a label
+    // only needs to overflow past column 1 to be unambiguously a divider,
+    // not the full table width.
+    const col1WidthByGroup = new Map<number, number>();
+    rows.forEach((row, idx) => {
+      if (anchorIndex[idx] === null || row.isHeaderBand || isGroupFirstRow(idx)) return;
+      const leftmost = [...row.items].sort((a, b) => a.x - b.x)[0];
+      const prev = col1WidthByGroup.get(row.boundaryGroup) ?? 0;
+      col1WidthByGroup.set(row.boundaryGroup, Math.max(prev, leftmost.width));
+    });
+    const COLUMN1_OVERFLOW_FACTOR = 1.75;
+
+    // A "spanning" row (a section/case label like "Case 2 (regulated)") is
+    // identified by width, not by being exactly one text item. Real PDFs
+    // frequently split a single visual label into multiple text runs
+    // (kerning adjustments, a font/style change mid-label, etc.), so
+    // requiring row.items.length === 1 silently defeats a naive check on
+    // real documents - a 2-run label would fall through to being treated as
+    // a narrow "continuation candidate" and get swallowed into a neighboring
+    // data row instead of staying standalone. Two independent signals are
+    // used, either of which is sufficient: (a) the row's combined width
+    // covers most of the whole table (works for a wide banner/section
+    // header), or (b) the row is a single column group but is much wider
+    // than the real column-1 content nearby (works for a divider label in a
+    // wide, many-column table, where the label never needs to reach most of
+    // the table's total width to be unambiguously a section marker rather
+    // than a data value). Requiring a single column group (no internal gap
+    // large enough to look like a real column break) keeps this from
+    // misfiring on genuine multi-column rows whose first and last items just
+    // happen to be far apart.
+    const isWideSpanningRow = (row: typeof rows[number], idx: number) => {
+      if (rowColumnGroupCount(row) !== 1) return false;
+      const start = Math.min(...row.items.map((it: any) => it.x));
+      const end = Math.max(...row.items.map((it: any) => it.x + it.width));
+      const width = end - start;
+      if (tableWidth > 0 && width / tableWidth >= SPAN_WIDTH_FRACTION_ROW) return true;
+      const col1Width = col1WidthByGroup.get(row.boundaryGroup);
+      if (col1Width && width >= col1Width * COLUMN1_OVERFLOW_FACTOR) return true;
+      return false;
+    };
 
     // A row can safely absorb wrapped continuation lines ("is an anchor") if
     // it already looks like a complete logical row (2+ columns), or is a
@@ -812,35 +874,21 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
       for (let k = a; k < b; k++) {
         const gap = rows[k + 1].y - rows[k].y;
         if (rows[k].isHeaderBand || rows[k + 1].isHeaderBand) return false;
-        if (isWideSpanningRow(rows[k]) || isWideSpanningRow(rows[k + 1])) return false;
+        if (isWideSpanningRow(rows[k], k) || isWideSpanningRow(rows[k + 1], k + 1)) return false;
         if (!(gap < medianGap * 0.8 || gap <= 15)) return false;
       }
       return true;
     };
 
-    const anchorIndex: (number | null)[] = rows.map((row, idx) =>
-      (row.isHeaderBand || rowColumnGroupCount(row) >= 2) ? idx : null
-    );
-
-    // The first row of each boundary group is very often a column-header row
-    // ("Item | Amount") rather than the start of a wrapped data cell - real
-    // headers usually read as an anchor themselves (2+ columns) but sit right
-    // above the first data row, which can be equidistant from the header and
-    // from the data row's own anchor line. Deprioritize the group's first row
-    // as a merge target so ties resolve toward the data row below it instead
-    // of pulling a data label up into the header; only fall back to it if it
-    // is truly the sole reachable anchor.
-    const firstRowIndexOfGroup = new Map<number, number>();
-    rows.forEach((row, idx) => {
-      if (!firstRowIndexOfGroup.has(row.boundaryGroup)) firstRowIndexOfGroup.set(row.boundaryGroup, idx);
-    });
-    const isGroupFirstRow = (idx: number) => firstRowIndexOfGroup.get(rows[idx].boundaryGroup) === idx;
-
     const assignedTo: (number | null)[] = rows.map((_, idx) => (anchorIndex[idx] !== null ? idx : null));
 
     for (let i = 0; i < rows.length; i++) {
       if (anchorIndex[i] !== null) continue; // already an anchor
-      if (rows[i].isHeaderBand || isWideSpanningRow(rows[i])) continue; // stands alone
+      if (rows[i].isHeaderBand) continue; // stands alone
+      if (isWideSpanningRow(rows[i], i)) {
+        rows[i].isSpanningDivider = true; // stands alone, but is still a real table row
+        continue;
+      }
 
       const findBest = (allowGroupFirstRow: boolean): number | null => {
         let bestAnchor: number | null = null;
@@ -896,7 +944,17 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
   let currentTable: typeof rows = [];
 
   for (const row of rows) {
-    if (!requiresMultipleColumns || row.items.length >= 2 || rowBoundaries.length > 0) {
+    // A row with fewer than 2 items is normally treated as "not part of a
+    // table" (most likely a stray line of page prose/caption picked up
+    // along with the page's other text) and used as a boundary between
+    // separate table regions. That's wrong for a row the merge pass above
+    // already identified as a genuine standalone divider WITHIN a table
+    // (isHeaderBand, or isSpanningDivider - a section/case label like
+    // "Case 2 (regulated)" sitting between real data rows) - those must stay
+    // inside the current table rather than being discarded as a false table
+    // boundary, which would also wrongly truncate/drop the table rows
+    // gathered on either side of them.
+    if (!requiresMultipleColumns || row.items.length >= 2 || rowBoundaries.length > 0 || row.isHeaderBand || row.isSpanningDivider) {
       currentTable.push(row);
     } else {
       if (currentTable.length > 1) {
