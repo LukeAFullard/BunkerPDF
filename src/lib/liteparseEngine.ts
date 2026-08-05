@@ -487,7 +487,7 @@ function scoreConfidence(grid: string[][], rows: { items: any[]; isHeaderBand?: 
   return { confidence: Math.max(0, score), reasons };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 export const recognizeTableStructure = async (
   pageProxy: any, // PDFPageProxy from pdfjs-dist
   textItems: any[],
