@@ -2,8 +2,9 @@ import { loadPdfDocument } from "../../lib/pdfHelper";
 import { useState, useEffect, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import 'pdfjs-dist/web/pdf_viewer.css';
-import { X, TableProperties, ZoomIn, ZoomOut, Loader2, Download, Copy, Check } from 'lucide-react';
+import { X, TableProperties, ZoomIn, ZoomOut, Loader2, Download, Copy, Check, Settings, ChevronDown } from 'lucide-react';
 import { useFileStore } from '../../store/fileStore';
+import { useUIStore } from '../../store/uiStore';
 import { cleanupPdfResources } from '../../lib/pdfCleanup';
 import { getConfiguredLiteParse, recognizeTableStructure, isBackgroundColor } from '../../lib/liteparseEngine';
 import type { LineItem } from '../../lib/liteparseEngine';
@@ -44,9 +45,22 @@ export function InteractiveTableModal({ isOpen, docId, onClose }: InteractiveTab
   const [confidenceReasons, setConfidenceReasons] = useState<string[]>([]);
   const [extractionSource, setExtractionSource] = useState<'geometry' | 'vision-fallback' | null>(null);
   const [isExtracting, setIsExtracting] = useState(false);
+  const { enableLineTracing, setEnableLineTracing, enableStyledSpanningLabel, setEnableStyledSpanningLabel, spanningLabelOverflowFactor, setSpanningLabelOverflowFactor, spanWidthFractionRow, setSpanWidthFractionRow } = useUIStore();
+  const [showSettings, setShowSettings] = useState(false);
+  const settingsRef = useRef<HTMLDivElement>(null);
 
   const renderTaskRef = useRef<pdfjsLib.RenderTask | null>(null);
   const pdfDocRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (settingsRef.current && !settingsRef.current.contains(event.target as Node)) {
+        setShowSettings(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     if (!isOpen || !doc) return;
@@ -308,7 +322,7 @@ export function InteractiveTableModal({ isOpen, docId, onClose }: InteractiveTab
       extractRegion(selectionBox.x, selectionBox.y, selectionBox.w, selectionBox.h);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [format, extractedLines]);
+  }, [format, extractedLines, enableLineTracing, enableStyledSpanningLabel, spanningLabelOverflowFactor, spanWidthFractionRow]);
 
   const handleCopy = () => {
     if (extractedTable) {
@@ -477,13 +491,84 @@ export function InteractiveTableModal({ isOpen, docId, onClose }: InteractiveTab
         <div className="w-1/3 bg-gray-50 flex flex-col border-l border-gray-200">
           <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-white">
              <h3 className="font-bold text-gray-800">Extraction Result</h3>
-             <div className="flex bg-gray-100 p-1 rounded-lg">
-               <button
+             <div className="flex items-center gap-2">
+               <div className="relative" ref={settingsRef}>
+                 <button
+                   onClick={() => setShowSettings(!showSettings)}
+                   className="p-1.5 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1"
+                   title="Table Extraction Settings"
+                 >
+                   <Settings className="w-4 h-4" />
+                   <ChevronDown className="w-3 h-3" />
+                 </button>
+
+                 {showSettings && (
+                   <div className="absolute right-0 mt-2 w-72 rounded-lg shadow-lg py-3 z-50 border bg-white border-gray-200 text-gray-800">
+                     <div className="px-4 pb-2 border-b border-gray-200 mb-3 font-semibold text-sm">
+                       Advanced Table Extraction
+                     </div>
+                     <div className="px-4 space-y-4">
+                       <label className="flex items-center gap-2 cursor-pointer">
+                         <input
+                           type="checkbox"
+                           checked={enableLineTracing}
+                           onChange={(e) => setEnableLineTracing(e.target.checked)}
+                           className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                         />
+                         <span className="text-sm font-medium">Use Line Tracing</span>
+                       </label>
+                       <label className="flex items-center gap-2 cursor-pointer">
+                         <input
+                           type="checkbox"
+                           checked={enableStyledSpanningLabel}
+                           onChange={(e) => setEnableStyledSpanningLabel(e.target.checked)}
+                           className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                         />
+                         <span className="text-sm font-medium">Use Font Styles for Divider Labels</span>
+                       </label>
+                       <div>
+                         <div className="flex justify-between items-center mb-1">
+                           <span className="text-sm">Divider Label Threshold</span>
+                           <span className="text-xs text-gray-500 font-mono">{spanningLabelOverflowFactor.toFixed(2)}x</span>
+                         </div>
+                         <input
+                           type="range"
+                           min="1.0"
+                           max="3.0"
+                           step="0.1"
+                           value={spanningLabelOverflowFactor}
+                           onChange={(e) => setSpanningLabelOverflowFactor(parseFloat(e.target.value))}
+                           className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                         />
+                         <p className="text-[10px] text-gray-500 mt-1 leading-tight">Lower if wide labels are missed. Raise if long data splits.</p>
+                       </div>
+                       <div>
+                         <div className="flex justify-between items-center mb-1">
+                           <span className="text-sm">Span Width Fraction</span>
+                           <span className="text-xs text-gray-500 font-mono">{Math.round(spanWidthFractionRow * 100)}%</span>
+                         </div>
+                         <input
+                           type="range"
+                           min="0.3"
+                           max="1.0"
+                           step="0.05"
+                           value={spanWidthFractionRow}
+                           onChange={(e) => setSpanWidthFractionRow(parseFloat(e.target.value))}
+                           className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                         />
+                       </div>
+                     </div>
+                   </div>
+                 )}
+               </div>
+               <div className="flex bg-gray-100 p-1 rounded-lg">
+                 <button
                  onClick={() => setFormat('csv')}
                  className={`px-3 py-1 rounded text-xs font-medium transition-colors ${format === 'csv' ? 'bg-white shadow-sm text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}
                >
                  CSV
                </button>
+             </div>
                <button
                  onClick={() => setFormat('markdown')}
                  className={`px-3 py-1 rounded text-xs font-medium transition-colors ${format === 'markdown' ? 'bg-white shadow-sm text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}
