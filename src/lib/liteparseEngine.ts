@@ -673,46 +673,44 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
   }
 
   const rowTolerance = 5; // pixels
-  const rows: { items: typeof textItems, y: number, isHeaderBand?: boolean }[] = [];
+  const rows: { items: typeof textItems, y: number, isHeaderBand?: boolean, boundaryGroup: number }[] = [];
 
-  for (const item of textItems) {
+  // Which row-boundary interval (if any) an item's midpoint falls into.
+  // Boundaries are sorted Y coordinates of horizontal lines (real geometric
+  // lines, plus any locally-inferred fallback boundaries computed above).
+  const getBoundaryGroup = (item: any): number => {
+    if (rowBoundaries.length === 0) return 0;
     const itemMidY = item.y + item.height / 2;
+    let rowIndex = 0;
+    for (let i = 0; i < rowBoundaries.length; i++) {
+      if (itemMidY > rowBoundaries[i]) rowIndex = i + 1;
+    }
+    return rowIndex;
+  };
+
+  // IMPORTANT: always cluster items into physical rows using tight spatial
+  // tolerance first, constrained to the same boundary interval. A row-boundary
+  // interval can legitimately span several distinct physical lines of text
+  // (e.g. a colored header band only produces a line at its top and bottom
+  // edge, with no further ruling for the data rows underneath it) - if we
+  // instead dumped every item whose midpoint falls in that interval into one
+  // row (the previous behavior), every real row inside that interval silently
+  // collapses into a single garbled row. Clustering by tight tolerance first,
+  // then respecting boundaryGroup as a hard wall, fixes that without weakening
+  // real ruled-line grids (where each physical row already gets its own
+  // boundary interval, so this is a no-op there).
+  for (const item of textItems) {
+    const boundaryGroup = getBoundaryGroup(item);
     let foundRow = false;
-
-    if (rowBoundaries.length > 0) {
-      // Find the row boundary interval this item belongs to.
-      // Boundaries are sorted Y coordinates of horizontal lines.
-      let rowIndex = 0;
-      for (let i = 0; i < rowBoundaries.length; i++) {
-         if (itemMidY > rowBoundaries[i]) {
-            rowIndex = i + 1;
-         }
-      }
-
-      // Look for an existing row with this index based on boundary
-      const boundaryY = rowIndex > 0 ? rowBoundaries[rowIndex - 1] + 1 : minY;
-
-      const matchedRow = rows.find(r => r.y === boundaryY);
-      if (matchedRow) {
-          matchedRow.items.push(item);
-          foundRow = true;
-      } else {
-          rows.push({ items: [item], y: boundaryY });
-          foundRow = true;
-      }
-    } else {
-      // Fallback to spatial clustering
-      for (const row of rows) {
-        if (Math.abs(row.y - item.y) < rowTolerance) {
-          row.items.push(item);
-          foundRow = true;
-          break;
-        }
+    for (const row of rows) {
+      if (row.boundaryGroup === boundaryGroup && Math.abs(row.y - item.y) < rowTolerance) {
+        row.items.push(item);
+        foundRow = true;
+        break;
       }
     }
-
     if (!foundRow) {
-      rows.push({ items: [item], y: item.y });
+      rows.push({ items: [item], y: item.y, boundaryGroup });
     }
   }
 
@@ -720,8 +718,18 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
   // Sort rows by Y coordinate
   rows.sort((a, b) => a.y - b.y);
 
-  // Sort items within each row by X coordinate
-  rows.forEach(row => row.items.sort((a, b) => a.x - b.x));
+  // Sort items within each row: primarily by X coordinate, but treat items
+  // whose X positions are within a small tolerance of each other as the same
+  // column and order those by Y instead. This keeps multiple wrapped lines
+  // of one label cell in top-to-bottom reading order even when their X
+  // coordinates have tiny sub-pixel jitter (common with real PDFs) rather
+  // than only handling the case where X values are byte-for-byte identical.
+  const sortRowItems = (items: typeof textItems) => items.sort((a, b) => {
+    const dx = a.x - b.x;
+    if (Math.abs(dx) > 5) return dx;
+    return a.y - b.y;
+  });
+  rows.forEach(row => sortRowItems(row.items));
 
   // Classify header bands before row boundary or merge logic runs
   const tableWidth = maxX - minX;
@@ -742,12 +750,27 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
     row.isHeaderBand = isWideSingleItem && looksLikeHeaderStyle;
   });
 
-  // Second pass: merge wrapped lines into the row above
-  // Run this locally on lines that do not have an explicit boundary separating them.
-  // We can just rely on the fallback bounds to not split these lines in the first place,
-  // but if we are using explicit lines and one is missing, this acts as a safety net.
-  if (rowBoundaries.length === 0 || useLines) {
-    // 1. Calculate typical gap
+  // Second pass: merge wrapped lines into their logical row.
+  //
+  // A row-boundary interval (see boundaryGroup above) can contain several
+  // physical lines that belong to ONE logical row (a wrapped multi-line
+  // label cell) interleaved with lines that start a NEW logical row. Naively
+  // merging every close, structurally-compatible pair of adjacent physical
+  // rows (the previous approach) has no way to tell "this is still the same
+  // wrapped label" apart from "this is the next record's label starting" -
+  // both look identical in isolation (a single narrow item in the label
+  // column). The fix: identify "anchor" rows (rows that already look like a
+  // complete logical row - i.e. have content in 2+ non-overlapping column
+  // positions, or are a header band) and assign every other, narrow,
+  // single-column "continuation" line to whichever anchor is CLOSEST to it in
+  // Y, never crossing a boundaryGroup wall, a header band, or a gap too large
+  // to be a wrap (which preserves intentionally blank rows). This behaves
+  // like a 1-D nearest-center clustering: the natural split point between two
+  // consecutive wrapped labels falls at their vertical midpoint, exactly
+  // where the reader would expect it to.
+  {
+    // 1. Calculate typical gap (used as a ceiling so we never bridge a
+    // genuinely large blank-row gap just because it's the "nearest" anchor).
     const gaps: number[] = [];
     for (let i = 0; i < rows.length - 1; i++) {
       gaps.push(rows[i + 1].y - rows[i].y);
@@ -755,56 +778,118 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
     gaps.sort((a, b) => a - b);
     const medianGap = gaps.length > 0 ? gaps[Math.floor(gaps.length / 2)] : 20;
 
-    // 2. Merge wrapped rows
-    let mergedAnyRow = true;
-    while (mergedAnyRow) {
-      mergedAnyRow = false;
-      for (let i = 0; i < rows.length - 1; i++) {
-        const rowA = rows[i];
-        const rowB = rows[i + 1];
-        const gap = rowB.y - rowA.y;
+    const SPAN_WIDTH_FRACTION_ROW = 0.6;
+    const rowColumnGroupCount = (row: typeof rows[number]): number => {
+      const sortedItems = [...row.items].sort((a, b) => a.x - b.x);
+      let groups = 0;
+      let lastEnd = -Infinity;
+      for (const it of sortedItems) {
+        const start = it.x, end = it.x + it.width;
+        if (start > lastEnd + 5) groups++;
+        lastEnd = Math.max(lastEnd, end);
+      }
+      return groups;
+    };
+    const isWideSpanningRow = (row: typeof rows[number]) =>
+      row.items.length === 1 && tableWidth > 0 && row.items[0].width / tableWidth >= SPAN_WIDTH_FRACTION_ROW;
 
-        // Prevent merging if there is a verified line separating them!
-        let hasSeparatingLine = false;
-        if (useLines && explicitLines) {
-           const midY = (rowA.y + rowB.y) / 2;
-           hasSeparatingLine = explicitLines.some(l =>
-              l.type === 'horizontal' && !l.disabled && Math.abs(l.y0 - midY) < gap / 2 + 5
-           );
-        }
+    // A row can safely absorb wrapped continuation lines ("is an anchor") if
+    // it already looks like a complete logical row (2+ columns), or is a
+    // header band. A row that spans almost the full table width on its own
+    // (a section/spanning label) is deliberately excluded from being an
+    // anchor OR a continuation candidate - it stays standalone, matching the
+    // "spanning row" handling used later for column inference.
+    const canMergeAcross = (a: number, b: number): boolean => {
+      // Never bridge a real/inferred row boundary. boundaryGroup is already
+      // derived from every explicit line (plus locally-inferred fallback
+      // boundaries) via rowBoundaries/getBoundaryGroup above, so two rows in
+      // the same boundaryGroup are, by construction, not separated by any of
+      // those lines - re-testing raw proximity to explicit lines here would
+      // double-count a line already consumed as a group boundary (e.g. a
+      // header band's bottom edge sitting close to the first body row) and
+      // spuriously block a legitimate merge just inside that group.
+      if (rows[a].boundaryGroup !== rows[b].boundaryGroup) return false;
+      for (let k = a; k < b; k++) {
+        const gap = rows[k + 1].y - rows[k].y;
+        if (rows[k].isHeaderBand || rows[k + 1].isHeaderBand) return false;
+        if (isWideSpanningRow(rows[k]) || isWideSpanningRow(rows[k + 1])) return false;
+        if (!(gap < medianGap * 0.8 || gap <= 15)) return false;
+      }
+      return true;
+    };
 
-        if (rowA.isHeaderBand || rowB.isHeaderBand) continue;
+    const anchorIndex: (number | null)[] = rows.map((row, idx) =>
+      (row.isHeaderBand || rowColumnGroupCount(row) >= 2) ? idx : null
+    );
 
-        if (!hasSeparatingLine && (gap < medianGap * 0.8 || gap <= 15)) {
-          const isSpanningRowMerge = rowB.items.length === 1 && tableWidth > 0 && rowB.items[0].width / tableWidth >= 0.6;
-          const structurallyCompatible = Math.abs(rowA.items.length - rowB.items.length) <= 1 || (rowB.items.length === 1 && !isSpanningRowMerge);
+    // The first row of each boundary group is very often a column-header row
+    // ("Item | Amount") rather than the start of a wrapped data cell - real
+    // headers usually read as an anchor themselves (2+ columns) but sit right
+    // above the first data row, which can be equidistant from the header and
+    // from the data row's own anchor line. Deprioritize the group's first row
+    // as a merge target so ties resolve toward the data row below it instead
+    // of pulling a data label up into the header; only fall back to it if it
+    // is truly the sole reachable anchor.
+    const firstRowIndexOfGroup = new Map<number, number>();
+    rows.forEach((row, idx) => {
+      if (!firstRowIndexOfGroup.has(row.boundaryGroup)) firstRowIndexOfGroup.set(row.boundaryGroup, idx);
+    });
+    const isGroupFirstRow = (idx: number) => firstRowIndexOfGroup.get(rows[idx].boundaryGroup) === idx;
 
-          let allSubset = true;
-          for (const itemB of rowB.items) {
-            let foundOverlap = false;
-            for (const itemA of rowA.items) {
-              if (itemB.x <= itemA.x + itemA.width + 5 && itemB.x + itemB.width >= itemA.x - 5) {
-                foundOverlap = true;
-                break;
-              }
-            }
-            if (!foundOverlap) {
-              allSubset = false;
-              break;
-            }
+    const assignedTo: (number | null)[] = rows.map((_, idx) => (anchorIndex[idx] !== null ? idx : null));
+
+    for (let i = 0; i < rows.length; i++) {
+      if (anchorIndex[i] !== null) continue; // already an anchor
+      if (rows[i].isHeaderBand || isWideSpanningRow(rows[i])) continue; // stands alone
+
+      const findBest = (allowGroupFirstRow: boolean): number | null => {
+        let bestAnchor: number | null = null;
+        let bestDist = Infinity;
+        for (let j = 0; j < rows.length; j++) {
+          if (anchorIndex[j] === null || rows[j].isHeaderBand) continue;
+          if (!allowGroupFirstRow && isGroupFirstRow(j)) continue;
+          if (!canMergeAcross(Math.min(i, j), Math.max(i, j))) continue;
+          const dist = Math.abs(rows[j].y - rows[i].y);
+          // On an exact tie between an anchor before and after this
+          // continuation line, prefer the one AFTER it: <= (not <) means the
+          // later candidate in this ascending-y scan wins ties. Real-world
+          // wrapped labels very commonly show their value mid-label with more
+          // label text still to come (the original bug case), so "belongs to
+          // the row starting here" is the safer default than "trails the row
+          // above" when distance alone can't decide.
+          if (dist <= bestDist) {
+            bestDist = dist;
+            bestAnchor = j;
           }
-
-          if (allSubset && structurallyCompatible) {
-            rowA.items.push(...rowB.items);
-            rows.splice(i + 1, 1);
-            mergedAnyRow = true;
-            break;
-          }
         }
+        return bestAnchor;
+      };
+
+      assignedTo[i] = findBest(false) ?? findBest(true);
+    }
+
+    const mergedInto = new Map<number, typeof rows[number]>();
+    const keepRows: typeof rows = [];
+    for (let i = 0; i < rows.length; i++) {
+      if (assignedTo[i] === i || assignedTo[i] === null) {
+        // Anchor, or standalone row with nowhere to merge - keep as its own row.
+        mergedInto.set(i, rows[i]);
+        keepRows.push(rows[i]);
       }
     }
-    // Re-sort items after merge
-    rows.forEach(row => row.items.sort((a, b) => a.x - b.x));
+    for (let i = 0; i < rows.length; i++) {
+      const target = assignedTo[i];
+      if (target !== null && target !== i) {
+        mergedInto.get(target)!.items.push(...rows[i].items);
+      }
+    }
+
+    rows.length = 0;
+    rows.push(...keepRows);
+    rows.sort((a, b) => a.y - b.y);
+    // Re-sort items within each row after merge using the same
+    // tolerance-aware column/row ordering.
+    rows.forEach(row => sortRowItems(row.items));
   }
 
   const tables: { rows: typeof rows }[] = [];
