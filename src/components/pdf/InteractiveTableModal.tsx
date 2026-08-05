@@ -181,8 +181,11 @@ export function InteractiveTableModal({ isOpen, docId, onClose }: InteractiveTab
       if (!context) return;
 
       const viewportHeight = window.innerHeight * 0.6;
+      const viewportWidth = window.innerWidth * 0.5; // roughly 2/3 of viewport width for left panel minus padding
       const unscaledViewport = page.getViewport({ scale: 1.0 });
-      const baseScale = viewportHeight / unscaledViewport.height;
+      const scaleY = viewportHeight / unscaledViewport.height;
+      const scaleX = viewportWidth / unscaledViewport.width;
+      const baseScale = Math.min(scaleX, scaleY);
       const scale = baseScale * zoomLevel;
       const viewport = page.getViewport({ scale });
 
@@ -380,7 +383,7 @@ export function InteractiveTableModal({ isOpen, docId, onClose }: InteractiveTab
             </div>
           </div>
 
-          <div className="flex-1 overflow-auto relative flex justify-center items-start p-8">
+          <div className={`flex-1 overflow-auto relative flex ${zoomLevel > 1.0 ? 'justify-start' : 'justify-center'} items-start p-8`}>
             {isLoading && (
               <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/50 backdrop-blur-sm">
                  <div className="flex flex-col items-center gap-3">
