@@ -117,10 +117,66 @@ async function noLinesWrapped() {
   fs.writeFileSync(path.join(outDir, '07-no-lines-wrapped.pdf'), bytes);
 }
 
+// Fixture 08: a wide, many-column table (like a real "Table 2: Values of the
+// Parameters..." academic table with columns e1..e6) with section/case
+// labels ("Case 1 (natural)", "Case 2 (regulated)", "Case 3 (snow-fed)")
+// rendered as TWO separate text runs each (simulating how real PDFs commonly
+// split a label across multiple text runs - e.g. a kerning adjustment or a
+// font/style change mid-label - rather than emitting it as a single text
+// item). Proves the spanning-row detection works by combined span/column
+// overflow, not by requiring exactly one text item, and that a table this
+// wide doesn't need a label to cross 60% of the total table width to be
+// correctly recognized as a standalone divider row (it only needs to
+// overflow past column 1, which is what real short case/section labels do).
+async function splitSpanningLabel() {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([500, 500]);
+  const fontReg = await doc.embedFont(StandardFonts.Helvetica);
+  const size = 10, lineHeight = 14;
+  const colX = [50, 110, 160, 210, 260, 310, 360];
+  let y = 460;
+
+  function headerRow(cells) {
+    cells.forEach((c, i) => page.drawText(c, { x: colX[i], y, size, font: fontReg }));
+    y -= lineHeight;
+  }
+  function dataRow(cells) {
+    cells.forEach((c, i) => page.drawText(c, { x: colX[i], y, size, font: fontReg }));
+    y -= lineHeight;
+  }
+  function splitLabel(part1, part2) {
+    page.drawText(part1, { x: colX[0], y, size, font: fontReg });
+    const gap = fontReg.widthOfTextAtSize(part1 + ' ', size);
+    page.drawText(part2, { x: colX[0] + gap, y, size, font: fontReg });
+    y -= lineHeight;
+  }
+
+  headerRow(['e1', 'e2', 'e3', 'e4', 'e5', 'e6']);
+
+  splitLabel('Case 1', '(natural)');
+  dataRow(['6-par', '1.20', '0.84', '0.60', '0.44', '4.30', '2.96']);
+  dataRow(['4-par', '3.50', '0.62', '0.58', '-', '-', '2.02']);
+  dataRow(['2-par', '1.64', '0.80', '-', '-', '-', '-']);
+
+  splitLabel('Case 2', '(regulated)');
+  dataRow(['6-par', '2.70', '0.90', '0.53', '4.64', '28.20', '7.95']);
+  dataRow(['4-par', '5.04', '0.19', '0.49', '-', '-', '0.74']);
+  dataRow(['2-par', '4.43', '0.25', '-', '-', '-', '-']);
+
+  splitLabel('Case 3', '(snow-fed)');
+  dataRow(['6-par', '3.61', '0.44', '0.58', '0.44', '-0.36', '3.68']);
+  dataRow(['4-par', '3.25', '0.25', '0.59', '-', '-', '-1.64']);
+  dataRow(['2-par', '2.60', '0.40', '-', '-', '-', '-']);
+
+  const bytes = await doc.save();
+  fs.writeFileSync(path.join(outDir, '08-split-spanning-label.pdf'), bytes);
+}
+
 async function main() {
   await wrappedCellsHeaderBand();
   await multiSectionHeaderBands();
   await noLinesWrapped();
+  await splitSpanningLabel();
   console.log('Wrapped-row fixtures created successfully.');
 }
 
