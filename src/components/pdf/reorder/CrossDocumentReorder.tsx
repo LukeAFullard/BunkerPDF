@@ -705,7 +705,7 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
              <ZoomOut size={14} className="text-gray-500" />
              <input
                 type="range"
-                min="0.5" max="2" step="0.1"
+                min="0.5" max="5" step="0.1"
                 value={thumbnailScale}
                 onChange={(e) => setThumbnailScale(parseFloat(e.target.value))}
                 className="w-20"
@@ -882,7 +882,7 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
             )}
 
             <div className="flex-1 flex items-center justify-center overflow-hidden z-[40]">
-              <TransformWrapper centerOnInit={true} initialScale={1} minScale={0.5} maxScale={50}>
+              <TransformWrapper centerOnInit={true} initialScale={1} minScale={0.5} maxScale={5}>
                 <TransformComponent wrapperStyle={{ width: '100vw', height: '100vh' }} contentStyle={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <div
                     style={{
