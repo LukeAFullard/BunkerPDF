@@ -921,7 +921,7 @@ export function DocumentCard({
     { category: "Extract & Export", label: "Extract Images (~10s)", onClick: handleExtractImages, complexity: "simple" },
     { category: "Extract & Export", label: "Extract Links (CSV) (~2s)", onClick: handleExtractLinks, complexity: "professional" },
     { category: "Extract & Export", label: "Extract Annotations (CSV) (~2s)", onClick: handleExtractAnnotations, complexity: "professional" },
-    { category: "Interactive Tools", label: "Magic Box Table (~Instant)", onClick: () => onInteractiveTable?.(doc), complexity: "professional" },
+    { category: "Interactive Tools", label: "Magic Table (~Instant)", onClick: () => onInteractiveTable?.(doc), complexity: "professional" },
     { category: "Interactive Tools", label: "Magic Copy (~Instant)", onClick: () => onInteractiveCopy?.(doc), complexity: "professional" },
     { category: "Interactive Tools", label: "Flipbook Viewer (~Instant)", onClick: () => onFlipbook?.(doc), complexity: "professional" },
     { category: "Interactive Tools", label: "Auto-Linker (~Instant)", onClick: () => onInteractiveAutoLinker?.(doc), complexity: "professional" },
@@ -1058,28 +1058,28 @@ export function DocumentCard({
             <div className="grid grid-cols-2 gap-2 mb-2">
               <button
                 onClick={() => onInteractiveTable?.(doc)}
-                className="flex flex-col items-center justify-center bg-gray-50 hover:bg-indigo-50 border border-gray-200 hover:border-indigo-200 text-gray-700 hover:text-indigo-700 py-3 rounded-lg transition-colors gap-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                className="flex flex-col items-center justify-center bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 hover:border-emerald-300 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-800/30 dark:text-emerald-400 dark:hover:bg-emerald-900/40 py-3 rounded-lg transition-colors gap-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               >
                 <TableProperties className="w-5 h-5" />
-                Magic Box
+                Magic Table
               </button>
               <button
                 onClick={() => onInteractiveCopy?.(doc)}
-                className="flex flex-col items-center justify-center bg-gray-50 hover:bg-indigo-50 border border-gray-200 hover:border-indigo-200 text-gray-700 hover:text-indigo-700 py-3 rounded-lg transition-colors gap-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                className="flex flex-col items-center justify-center bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 hover:border-indigo-300 text-indigo-700 dark:bg-indigo-900/20 dark:border-indigo-800/30 dark:text-indigo-400 dark:hover:bg-indigo-900/40 py-3 rounded-lg transition-colors gap-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
               >
                 <Copy className="w-5 h-5" />
                 Magic Copy
               </button>
               <button
                 onClick={() => onFlipbook?.(doc)}
-                className="flex flex-col items-center justify-center bg-gray-50 hover:bg-indigo-50 border border-gray-200 hover:border-indigo-200 text-gray-700 hover:text-indigo-700 py-3 rounded-lg transition-colors gap-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                className="flex flex-col items-center justify-center bg-amber-50 hover:bg-amber-100 border border-amber-200 hover:border-amber-300 text-amber-700 dark:bg-amber-900/20 dark:border-amber-800/30 dark:text-amber-400 dark:hover:bg-amber-900/40 py-3 rounded-lg transition-colors gap-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
               >
                 <BookOpen className="w-5 h-5" />
                 Flipbook
               </button>
               <button
                 onClick={() => onSmartCrop?.(doc)}
-                className="flex flex-col items-center justify-center bg-gray-50 hover:bg-indigo-50 border border-gray-200 hover:border-indigo-200 text-gray-700 hover:text-indigo-700 py-3 rounded-lg transition-colors gap-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                className="flex flex-col items-center justify-center bg-sky-50 hover:bg-sky-100 border border-sky-200 hover:border-sky-300 text-sky-700 dark:bg-sky-900/20 dark:border-sky-800/30 dark:text-sky-400 dark:hover:bg-sky-900/40 py-3 rounded-lg transition-colors gap-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
               >
                 <Crop className="w-5 h-5" />
                 Smart Crop

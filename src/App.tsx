@@ -2653,15 +2653,15 @@ function App() {
               </button>
               <button
                 onClick={() => setIsCrossReorderOpen(true)}
-                disabled={documents.length < 1 || isGlobalProcessing}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+                disabled={documents.length <= 1 || isGlobalProcessing}
+                className={`px-5 py-2.5 rounded-lg text-base font-bold transition-colors flex items-center gap-2 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
                   documents.length > 1 && !isGlobalProcessing
-                    ? "bg-white text-indigo-600 border border-indigo-200 shadow-sm hover:bg-indigo-50 focus-visible:ring-indigo-300"
-                    : "bg-white text-gray-400 border border-gray-200 cursor-not-allowed"
+                    ? "bg-indigo-50 text-indigo-700 border border-indigo-200 shadow hover:bg-indigo-100 hover:shadow-md focus-visible:ring-indigo-500"
+                    : "bg-gray-50 text-gray-400 border border-gray-200 cursor-not-allowed"
                 }`}
                 title="Cross-Document Reorder"
               >
-                <Layers size={16} /> Reorder
+                <Layers size={20} /> Reorder
               </button>
               <div className="relative" ref={batchMenuRef}>
                 <button
