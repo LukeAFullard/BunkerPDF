@@ -999,8 +999,16 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
 
         if (colBoundaries.length > 0) {
           // Calculate spatial columns count for confidence check
+          // Exclude header-band and spanning-divider rows (e.g. a caption
+          // line or section label kept in this table by the row-merge pass)
+          // from the interval computation below. A single wide item from one
+          // of those rows can span almost the entire table width, bridging
+          // over and masking the real gaps between adjacent data columns -
+          // which would otherwise correctly become fallback column
+          // boundaries - collapsing many real columns into one.
+          const intervalRows = table.rows.filter(row => !row.isHeaderBand && !row.isSpanningDivider);
           const intervals: { start: number, end: number }[] = [];
-          for (const row of table.rows) {
+          for (const row of intervalRows) {
             for (const item of row.items) {
               intervals.push({ start: item.x, end: item.x + item.width });
             }
@@ -1038,16 +1046,39 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
     }
 
     if (colBoundaries.length > 0) {
+        // Use the extent of real table content (excluding header-band and
+        // spanning-divider rows) for the leading/trailing catch-all columns,
+        // not the raw min/max across every row in this table. A caption or
+        // section-label row kept in this table by the row-merge pass can
+        // have text extending well past the table's actual ruled width,
+        // which would otherwise inflate the last column far beyond where a
+        // real horizontal rule ends - causing buildGridFromIntersections
+        // below to see only partial rule coverage for that column and
+        // incorrectly merge two real rows together there.
+        const denseContentRows = table.rows.filter(row => !row.isHeaderBand && !row.isSpanningDivider);
+        const denseContentRowsSource = denseContentRows.length > 0 ? denseContentRows : table.rows;
+        let denseMinX = Infinity, denseMaxX = -Infinity;
+        for (const row of denseContentRowsSource) {
+          for (const item of row.items) {
+            if (item.x < denseMinX) denseMinX = item.x;
+            if (item.x + item.width > denseMaxX) denseMaxX = item.x + item.width;
+          }
+        }
+        const gridMinX = Number.isFinite(denseMinX) ? Math.min(denseMinX, colBoundaries[0]) : minX;
+        const gridMaxX = Number.isFinite(denseMaxX)
+          ? Math.max(denseMaxX, colBoundaries[colBoundaries.length - 1])
+          : maxX;
+
         // Create intervals from vertical line boundaries
-        let prev = minX;
+        let prev = gridMinX;
         for (const boundary of colBoundaries) {
             if (boundary > prev) {
                 columns.push({ start: prev, end: boundary });
             }
             prev = boundary;
         }
-        if (maxX > prev) {
-            columns.push({ start: prev, end: maxX });
+        if (gridMaxX > prev) {
+            columns.push({ start: prev, end: gridMaxX });
         }
     } else {
         // --- Stage 1: classify rows as "dense" (structural) vs "spanning" ---
