@@ -38,7 +38,8 @@ const fixtures = [
   '05-wrapped-cells-header-band',
   '06-multi-section-header-bands',
   '07-no-lines-wrapped',
-  '08-split-spanning-label'
+  '08-split-spanning-label',
+  '09-caption-partial-rule'
 ];
 
 for (const fixture of fixtures) {
