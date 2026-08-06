@@ -1027,7 +1027,7 @@ function App() {
     });
   };
 
-  const handleCrossReorderApply = async (newStructures: Record<string, { docId: string; originalPageNumber: number; rotation?: number }[]>, columnNames: Record<string, string>) => {
+  const handleCrossReorderApply = async (newStructures: Record<string, { docId: string; originalPageNumber: number; rotation?: number }[]>, columnNames: Record<string, string>, selectedDocIds: string[]) => {
     setIsCrossReorderOpen(false);
     let isCancelled = false;
     startProcessing("Applying cross-document changes...", true, () => {
@@ -1037,7 +1037,11 @@ function App() {
 
     try {
       const originalFiles: Record<string, File> = {};
-      documents.forEach(d => { originalFiles[d.id] = d.file; });
+      documents.forEach(d => {
+        if (selectedDocIds.includes(d.id)) {
+          originalFiles[d.id] = d.file;
+        }
+      });
 
       const newDocsBytes = await crossDocumentReorderPages(originalFiles, newStructures);
       if (isCancelled) return;
@@ -1074,12 +1078,12 @@ function App() {
       }
 
       // Handle removals if a document ends up with 0 pages
-      for (const docId of Object.keys(originalFiles)) {
+      for (const docId of selectedDocIds) {
         if (!newStructures[docId] || newStructures[docId].length === 0) {
           removeDocument(docId);
         }
       }
-      addLog("Cross Reorder", `Reordered pages across ${Object.keys(originalFiles).length} documents.`);
+      addLog("Cross Reorder", `Reordered pages across ${selectedDocIds.length} documents.`);
     } catch (e) {
       if (isCancelled) return;
       console.error(e);

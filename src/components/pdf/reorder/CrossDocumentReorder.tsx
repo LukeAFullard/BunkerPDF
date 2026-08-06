@@ -45,7 +45,7 @@ interface DocColumn {
 interface CrossDocumentReorderProps {
   isOpen: boolean;
   onClose: () => void;
-  onApply: (newStructures: Record<string, { docId: string; originalPageNumber: number; rotation?: number }[]>, columnNames: Record<string, string>) => void;
+  onApply: (newStructures: Record<string, { docId: string; originalPageNumber: number; rotation?: number }[]>, columnNames: Record<string, string>, selectedDocIds: string[]) => void;
 }
 
 
@@ -524,7 +524,7 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
       }));
       columnNames[col.docId] = col.name;
     });
-    onApply(result, columnNames);
+    onApply(result, columnNames, Array.from(selectedIds));
   };
 
   const allItems = columns.flatMap(c => c.items);
@@ -882,7 +882,7 @@ export function CrossDocumentReorder({ isOpen, onClose, onApply }: CrossDocument
             )}
 
             <div className="flex-1 flex items-center justify-center overflow-hidden z-[40]">
-              <TransformWrapper centerOnInit={true} initialScale={1} minScale={0.5} maxScale={5}>
+              <TransformWrapper centerOnInit={true} initialScale={1} minScale={0.5} maxScale={50}>
                 <TransformComponent wrapperStyle={{ width: '100vw', height: '100vh' }} contentStyle={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <div
                     style={{
