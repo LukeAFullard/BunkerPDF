@@ -90,6 +90,45 @@ export interface LineItem {
   disabled?: boolean;
 }
 
+/**
+ * If an explicit vertical line runs through the middle of `item`'s bounding box
+ * and the item's text has an internal space, split it into two items at the
+ * space closest to the line. This corrects upstream liteparse-wasm word-merge
+ * errors (two words returned as one text item with one wide bbox) that would
+ * otherwise be misread as an intentional merged/spanning cell.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function splitItemAtInteriorLine(item: any, verticalLines: LineItem[]): any[] {
+  const EDGE_MARGIN = 3; // px; ignore lines too close to the item's own edges
+
+  const interiorLine = verticalLines.find(l =>
+    l.x0 > item.x + EDGE_MARGIN && l.x0 < item.x + item.width - EDGE_MARGIN
+  );
+
+  const spaceIdx = item.text.indexOf(' ');
+  if (!interiorLine || spaceIdx === -1) {
+    return [item]; // nothing to split on — leave as-is
+  }
+
+  // Apportion the bounding box by character position, using the space as the split point.
+  const splitRatio = spaceIdx / item.text.length;
+  const splitX = item.x + item.width * splitRatio;
+
+  const left = {
+    ...item,
+    text: item.text.slice(0, spaceIdx).trimEnd(),
+    width: splitX - item.x,
+  };
+  const right = {
+    ...item,
+    text: item.text.slice(spaceIdx + 1).trimStart(),
+    x: splitX,
+    width: item.x + item.width - splitX,
+  };
+
+  return [left, right];
+}
+
 export function isBackgroundColor(color?: string): boolean {
   if (!color) return false;
   // Handle hex colors
@@ -1160,11 +1199,17 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
     }
 
     let rIdx = 0;
+    const verticalLines = explicitLines?.filter(l => l.type === 'vertical' && !l.disabled) || [];
+
     for (const row of table.rows) {
       const gridRow: string[] = Array(columns.length).fill('');
       const spanRow: number[] = Array(columns.length).fill(1);
 
-      for (const item of row.items) {
+      const expandedItems = verticalLines.length > 0
+        ? row.items.flatMap(item => splitItemAtInteriorLine(item, verticalLines))
+        : row.items;
+
+      for (const item of expandedItems) {
         const itemMid = item.x + item.width / 2;
         let startIndex = -1;
         let endIndex = -1;
