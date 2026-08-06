@@ -13,7 +13,7 @@ import { DocumentHealthPanel } from './DocumentHealthPanel';
 import { analyzeDocumentHealth } from '../../lib/healthChecks';
 import { TableExtractionModal } from './TableExtractionModal';
 import { ToolsModal } from './ToolsModal';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, TableProperties, Copy, BookOpen, Crop } from 'lucide-react';
 
 interface DocumentCardProps {
   onResizePages?: (doc: PDFDocument) => void;
@@ -1055,6 +1055,37 @@ export function DocumentCard({
           )}
 
           <div className="mt-4">
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <button
+                onClick={() => onInteractiveTable?.(doc)}
+                className="flex flex-col items-center justify-center bg-gray-50 hover:bg-indigo-50 border border-gray-200 hover:border-indigo-200 text-gray-700 hover:text-indigo-700 py-3 rounded-lg transition-colors gap-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+              >
+                <TableProperties className="w-5 h-5" />
+                Magic Box
+              </button>
+              <button
+                onClick={() => onInteractiveCopy?.(doc)}
+                className="flex flex-col items-center justify-center bg-gray-50 hover:bg-indigo-50 border border-gray-200 hover:border-indigo-200 text-gray-700 hover:text-indigo-700 py-3 rounded-lg transition-colors gap-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+              >
+                <Copy className="w-5 h-5" />
+                Magic Copy
+              </button>
+              <button
+                onClick={() => onFlipbook?.(doc)}
+                className="flex flex-col items-center justify-center bg-gray-50 hover:bg-indigo-50 border border-gray-200 hover:border-indigo-200 text-gray-700 hover:text-indigo-700 py-3 rounded-lg transition-colors gap-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+              >
+                <BookOpen className="w-5 h-5" />
+                Flipbook
+              </button>
+              <button
+                onClick={() => onSmartCrop?.(doc)}
+                className="flex flex-col items-center justify-center bg-gray-50 hover:bg-indigo-50 border border-gray-200 hover:border-indigo-200 text-gray-700 hover:text-indigo-700 py-3 rounded-lg transition-colors gap-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+              >
+                <Crop className="w-5 h-5" />
+                Smart Crop
+              </button>
+            </div>
+
             <div className="flex gap-2">
               <button
                 onClick={() => setIsToolsModalOpen(true)}
