@@ -100,6 +100,43 @@ export interface LineItem {
  * this recovery mechanism will fail as it relies on whitespace separation.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function isNearWhiteOrLightGray(color: string): boolean {
+  if (color.startsWith('#')) {
+    let r, g, b;
+    if (color.length === 4) {
+        r = parseInt(color[1] + color[1], 16);
+        g = parseInt(color[2] + color[2], 16);
+        b = parseInt(color[3] + color[3], 16);
+    } else if (color.length === 7 || color.length === 9) {
+        r = parseInt(color.substring(1, 3), 16);
+        g = parseInt(color.substring(3, 5), 16);
+        b = parseInt(color.substring(5, 7), 16);
+    }
+    if (r !== undefined && g !== undefined && b !== undefined) {
+        return r > 200 && g > 200 && b > 200; // Light gray threshold
+    }
+  }
+  return false;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function isLikelyWatermark(item: any): boolean {
+  if (item.mcidTag === 'Artifact') return true;
+  if (item.rotation && Math.abs(item.rotation % 90) > 2) return true;
+  if (item.opacity !== undefined && item.opacity < 0.35) return true;
+  if (item.fillColor && isNearWhiteOrLightGray(item.fillColor)) return true;
+  return false;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function isProtectedSpanningItem(item: any): boolean {
+  const fontNameLower = (item.fontName || '').toLowerCase();
+  const isBold = fontNameLower.includes('bold');
+  const isShaded = item.fillColor && isBackgroundColor(item.fillColor);
+  return isBold || isShaded;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function splitItemAtInteriorLine(item: any, verticalLines: LineItem[]): any[] {
   const EDGE_MARGIN = 3; // px; ignore lines too close to the item's own edges
   const itemYStart = item.y;
@@ -669,10 +706,15 @@ const mapVisionStructureToGrid = (detections: any[], textItems: any[], format: '
 export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown' | 'latex' | 'html', requiresMultipleColumns = true, explicitLines?: LineItem[]): { text: string; confidence: number; confidenceReasons: string[] } => {
   if (!textItems || textItems.length === 0) return { text: "", confidence: 1, confidenceReasons: [] };
 
+  const removeWatermarks = useUIStore.getState().removeWatermarks;
+  const filteredTextItems = removeWatermarks
+    ? textItems.filter(item => !isLikelyWatermark(item))
+    : textItems;
+
   // 1. Calculate the table bounding box for line filtering
   let minX = Infinity; let maxX = -Infinity;
   let minY = Infinity; let maxY = -Infinity;
-  for (const item of textItems) {
+  for (const item of filteredTextItems) {
       if (item.x < minX) minX = item.x;
       if (item.x + item.width > maxX) maxX = item.x + item.width;
       if (item.y < minY) minY = item.y;
@@ -691,7 +733,7 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
         const rowTolerance = 5;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const spatialRows: { items: any[], y: number }[] = [];
-        for (const item of textItems) {
+        for (const item of filteredTextItems) {
           let foundRow = false;
           for (const row of spatialRows) {
             if (Math.abs(row.y - item.y) < rowTolerance) {
@@ -787,7 +829,7 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
   // then respecting boundaryGroup as a hard wall, fixes that without weakening
   // real ruled-line grids (where each physical row already gets its own
   // boundary interval, so this is a no-op there).
-  for (const item of textItems) {
+  for (const item of filteredTextItems) {
     const boundaryGroup = getBoundaryGroup(item);
     let foundRow = false;
     for (const row of rows) {
@@ -1260,12 +1302,54 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
       }
     }
 
-    for (const row of table.rows) {
+    for (let rowIdx = 0; rowIdx < table.rows.length; rowIdx++) {
+      const row = table.rows[rowIdx];
       const gridRow: string[] = Array(columns.length).fill('');
       const spanRow: number[] = Array(columns.length).fill(1);
 
       const expandedItems = (verticalLines.length > 0 && !row.isHeaderBand && !row.isSpanningDivider)
-        ? row.items.flatMap(item => splitItemAtInteriorLine(item, verticalLines))
+        ? row.items.flatMap(item => {
+            if (isProtectedSpanningItem(item)) {
+              return [item];
+            }
+
+            // Secondary structural safety net: does it cleanly overlap multiple columns
+            // AND does the row above or below have structural evidence of sub-columns?
+            let startIndex = -1;
+            let endIndex = -1;
+            for (let i = 0; i < columns.length; i++) {
+              const col = columns[i];
+              const overlapStart = Math.max(item.x, col.start);
+              const overlapEnd = Math.min(item.x + item.width, col.end);
+              if (overlapEnd - overlapStart > 0.5) {
+                if (startIndex === -1) startIndex = i;
+                endIndex = i;
+              }
+            }
+            if (endIndex > startIndex) {
+                const prevRow = rowIdx > 0 ? table.rows[rowIdx - 1] : null;
+                const nextRow = rowIdx < table.rows.length - 1 ? table.rows[rowIdx + 1] : null;
+
+                const hasContentInCol = (targetRow: any, colIdx: number) => {
+                    if (!targetRow) return false;
+                    const col = columns[colIdx];
+                    return targetRow.items.some((ri: any) => {
+                        const overlapStart = Math.max(ri.x, col.start);
+                        const overlapEnd = Math.min(ri.x + ri.width, col.end);
+                        return (overlapEnd - overlapStart > 0.5);
+                    });
+                };
+
+                const hasStructuralSubColumns = (targetRow: any) =>
+                    hasContentInCol(targetRow, startIndex) && hasContentInCol(targetRow, endIndex);
+
+                if (hasStructuralSubColumns(prevRow) || hasStructuralSubColumns(nextRow)) {
+                    return [item];
+                }
+            }
+
+            return splitItemAtInteriorLine(item, verticalLines);
+          })
         : row.items;
 
       for (const item of expandedItems) {
