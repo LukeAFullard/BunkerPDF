@@ -102,10 +102,20 @@ export interface LineItem {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function splitItemAtInteriorLine(item: any, verticalLines: LineItem[]): any[] {
   const EDGE_MARGIN = 3; // px; ignore lines too close to the item's own edges
+  const itemYStart = item.y;
+  const itemYEnd = item.y + item.height;
 
-  const interiorLine = verticalLines.find(l =>
-    l.x0 > item.x + EDGE_MARGIN && l.x0 < item.x + item.width - EDGE_MARGIN
-  );
+  const interiorLine = verticalLines.find(l => {
+    const xInRange = l.x0 > item.x + EDGE_MARGIN && l.x0 < item.x + item.width - EDGE_MARGIN;
+    if (!xInRange) return false;
+
+    // Require the line to actually run through this item's row, not just
+    // exist somewhere else in the table at a matching X.
+    const lineYStart = Math.min(l.y0, l.y1);
+    const lineYEnd = Math.max(l.y0, l.y1);
+    const Y_TOLERANCE = 3; // px
+    return lineYEnd >= itemYStart - Y_TOLERANCE && lineYStart <= itemYEnd + Y_TOLERANCE;
+  });
 
   if (!interiorLine) {
     return [item]; // nothing to split on — leave as-is
