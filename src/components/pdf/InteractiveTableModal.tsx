@@ -45,7 +45,7 @@ export function InteractiveTableModal({ isOpen, docId, onClose }: InteractiveTab
   const [confidenceReasons, setConfidenceReasons] = useState<string[]>([]);
   const [extractionSource, setExtractionSource] = useState<'geometry' | 'vision-fallback' | null>(null);
   const [isExtracting, setIsExtracting] = useState(false);
-  const { enableLineTracing, setEnableLineTracing, enableStyledSpanningLabel, setEnableStyledSpanningLabel, spanningLabelOverflowFactor, setSpanningLabelOverflowFactor, spanWidthFractionRow, setSpanWidthFractionRow } = useUIStore();
+  const { enableLineTracing, setEnableLineTracing, enableStyledSpanningLabel, setEnableStyledSpanningLabel, spanningLabelOverflowFactor, setSpanningLabelOverflowFactor, spanWidthFractionRow, setSpanWidthFractionRow, removeWatermarks, setRemoveWatermarks } = useUIStore();
   const [showSettings, setShowSettings] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
 
@@ -325,7 +325,7 @@ export function InteractiveTableModal({ isOpen, docId, onClose }: InteractiveTab
       extractRegion(selectionBox.x, selectionBox.y, selectionBox.w, selectionBox.h);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [format, extractedLines, enableLineTracing, enableStyledSpanningLabel, spanningLabelOverflowFactor, spanWidthFractionRow]);
+  }, [format, extractedLines, enableLineTracing, enableStyledSpanningLabel, spanningLabelOverflowFactor, spanWidthFractionRow, removeWatermarks]);
 
   const handleCopy = () => {
     if (extractedTable) {
@@ -511,6 +511,15 @@ export function InteractiveTableModal({ isOpen, docId, onClose }: InteractiveTab
                        Advanced Table Extraction
                      </div>
                      <div className="px-4 space-y-4">
+                       <label className="flex items-center gap-2 cursor-pointer">
+                         <input
+                           type="checkbox"
+                           checked={removeWatermarks}
+                           onChange={(e) => setRemoveWatermarks(e.target.checked)}
+                           className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                         />
+                         <span className="text-sm font-medium">Remove Watermarks</span>
+                       </label>
                        <label className="flex items-center gap-2 cursor-pointer">
                          <input
                            type="checkbox"

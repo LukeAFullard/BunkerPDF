@@ -30,6 +30,8 @@ interface UIState {
   setTier2Enabled: (enabled: boolean) => void;
   confidenceThreshold: number;
   setConfidenceThreshold: (threshold: number) => void;
+  removeWatermarks: boolean;
+  setRemoveWatermarks: (enabled: boolean) => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -58,6 +60,8 @@ export const useUIStore = create<UIState>()(
   setTier2Enabled: (enabled) => set({ tier2Enabled: enabled }),
   confidenceThreshold: 0.6,
   setConfidenceThreshold: (threshold) => set({ confidenceThreshold: threshold }),
+  removeWatermarks: false,
+  setRemoveWatermarks: (enabled) => set({ removeWatermarks: enabled }),
     }),
     {
       name: 'bunkerpdf-ui-storage',
@@ -70,7 +74,8 @@ export const useUIStore = create<UIState>()(
         spanWidthFractionRow: state.spanWidthFractionRow,
         enableStyledSpanningLabel: state.enableStyledSpanningLabel,
         tier2Enabled: state.tier2Enabled,
-        confidenceThreshold: state.confidenceThreshold
+        confidenceThreshold: state.confidenceThreshold,
+        removeWatermarks: state.removeWatermarks
       }),
     }
   )
