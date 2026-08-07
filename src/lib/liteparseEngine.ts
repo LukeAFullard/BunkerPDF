@@ -96,6 +96,8 @@ export interface LineItem {
  * space closest to the line. This corrects upstream liteparse-wasm word-merge
  * errors (two words returned as one text item with one wide bbox) that would
  * otherwise be misread as an intentional merged/spanning cell.
+ * Note: If the upstream parser fuses items without leaving a space (e.g. "Contribution52.8"),
+ * this recovery mechanism will fail as it relies on whitespace separation.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function splitItemAtInteriorLine(item: any, verticalLines: LineItem[]): any[] {
@@ -105,28 +107,50 @@ function splitItemAtInteriorLine(item: any, verticalLines: LineItem[]): any[] {
     l.x0 > item.x + EDGE_MARGIN && l.x0 < item.x + item.width - EDGE_MARGIN
   );
 
-  const spaceIdx = item.text.indexOf(' ');
-  if (!interiorLine || spaceIdx === -1) {
+  if (!interiorLine) {
     return [item]; // nothing to split on — leave as-is
   }
 
-  // Apportion the bounding box by character position, using the space as the split point.
-  const splitRatio = spaceIdx / item.text.length;
-  const splitX = item.x + item.width * splitRatio;
+  // Find the internal space whose estimated position is closest to the line.
+  let bestIdx = -1;
+  let bestDist = Infinity;
+  for (let i = 0; i < item.text.length; i++) {
+    if (item.text[i] !== ' ') continue;
+    const estX = item.x + item.width * (i / item.text.length);
+    const dist = Math.abs(estX - interiorLine.x0);
+    if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+  }
+
+  if (bestIdx === -1) {
+    return [item];
+  }
+
+  // Sanity check: only split if the chosen space is plausibly near the
+  // line (not just the closest of several distant candidates) — otherwise
+  // this is likely a genuine spanning item and should be left alone.
+  const MAX_SPLIT_DISTANCE = item.width * 0.25;
+  if (bestDist > MAX_SPLIT_DISTANCE) {
+    return [item];
+  }
+
+  // Use the line's own position as the geometric split point, not a
+  // character-count estimate, so the pieces land in the correct columns
+  const splitX = interiorLine.x0;
 
   const left = {
     ...item,
-    text: item.text.slice(0, spaceIdx).trimEnd(),
+    text: item.text.slice(0, bestIdx).trimEnd(),
     width: splitX - item.x,
   };
   const right = {
     ...item,
-    text: item.text.slice(spaceIdx + 1).trimStart(),
+    text: item.text.slice(bestIdx + 1).trimStart(),
     x: splitX,
     width: item.x + item.width - splitX,
   };
 
-  return [left, right];
+  // Recursively process the right half in case there are multiple lines (e.g., three-way fuse)
+  return [left, ...splitItemAtInteriorLine(right, verticalLines)];
 }
 
 export function isBackgroundColor(color?: string): boolean {
@@ -1199,13 +1223,23 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
     }
 
     let rIdx = 0;
-    const verticalLines = explicitLines?.filter(l => l.type === 'vertical' && !l.disabled) || [];
+
+    // Construct synthetic lines for column boundaries to enable splitItemAtInteriorLine
+    // to work for borderless (gridless/whitespace-separated) tables as well.
+    let verticalLines = explicitLines?.filter(l => l.type === 'vertical' && !l.disabled) || [];
+    if (!useLines && columns.length > 1) {
+      for (let i = 1; i < columns.length; i++) {
+        // Approximate a vertical line running halfway through the gutter
+        const gutterX = (columns[i - 1].end + columns[i].start) / 2;
+        verticalLines.push({ type: 'vertical', x0: gutterX, x1: gutterX, y0: 0, y1: 10000, disabled: false });
+      }
+    }
 
     for (const row of table.rows) {
       const gridRow: string[] = Array(columns.length).fill('');
       const spanRow: number[] = Array(columns.length).fill(1);
 
-      const expandedItems = verticalLines.length > 0
+      const expandedItems = (verticalLines.length > 0 && !row.isHeaderBand && !row.isSpanningDivider)
         ? row.items.flatMap(item => splitItemAtInteriorLine(item, verticalLines))
         : row.items;
 
@@ -1217,8 +1251,10 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
         // Find which columns the item intersects
         for (let i = 0; i < columns.length; i++) {
           const col = columns[i];
-          // Item intersects column if it starts before col ends AND ends after col starts
-          if (item.x <= col.end && (item.x + item.width) >= col.start) {
+          // Item intersects column if its overlap is slightly positive, preventing exact boundary touches from double-matching
+          const overlapStart = Math.max(item.x, col.start);
+          const overlapEnd = Math.min(item.x + item.width, col.end);
+          if (overlapEnd - overlapStart > 0.5) {
             if (startIndex === -1) startIndex = i;
             endIndex = i;
           }
