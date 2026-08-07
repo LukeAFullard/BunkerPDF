@@ -1,4 +1,4 @@
-import { fromLines, buildGridFromIntersections } from './lineTracingMath';
+import { fromLines, buildGridFromIntersections, lineCoversSpan } from './lineTracingMath';
 import init, { LiteParse } from "@llamaindex/liteparse-wasm";
 import { useUIStore } from '../store/uiStore';
 import { ocrPdf } from './ocrEngine';
@@ -738,15 +738,30 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
   const rowTolerance = 5; // pixels
   const rows: { items: typeof textItems, y: number, isHeaderBand?: boolean, boundaryGroup: number, isSpanningDivider?: boolean }[] = [];
 
+  const rawHorizontalLines = explicitLines?.filter(
+    l => l.type === 'horizontal' && !l.disabled
+  ) ?? [];
+
   // Which row-boundary interval (if any) an item's midpoint falls into.
   // Boundaries are sorted Y coordinates of horizontal lines (real geometric
   // lines, plus any locally-inferred fallback boundaries computed above).
   const getBoundaryGroup = (item: any): number => {
     if (rowBoundaries.length === 0) return 0;
     const itemMidY = item.y + item.height / 2;
+    const itemXStart = item.x;
+    const itemXEnd = item.x + item.width;
+
     let rowIndex = 0;
     for (let i = 0; i < rowBoundaries.length; i++) {
-      if (itemMidY > rowBoundaries[i]) rowIndex = i + 1;
+      const boundaryY = rowBoundaries[i];
+
+      const isExplicitBoundary = rawHorizontalLines.some(l => Math.abs(l.y0 - boundaryY) <= 2);
+
+      const appliesToThisItem = !isExplicitBoundary || rawHorizontalLines.some(l =>
+        lineCoversSpan(l, boundaryY, itemXStart, itemXEnd)
+      );
+
+      if (appliesToThisItem && itemMidY > boundaryY) rowIndex = i + 1;
     }
     return rowIndex;
   };

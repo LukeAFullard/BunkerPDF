@@ -71,6 +71,22 @@ export function fromLines(lines: LineItem[], type: 'horizontal' | 'vertical'): n
 
 export const MIN_RULE_FRACTION_LOCAL = 0.75;
 
+export function lineCoversSpan(
+  line: LineItem,
+  y: number,
+  xStart: number,
+  xEnd: number,
+  minFraction = MIN_RULE_FRACTION_LOCAL
+): boolean {
+  if (Math.abs(line.y0 - y) > 2) return false;
+  // Calculate intersection length, using a bit of tolerance like the old logic
+  const intersectStart = Math.max(line.x0, xStart - 2);
+  const intersectEnd = Math.min(line.x1, xEnd + 2);
+  const intersectLength = intersectEnd - intersectStart;
+  const span = xEnd - xStart;
+  return intersectLength > 0 && (intersectLength / span) >= minFraction;
+}
+
 export function buildGridFromIntersections(
   hLines: LineItem[],
   rowYs: number[],
@@ -92,20 +108,10 @@ export function buildGridFromIntersections(
       const y = rowYs[r];
       const xStart = colXs[c].start;
       const xEnd = colXs[c].end;
-      const colWidth = xEnd - xStart;
 
       // Does a horizontal line actually exist spanning [xStart, xEnd] at y?
       // It must span at least MIN_RULE_FRACTION_LOCAL of the column width
-      const edgeExists = hLines.some(l => {
-        if (Math.abs(l.y0 - y) > 2) return false;
-
-        // Calculate intersection length
-        const intersectStart = Math.max(l.x0, xStart - 2);
-        const intersectEnd = Math.min(l.x1, xEnd + 2);
-        const intersectLength = intersectEnd - intersectStart;
-
-        return intersectLength > 0 && (intersectLength / colWidth) >= MIN_RULE_FRACTION_LOCAL;
-      });
+      const edgeExists = hLines.some(l => lineCoversSpan(l, y, xStart, xEnd));
 
       rowSpans[r][c] = edgeExists ? 1 : 0; // 0 => merge downward/upward based on how rowSpans is used
     }
