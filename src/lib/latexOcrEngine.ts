@@ -99,16 +99,15 @@ export async function resolveInputSize(
     initialWidth: number,
     initialHeight: number
 ): Promise<{ width: number; height: number; tensor: Float32Array }> {
-    let currentWidth = initialWidth;
-    let currentHeight = initialHeight;
-    let currentTensor = initialTensor;
+    const mean = 0.7931, std = 0.1738;
+    const bgVal = ((255 / 255.0) - mean) / std;
+
+    let currentWidth = Math.min(initialWidth, 672);
+    const currentHeight = Math.min(initialHeight, 192);
+    let currentTensor = cropOrPad(initialTensor, initialWidth, initialHeight, currentWidth, currentHeight, bgVal);
 
     let loops = 0;
     while (loops < 5) {
-        // Cap max dimensions for safety before inference
-        if (currentWidth > 672) currentWidth = 672;
-        if (currentHeight > 192) currentHeight = 192;
-
         const tensor = new ort.Tensor('float32', currentTensor, [1, 1, currentHeight, currentWidth]);
 
         const inputName = resizerSession.inputNames[0];
@@ -116,63 +115,63 @@ export async function resolveInputSize(
         const outputName = resizerSession.outputNames[0];
         const logits = results[outputName].data as Float32Array;
 
-        let maxVal = -Infinity;
-        let maxIdx = 0;
-        for(let i=0; i<logits.length; i++) {
-            if (logits[i] > maxVal) {
-                maxVal = logits[i];
-                maxIdx = i;
-            }
+        let maxVal = -Infinity, maxIdx = 0;
+        for (let i = 0; i < logits.length; i++) {
+            if (logits[i] > maxVal) { maxVal = logits[i]; maxIdx = i; }
         }
-
-        const predictedWidth = (maxIdx + 1) * 32;
+        const predictedWidth = Math.min((maxIdx + 1) * 32, 672);
 
         if (predictedWidth === currentWidth || loops >= 3) {
+            if (currentTensor.length !== predictedWidth * currentHeight) {
+                currentTensor = resizeGrayscaleTensor(currentTensor, currentWidth, currentHeight, predictedWidth, currentHeight);
+            }
             currentWidth = predictedWidth;
             break;
         }
 
-        // If we need to change width, create a new padded/cropped tensor
-        const newTensor = new Float32Array(predictedWidth * currentHeight);
-        // Pad with background value (normalized 255)
-        const mean = 0.7931;
-        const std = 0.1738;
-        const bgVal = ((255 / 255.0) - mean) / std;
-        newTensor.fill(bgVal);
-
-        const copyWidth = Math.min(currentWidth, predictedWidth);
-        for (let y = 0; y < currentHeight; y++) {
-            for (let x = 0; x < copyWidth; x++) {
-                newTensor[y * predictedWidth + x] = currentTensor[y * currentWidth + x];
-            }
-        }
-
+        currentTensor = resizeGrayscaleTensor(currentTensor, currentWidth, currentHeight, predictedWidth, currentHeight);
         currentWidth = predictedWidth;
-        currentTensor = newTensor;
         loops++;
     }
 
-    currentWidth = Math.min(currentWidth, 672);
-    currentHeight = Math.min(currentHeight, 192);
+    return { width: currentWidth, height: currentHeight, tensor: currentTensor };
+}
 
-    // Ensure final tensor matches final capped dimensions if it was capped
-    let finalTensor = currentTensor;
-    if (currentTensor.length !== currentWidth * currentHeight) {
-        finalTensor = new Float32Array(currentWidth * currentHeight);
-        const mean = 0.7931;
-        const std = 0.1738;
-        const bgVal = ((255 / 255.0) - mean) / std;
-        finalTensor.fill(bgVal);
-        const origW = currentTensor.length / currentHeight; // old width
-        const copyWidth = Math.min(origW, currentWidth);
-        for (let y = 0; y < currentHeight; y++) {
-            for (let x = 0; x < copyWidth; x++) {
-                finalTensor[y * currentWidth + x] = currentTensor[y * origW + x];
-            }
-        }
+function cropOrPad(data: Float32Array, oldW: number, oldH: number, newW: number, newH: number, bgVal: number): Float32Array {
+    if (oldW === newW && oldH === newH) return data;
+    const out = new Float32Array(newW * newH).fill(bgVal);
+    const copyW = Math.min(oldW, newW), copyH = Math.min(oldH, newH);
+    for (let y = 0; y < copyH; y++) {
+        for (let x = 0; x < copyW; x++) out[y * newW + x] = data[y * oldW + x];
     }
+    return out;
+}
 
-    return { width: currentWidth, height: currentHeight, tensor: finalTensor };
+function resizeGrayscaleTensor(data: Float32Array, oldW: number, oldH: number, newW: number, newH: number): Float32Array {
+    const mean = 0.7931, std = 0.1738;
+
+    const src = new OffscreenCanvas(oldW, oldH);
+    const sctx = src.getContext('2d')!;
+    const imgData = sctx.createImageData(oldW, oldH);
+    for (let i = 0; i < oldW * oldH; i++) {
+        const v = Math.round(((data[i] * std) + mean) * 255);
+        imgData.data[i * 4] = imgData.data[i * 4 + 1] = imgData.data[i * 4 + 2] = v;
+        imgData.data[i * 4 + 3] = 255;
+    }
+    sctx.putImageData(imgData, 0, 0);
+
+    const dst = new OffscreenCanvas(newW, newH);
+    const dctx = dst.getContext('2d')!;
+    dctx.imageSmoothingEnabled = true;
+    dctx.imageSmoothingQuality = 'high';
+    dctx.drawImage(src, 0, 0, oldW, oldH, 0, 0, newW, newH);
+
+    const out = new Float32Array(newW * newH);
+    const scaled = dctx.getImageData(0, 0, newW, newH).data;
+    for (let i = 0; i < newW * newH; i++) {
+        out[i] = ((scaled[i * 4] / 255) - mean) / std;
+    }
+    return out;
 }
 
 export function toTensor(data: Float32Array, width: number, height: number): ort.Tensor {
@@ -212,7 +211,7 @@ export async function decodeGreedy(
 ): Promise<string> {
     // Try to find actual token ids from tokenizer vocab if possible, but 0 and 2 are typical for RoBERTa/BART-based.
 
-    let currentTokens = [0]; // Start with BOS
+    // Start with BOS
     let tokenStr = "";
 
     // Invert vocab for decoding
@@ -229,7 +228,7 @@ export async function decodeGreedy(
     // Find proper BOS/EOS if available
     const realBos = tokenizer.model.vocab['<s>'] ?? tokenizer.model.vocab['[BOS]'] ?? 0;
     const realEos = tokenizer.model.vocab['</s>'] ?? tokenizer.model.vocab['[EOS]'] ?? 2;
-    currentTokens = [realBos];
+    const currentTokens = [realBos];
 
     for (let step = 0; step < maxSeqLen; step++) {
         // Prepare inputs for decoder
