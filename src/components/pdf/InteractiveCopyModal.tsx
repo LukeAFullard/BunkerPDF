@@ -57,6 +57,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
   const [latexProgress, setLatexProgress] = useState<{name: string, loaded: number, total: number} | null>(null);
   const [extractionMode, setExtractionMode] = useState<'text' | 'handwriting' | 'equation'>('text');
   const [extractedLatex, setExtractedLatex] = useState<string | null>(null);
+  const [latexError, setLatexError] = useState<string | null>(null);
 
   const renderTaskRef = useRef<pdfjsLib.RenderTask | null>(null);
   const pdfDocRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
@@ -82,6 +83,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
     setSelectionBox(null);
     setExtractedText(null);
     setExtractedLatex(null);
+    setLatexError(null);
     setCurrentPage(1);
 
     let isMounted = true;
@@ -311,6 +313,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
     setIsLatexRunning(true);
     setExtractedText(null);
     setExtractedLatex(null);
+    setLatexError(null);
     const runId = ++latexRunIdRef.current;
 
     try {
@@ -398,6 +401,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
       }
     } catch (err) {
       console.error("Equation recognition failed for the region:", err);
+      setLatexError(err instanceof Error ? err.message : String(err));
     } finally {
       if (runId === latexRunIdRef.current) {
          setIsLatexRunning(false);
@@ -501,6 +505,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
       setSelectionBox(null);
       setExtractedText(null);
       setExtractedLatex(null);
+      setLatexError(null);
     }
   };
 
@@ -631,6 +636,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
     setIsOcrRunning(true);
     setExtractedText(null);
     setExtractedLatex(null);
+    setLatexError(null);
     const runId = ++ocrRunIdRef.current;
 
     try {
@@ -1071,6 +1077,10 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
                  <p className="text-sm text-gray-500">
                     {isHandwritingRunning ? 'Recognizing handwriting...' : isLatexRunning ? 'Recognizing equation...' : 'Running OCR on selected region...'}
                  </p>
+              </div>
+            ) : latexError ? (
+              <div className="text-center py-12 px-4 border-2 border-dashed border-red-300 rounded-xl bg-red-50 h-full flex flex-col justify-center text-red-600 text-sm break-words">
+                 Equation recognition failed: {latexError}
               </div>
             ) : !extractedText && !extractedLatex ? (
                <div className="text-center py-12 px-4 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 h-full flex flex-col justify-center text-gray-500 text-sm">
