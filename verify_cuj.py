@@ -1,49 +1,67 @@
 from playwright.sync_api import sync_playwright
+import time
+import os
+import glob
 
 def run_cuj(page):
-    # App is configured with base: '/BunkerPDF/' in Vite (saw it in output), so navigating to root might redirect, or we need to go to /BunkerPDF/
     page.goto("http://localhost:5173/BunkerPDF/")
-    page.wait_for_timeout(2000) # wait for page to load fully
+    page.wait_for_timeout(1000)
 
-    # Upload test PDF
-    page.set_input_files('input[type="file"]', 'test.pdf')
+    print("Uploading test PDF...")
+    with page.expect_file_chooser() as fc_info:
+        page.get_by_role("button", name="Upload PDF document").click()
+    file_chooser = fc_info.value
+    file_chooser.set_files(os.path.abspath("test.pdf"))
+
     page.wait_for_timeout(3000)
 
-    # We should have one document card now
-    # Let's hover over the thumbnail to reveal the controls
-    page.locator('.group.relative').first.hover()
+    print("Opening Magic Copy Modal...")
+    # It's inside a DocumentCard, in a menu.
+    # The quick action button in DocumentCard is "Magic Copy".
+    magic_copy_btn = page.get_by_role("button", name="Magic Copy")
+    magic_copy_btn.first.click()
+
+    page.wait_for_timeout(3000)
+
+    print("Switching to Equation Mode...")
+    # Click the "Equation" mode button
+    equation_btn = page.get_by_role("button", name="Equation")
+    equation_btn.click()
     page.wait_for_timeout(1000)
 
-    # Take screenshot of the initial state with pagination controls showing "1 / 3"
-    page.screenshot(path="/home/jules/verification/screenshots/verification-page1.png")
-    page.wait_for_timeout(500)
+    print("Drawing region on canvas...")
+    # Draw a box on the canvas
+    canvas = page.locator("canvas").first
+    box = canvas.bounding_box()
 
-    # Click next page
-    page.locator('button').filter(has=page.locator('svg.lucide-chevron-right')).click()
-    page.wait_for_timeout(2000) # Wait for page to render
+    # We will simulate mouse drag in the center of the canvas
+    start_x = box['x'] + box['width'] / 4
+    start_y = box['y'] + box['height'] / 4
+    end_x = box['x'] + (box['width'] / 4) * 3
+    end_y = box['y'] + (box['height'] / 4) * 3
 
-    # Take screenshot of page 2
-    page.screenshot(path="/home/jules/verification/screenshots/verification-page2.png")
-    page.wait_for_timeout(500)
+    page.mouse.move(start_x, start_y)
+    page.mouse.down()
+    page.mouse.move(end_x, end_y, steps=10)
+    page.mouse.up()
 
-    # Click next page
-    page.locator('button').filter(has=page.locator('svg.lucide-chevron-right')).click()
-    page.wait_for_timeout(2000) # Wait for page to render
+    print("Waiting for model to load and run...")
+    page.wait_for_timeout(15000)
 
-    # Take screenshot of page 3
+    # Take screenshot at the key moment
     page.screenshot(path="/home/jules/verification/screenshots/verification.png")
-    page.wait_for_timeout(1000)
+    page.wait_for_timeout(2000)  # Hold final state for the video
+    print("Done!")
 
 if __name__ == "__main__":
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(
-            record_video_dir="/home/jules/verification/videos",
-            viewport={"width": 1280, "height": 720}
+            record_video_dir="/home/jules/verification/videos"
         )
         page = context.new_page()
         try:
             run_cuj(page)
         finally:
-            context.close()
+            context.close()  # MUST close context to save the video
             browser.close()

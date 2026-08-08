@@ -2,13 +2,15 @@ import { loadPdfDocument } from "../../lib/pdfHelper";
 import { useState, useEffect, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import 'pdfjs-dist/web/pdf_viewer.css';
-import { X, Type, ZoomIn, ZoomOut, Loader2, Copy, Check, Image as ImageIcon, ScanText, PenTool } from 'lucide-react';
+import { X, Type, ZoomIn, ZoomOut, Loader2, Copy, Check, Image as ImageIcon, ScanText } from 'lucide-react';
 import { useFileStore } from '../../store/fileStore';
 import { cleanupPdfResources } from '../../lib/pdfCleanup';
 import { getConfiguredLiteParse, formatParagraphFromItems, formatMarkdownFromItems } from '../../lib/liteparseEngine';
 import type { LineItem } from '../../lib/liteparseEngine';
 import type { PyodideWorkerMessage, PyodideWorkerResponse } from '../../workers/pyodideWorker';
 import { createWorker } from 'tesseract.js';
+import katex from 'katex';
+import 'katex/dist/katex.min.css';
 
 interface InteractiveCopyModalProps {
   isOpen: boolean;
@@ -51,6 +53,10 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
   const [extractedLines, setExtractedLines] = useState<LineItem[]>([]);
   const [isOcrRunning, setIsOcrRunning] = useState(false);
   const [isHandwritingRunning, setIsHandwritingRunning] = useState(false);
+  const [isLatexRunning, setIsLatexRunning] = useState(false);
+  const [latexProgress, setLatexProgress] = useState<{name: string, loaded: number, total: number} | null>(null);
+  const [extractionMode, setExtractionMode] = useState<'text' | 'handwriting' | 'equation'>('text');
+  const [extractedLatex, setExtractedLatex] = useState<string | null>(null);
 
   const renderTaskRef = useRef<pdfjsLib.RenderTask | null>(null);
   const pdfDocRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
@@ -64,6 +70,10 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
   const isInitializingHandwritingRef = useRef<boolean>(false);
   const handwritingRunIdRef = useRef<number>(0);
 
+  const latexWorkerRef = useRef<Worker | null>(null);
+  const isInitializingLatexRef = useRef<boolean>(false);
+  const latexRunIdRef = useRef<number>(0);
+
 
   useEffect(() => {
     if (!isOpen || !doc) return;
@@ -71,6 +81,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
     setLiteparseData(null);
     setSelectionBox(null);
     setExtractedText(null);
+    setExtractedLatex(null);
     setCurrentPage(1);
 
     let isMounted = true;
@@ -131,6 +142,10 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
        if (pyWorkerRef.current) {
           pyWorkerRef.current.terminate();
           pyWorkerRef.current = null;
+       }
+       if (latexWorkerRef.current) {
+          latexWorkerRef.current.terminate();
+          latexWorkerRef.current = null;
        }
     };
   }, []);
@@ -291,6 +306,105 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
     }
   };
 
+  const runEquationOnRegion = async (x: number, y: number, w: number, h: number) => {
+    if (!canvasRef.current) return;
+    setIsLatexRunning(true);
+    setExtractedText(null);
+    setExtractedLatex(null);
+    const runId = ++latexRunIdRef.current;
+
+    try {
+      const tempCanvas = document.createElement('canvas');
+      const tempCtx = tempCanvas.getContext('2d');
+      if (!tempCtx) throw new Error('Could not get 2d context for temporary canvas');
+
+      const scaleX = canvasRef.current.width / (canvasRef.current.clientWidth || 1);
+      const scaleY = canvasRef.current.height / (canvasRef.current.clientHeight || 1);
+
+      tempCanvas.width = w * scaleX;
+      tempCanvas.height = h * scaleY;
+
+      tempCtx.drawImage(
+        canvasRef.current,
+        x * scaleX, y * scaleY, w * scaleX, h * scaleY,
+        0, 0, w * scaleX, h * scaleY
+      );
+
+      const dataUrl = tempCanvas.toDataURL('image/png');
+
+      if (!latexWorkerRef.current && !isInitializingLatexRef.current) {
+        isInitializingLatexRef.current = true;
+        try {
+          const worker = new Worker(new URL('../../workers/latexWorker.ts', import.meta.url), { type: 'module' });
+
+          worker.addEventListener('message', (e) => {
+             if (e.data.type === 'PROGRESS') {
+                setLatexProgress({ name: e.data.name, loaded: e.data.loaded, total: e.data.total });
+             }
+          });
+
+          worker.postMessage({ type: 'INIT' });
+
+          await new Promise<void>((resolve, reject) => {
+            const handleInit = (e: MessageEvent) => {
+              if (e.data.type === 'READY') {
+                worker.removeEventListener('message', handleInit);
+                resolve();
+              } else if (e.data.type === 'ERROR') {
+                worker.removeEventListener('message', handleInit);
+                reject(new Error(e.data.error));
+              }
+            };
+            worker.addEventListener('message', handleInit);
+          });
+
+          if (!document.body.contains(canvasRef.current)) {
+              worker.terminate();
+          } else {
+              latexWorkerRef.current = worker;
+          }
+        } finally {
+          isInitializingLatexRef.current = false;
+          setLatexProgress(null);
+        }
+      }
+
+      while (isInitializingLatexRef.current) {
+         await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      if (!latexWorkerRef.current) {
+          throw new Error('Failed to initialize Latex worker');
+      }
+
+      const result = await new Promise<string>((resolve, reject) => {
+        const handleResult = (e: MessageEvent) => {
+          if (e.data.runId === runId) {
+            latexWorkerRef.current?.removeEventListener('message', handleResult);
+            if (e.data.type === 'RESULT') {
+              resolve(e.data.text);
+            } else if (e.data.type === 'ERROR') {
+              reject(new Error(e.data.error));
+            }
+          }
+        };
+        latexWorkerRef.current!.addEventListener('message', handleResult);
+        latexWorkerRef.current!.postMessage({ type: 'RECOGNIZE', payload: { dataUrl, runId } });
+      });
+
+      if (runId === latexRunIdRef.current && canvasRef.current) {
+        setExtractedLatex(result.trim());
+        setExtractedText(result.trim());
+      }
+    } catch (err) {
+      console.error("Equation recognition failed for the region:", err);
+    } finally {
+      if (runId === latexRunIdRef.current) {
+         setIsLatexRunning(false);
+      }
+    }
+  };
+
   useEffect(() => {
     if (isOpen && pdfDocRef.current && liteparseData) {
       renderPage(currentPage, pdfDocRef.current);
@@ -376,10 +490,17 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
 
     if (w > 10 && h > 10) {
       setSelectionBox({ x, y, w, h });
-      extractRegion(x, y, w, h);
+      if (extractionMode === 'equation') {
+        runEquationOnRegion(x, y, w, h);
+      } else if (extractionMode === 'handwriting') {
+        runHandwritingOnRegion(x, y, w, h);
+      } else {
+        extractRegion(x, y, w, h);
+      }
     } else {
       setSelectionBox(null);
       setExtractedText(null);
+      setExtractedLatex(null);
     }
   };
 
@@ -509,6 +630,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
     if (!canvasRef.current) return;
     setIsOcrRunning(true);
     setExtractedText(null);
+    setExtractedLatex(null);
     const runId = ++ocrRunIdRef.current;
 
     try {
@@ -811,7 +933,26 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
         {/* Right Side: Extraction Result */}
         <div className="w-1/3 bg-gray-50 flex flex-col border-l border-gray-200">
           <div className="p-4 border-b border-gray-200 flex flex-col gap-2 bg-white">
-             <h3 className="font-bold text-gray-800">Formatting Preserved Copy</h3>
+             <div className="flex items-center justify-between mb-2">
+                 <h3 className="font-bold text-gray-800">Formatting Preserved Copy</h3>
+                 <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+                    <button
+                      className={`px-2 py-1 text-xs rounded font-medium ${extractionMode === 'text' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
+                      onClick={() => setExtractionMode('text')}
+                    >Text</button>
+                    <button
+                      className={`px-2 py-1 text-xs rounded font-medium ${extractionMode === 'handwriting' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
+                      onClick={() => setExtractionMode('handwriting')}
+                    >Handwriting</button>
+                    <button
+                      className={`px-2 py-1 text-xs rounded font-medium ${extractionMode === 'equation' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
+                      onClick={() => setExtractionMode('equation')}
+                    >Equation</button>
+                 </div>
+             </div>
+
+             {extractionMode === 'text' && (
+               <>
              <div className="flex items-center gap-2 justify-between">
                <label className="text-xs font-medium text-gray-600 whitespace-nowrap">Image Copy Quality:</label>
                <select
@@ -903,59 +1044,93 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
                   Show Extracted Lines
                 </label>
              </div>
+               </>
+             )}
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 bg-white">
             {!selectionBox ? (
               <div className="text-center py-12 px-4 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 h-full flex flex-col justify-center">
                 <Type className="w-8 h-8 text-gray-400 mx-auto mb-3" />
-                <p className="text-sm text-gray-500">Draw a box around a paragraph to copy it perfectly flowed, avoiding broken lines.</p>
+                <p className="text-sm text-gray-500">Draw a box around a paragraph or equation to copy it.</p>
               </div>
-            ) : isOcrRunning || isHandwritingRunning ? (
+            ) : isLatexRunning && latexProgress ? (
+              <div className="text-center py-12 px-4 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 h-full flex flex-col justify-center items-center">
+                 <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mb-3" />
+                 <p className="text-sm font-medium text-gray-700 mb-1">Preparing Equation Model</p>
+                 <p className="text-xs text-gray-500">Downloading {latexProgress.name} ({Math.round(latexProgress.loaded / 1024 / 1024)}MB {latexProgress.total > 0 ? `/ ${Math.round(latexProgress.total / 1024 / 1024)}MB` : ''})</p>
+                 {latexProgress.total > 0 && (
+                    <div className="w-48 h-1.5 bg-gray-200 rounded-full mt-3 overflow-hidden">
+                       <div className="h-full bg-indigo-600" style={{ width: `${(latexProgress.loaded / latexProgress.total) * 100}%` }} />
+                    </div>
+                 )}
+              </div>
+            ) : isOcrRunning || isHandwritingRunning || isLatexRunning ? (
               <div className="text-center py-12 px-4 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 h-full flex flex-col justify-center items-center">
                  <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mb-3" />
                  <p className="text-sm text-gray-500">
-                    {isHandwritingRunning ? 'Recognizing handwriting...' : 'No text detected. Running OCR on selected region...'}
+                    {isHandwritingRunning ? 'Recognizing handwriting...' : isLatexRunning ? 'Recognizing equation...' : 'Running OCR on selected region...'}
                  </p>
               </div>
-            ) : !extractedText ? (
+            ) : !extractedText && !extractedLatex ? (
                <div className="text-center py-12 px-4 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 h-full flex flex-col justify-center text-gray-500 text-sm">
                   No text found in that region.
                </div>
             ) : (
-              <pre className="text-sm p-4 bg-gray-50 border border-gray-200 rounded-lg overflow-x-auto whitespace-pre-wrap font-sans text-gray-800 leading-relaxed">
-                 {extractedText}
-              </pre>
+              <div className="flex flex-col gap-4">
+                 {extractedLatex && (
+                     <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg overflow-x-auto min-h-[100px] flex items-center justify-center">
+                        <div dangerouslySetInnerHTML={{
+                          __html: (() => {
+                            try {
+                                return katex.renderToString(extractedLatex, { displayMode: true, throwOnError: false });
+                            } catch {
+                                return "<p class='text-red-500'>KaTeX preview error</p>";
+                            }
+                          })()
+                        }} />
+                     </div>
+                 )}
+                 <pre className="text-sm p-4 bg-gray-50 border border-gray-200 rounded-lg overflow-x-auto whitespace-pre-wrap font-sans text-gray-800 leading-relaxed">
+                   {extractedText}
+                 </pre>
+              </div>
             )}
           </div>
 
           <div className="p-4 bg-white border-t border-gray-200 flex flex-col gap-3">
-             <div className="flex gap-3">
-               <button
-                 onClick={() => {
-                   if (selectionBox) {
-                     runOcrOnRegion(selectionBox.x, selectionBox.y, selectionBox.w, selectionBox.h);
-                   }
-                 }}
-                 disabled={!selectionBox || isOcrRunning || isHandwritingRunning}
-                 className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-gray-100 text-gray-700 border border-gray-300 rounded-xl font-medium hover:bg-gray-200 disabled:opacity-50 transition-colors shadow-sm text-sm"
-               >
-                 <ScanText className="w-4 h-4" />
-                 Force OCR on Selection
-               </button>
-               <button
-                 onClick={() => {
-                   if (selectionBox) {
-                     runHandwritingOnRegion(selectionBox.x, selectionBox.y, selectionBox.w, selectionBox.h);
-                   }
-                 }}
-                 disabled={!selectionBox || isOcrRunning || isHandwritingRunning}
-                 className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-gray-100 text-gray-700 border border-gray-300 rounded-xl font-medium hover:bg-gray-200 disabled:opacity-50 transition-colors shadow-sm text-sm"
-               >
-                 <PenTool className="w-4 h-4" />
-                 Recognize Handwriting
-               </button>
-             </div>
+             {extractionMode === 'text' && (
+                 <div className="flex gap-3">
+                   <button
+                     onClick={() => {
+                       if (selectionBox) {
+                         runOcrOnRegion(selectionBox.x, selectionBox.y, selectionBox.w, selectionBox.h);
+                       }
+                     }}
+                     disabled={!selectionBox || isOcrRunning || isHandwritingRunning || isLatexRunning}
+                     className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-gray-100 text-gray-700 border border-gray-300 rounded-xl font-medium hover:bg-gray-200 disabled:opacity-50 transition-colors shadow-sm text-sm"
+                   >
+                     <ScanText className="w-4 h-4" />
+                     Force OCR on Selection
+                   </button>
+                 </div>
+             )}
+             {extractionMode === 'equation' && (
+                 <div className="flex gap-3">
+                   <button
+                     onClick={() => {
+                       if (selectionBox) {
+                         runEquationOnRegion(selectionBox.x, selectionBox.y, selectionBox.w, selectionBox.h);
+                       }
+                     }}
+                     disabled={!selectionBox || isOcrRunning || isHandwritingRunning || isLatexRunning}
+                     className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-gray-100 text-gray-700 border border-gray-300 rounded-xl font-medium hover:bg-gray-200 disabled:opacity-50 transition-colors shadow-sm text-sm"
+                   >
+                     <ScanText className="w-4 h-4" />
+                     Force Equation Recon.
+                   </button>
+                 </div>
+             )}
              <div className="flex gap-3">
                <button
                  onClick={handleCopy}
