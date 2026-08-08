@@ -233,14 +233,18 @@ export async function decodeGreedy(
 
     for (let step = 0; step < maxSeqLen; step++) {
         // Prepare inputs for decoder
-        // The decoder in RapidLatexOCR takes input_ids and encoder_hidden_states
-        const inputIdsTensor = new ort.Tensor('int64', new BigInt64Array(currentTokens.map(BigInt)), [1, currentTokens.length]);
+        // The decoder in RapidLatexOCR takes input_ids, mask, and encoder_hidden_states
+        const seqLen = currentTokens.length;
+        const inputIdsTensor = new ort.Tensor('int64', new BigInt64Array(currentTokens.map(BigInt)), [1, seqLen]);
+
+        // Attention mask — reference impl uses an all-True mask the same shape as the tokens
+        const maskTensor = new ort.Tensor('bool', new Uint8Array(seqLen).fill(1), [1, seqLen]);
 
         const inputs: Record<string, ort.Tensor> = {};
-        // Find input names
         const names = decoderSession.inputNames;
-        inputs[names[0]] = inputIdsTensor; // usually input_ids
-        inputs[names[1]] = context; // usually encoder_hidden_states
+        inputs[names[0]] = inputIdsTensor; // tokens
+        inputs[names[1]] = maskTensor;     // mask
+        inputs[names[2]] = context;        // encoder context
 
         const results = await decoderSession.run(inputs);
         const outputName = decoderSession.outputNames[0];
