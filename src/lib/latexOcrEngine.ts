@@ -1,4 +1,5 @@
 import * as ort from 'onnxruntime-web';
+import temml from 'temml';
 
 // Tokenizer types and loading
 export type Tokenizer = {
@@ -275,4 +276,9 @@ export function postProcessLatex(latex: string): string {
     cleaned = cleaned.replace(/\s*_\s*/g, '_');
 
     return cleaned.trim();
+}
+
+export function toWordMathML(latex: string): string {
+    const mathml = temml.renderToString(latex, { displayMode: true, throwOnError: false });
+    return mathml.replace('<math ', '<math xmlns="http://www.w3.org/1998/Math/MathML" ');
 }
