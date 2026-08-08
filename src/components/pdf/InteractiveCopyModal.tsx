@@ -11,6 +11,7 @@ import type { PyodideWorkerMessage, PyodideWorkerResponse } from '../../workers/
 import { createWorker } from 'tesseract.js';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
+import { toWordMathML } from '../../lib/latexOcrEngine';
 
 interface InteractiveCopyModalProps {
   isOpen: boolean;
@@ -1147,14 +1148,39 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
                  </div>
              )}
              <div className="flex gap-3">
-               <button
-                 onClick={handleCopy}
-                 disabled={!extractedText }
-                 className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors shadow-sm text-sm"
-               >
-                 {copied ? <Check className="w-4 h-4 text-green-300" /> : <Copy className="w-4 h-4" />}
-                 {copied ? 'Text Copied!' : 'Copy Text'}
-               </button>
+               {extractionMode === 'equation' && extractedLatex ? (
+                 <>
+                   <button
+                     onClick={() => {
+                       navigator.clipboard.writeText(extractedLatex);
+                       setCopied(true);
+                       setTimeout(() => setCopied(false), 2000);
+                     }}
+                     className="flex-1 py-3 px-4 bg-gray-100 text-gray-700 border border-gray-300 rounded-xl font-medium hover:bg-gray-200 text-sm"
+                   >
+                     Copy LaTeX
+                   </button>
+                   <button
+                     onClick={() => {
+                       navigator.clipboard.writeText(toWordMathML(extractedLatex));
+                       setCopied(true);
+                       setTimeout(() => setCopied(false), 2000);
+                     }}
+                     className="flex-1 py-3 px-4 bg-gray-100 text-gray-700 border border-gray-300 rounded-xl font-medium hover:bg-gray-200 text-sm"
+                   >
+                     Copy for Word
+                   </button>
+                 </>
+               ) : (
+                 <button
+                   onClick={handleCopy}
+                   disabled={!extractedText }
+                   className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors shadow-sm text-sm"
+                 >
+                   {copied ? <Check className="w-4 h-4 text-green-300" /> : <Copy className="w-4 h-4" />}
+                   {copied ? 'Text Copied!' : 'Copy Text'}
+                 </button>
+               )}
                <button
                  onClick={handleCopyImage}
                  disabled={!selectionBox || isCopyingImage}

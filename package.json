@@ -41,6 +41,7 @@
     "react-signature-canvas": "^1.1.0-alpha.2",
     "react-zoom-pan-pinch": "^4.0.3",
     "tailwind-merge": "^3.5.0",
+    "temml": "^0.13.4",
     "tesseract.js": "^7.0.0",
     "zustand": "^5.0.13"
   },
