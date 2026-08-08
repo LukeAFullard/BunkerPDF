@@ -348,18 +348,23 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
 
           worker.postMessage({ type: 'INIT' });
 
-          await new Promise<void>((resolve, reject) => {
-            const handleInit = (e: MessageEvent) => {
-              if (e.data.type === 'READY') {
-                worker.removeEventListener('message', handleInit);
-                resolve();
-              } else if (e.data.type === 'ERROR') {
-                worker.removeEventListener('message', handleInit);
-                reject(new Error(e.data.error));
-              }
-            };
-            worker.addEventListener('message', handleInit);
-          });
+          try {
+            await new Promise<void>((resolve, reject) => {
+              const handleInit = (e: MessageEvent) => {
+                if (e.data.type === 'READY') {
+                  worker.removeEventListener('message', handleInit);
+                  resolve();
+                } else if (e.data.type === 'ERROR') {
+                  worker.removeEventListener('message', handleInit);
+                  reject(new Error(e.data.error));
+                }
+              };
+              worker.addEventListener('message', handleInit);
+            });
+          } catch (initErr) {
+            worker.terminate();
+            throw initErr;
+          }
 
           if (!document.body.contains(canvasRef.current)) {
               worker.terminate();

@@ -99,17 +99,24 @@ export async function resolveInputSize(
     initialWidth: number,
     initialHeight: number
 ): Promise<{ width: number; height: number; tensor: Float32Array }> {
-    const mean = 0.7931, std = 0.1738;
-    const bgVal = ((255 / 255.0) - mean) / std;
+    let currentWidth = initialWidth;
+    let currentHeight = initialHeight;
+    let currentTensor = initialTensor;
 
-    let currentWidth = Math.min(initialWidth, 672);
-    const currentHeight = Math.min(initialHeight, 192);
-    let currentTensor = cropOrPad(initialTensor, initialWidth, initialHeight, currentWidth, currentHeight, bgVal);
+    // Initial clamp: proportional downscale if oversized (matches Python's minmax_size,
+    // which scales both axes by the same ratio rather than clamping independently).
+    const overRatio = Math.max(currentWidth / 672, currentHeight / 192, 1);
+    if (overRatio > 1) {
+        const targetW = roundTo32(Math.round(currentWidth / overRatio));
+        const targetH = roundTo32(Math.round(currentHeight / overRatio));
+        currentTensor = resizeGrayscaleTensor(currentTensor, currentWidth, currentHeight, targetW, targetH);
+        currentWidth = targetW;
+        currentHeight = targetH;
+    }
 
     let loops = 0;
     while (loops < 5) {
         const tensor = new ort.Tensor('float32', currentTensor, [1, 1, currentHeight, currentWidth]);
-
         const inputName = resizerSession.inputNames[0];
         const results = await resizerSession.run({ [inputName]: tensor });
         const outputName = resizerSession.outputNames[0];
@@ -121,30 +128,22 @@ export async function resolveInputSize(
         }
         const predictedWidth = Math.min((maxIdx + 1) * 32, 672);
 
-        if (predictedWidth === currentWidth || loops >= 3) {
-            if (currentTensor.length !== predictedWidth * currentHeight) {
-                currentTensor = resizeGrayscaleTensor(currentTensor, currentWidth, currentHeight, predictedWidth, currentHeight);
-            }
-            currentWidth = predictedWidth;
-            break;
-        }
+        if (predictedWidth === currentWidth || loops >= 3) break;
 
-        currentTensor = resizeGrayscaleTensor(currentTensor, currentWidth, currentHeight, predictedWidth, currentHeight);
+        // Scale height by the same ratio as width, matching Python's `h = int(h * r)`
+        const ratio = predictedWidth / currentWidth;
+        const newHeight = Math.min(roundTo32(Math.round(currentHeight * ratio)), 192);
+        currentTensor = resizeGrayscaleTensor(currentTensor, currentWidth, currentHeight, predictedWidth, newHeight);
         currentWidth = predictedWidth;
+        currentHeight = newHeight;
         loops++;
     }
 
     return { width: currentWidth, height: currentHeight, tensor: currentTensor };
 }
 
-function cropOrPad(data: Float32Array, oldW: number, oldH: number, newW: number, newH: number, bgVal: number): Float32Array {
-    if (oldW === newW && oldH === newH) return data;
-    const out = new Float32Array(newW * newH).fill(bgVal);
-    const copyW = Math.min(oldW, newW), copyH = Math.min(oldH, newH);
-    for (let y = 0; y < copyH; y++) {
-        for (let x = 0; x < copyW; x++) out[y * newW + x] = data[y * oldW + x];
-    }
-    return out;
+function roundTo32(x: number): number {
+    return Math.max(32, Math.round(x / 32) * 32);
 }
 
 function resizeGrayscaleTensor(data: Float32Array, oldW: number, oldH: number, newW: number, newH: number): Float32Array {
@@ -175,24 +174,6 @@ function resizeGrayscaleTensor(data: Float32Array, oldW: number, oldH: number, n
 }
 
 export function toTensor(data: Float32Array, width: number, height: number): ort.Tensor {
-    // We need to resize/pad the data to match width/height exactly
-    // since we didn't resize the actual pixel data in resolveInputSize.
-    // If width/height changed, we do a simple crop or pad with background.
-
-    // Original might have been different size.
-    // We assume data is from preprocessRegion which returns width and height.
-    // We don't have the original width/height here!
-    // Wait, let's change `resolveInputSize` signature or handle it.
-    // The prompt says `const { width, height } = await resolveInputSize(sessions!.resizer, pre.tensor);`
-    // Wait, the prompt signature was:
-    // export async function resolveInputSize(resizerSession: ort.InferenceSession, tensor: Float32Array): Promise<{ width: number; height: number }>
-    // We need original width/height inside `resolveInputSize`. Let's assume the tensor is [1, 1, pre.height, pre.width] and we can infer from pre.tensor length?
-    // Actually let's just make sure `toTensor` gets the original width and height, or we just pass the original tensor.
-    // If we just use `pre.tensor` and `pre.width`/`pre.height` directly and ignore the resizer, it might be fine, but let's implement basic resizing.
-
-    // We'll assume the data is already of size width*height for simplicity, OR we just return the tensor.
-    // Let's assume the caller passes the right pre.tensor and pre.width/pre.height.
-
     return new ort.Tensor('float32', data, [1, 1, height, width]);
 }
 
@@ -280,7 +261,7 @@ export function postProcessLatex(latex: string): string {
     // Replace Ġ with space
     let cleaned = latex.replace(/Ġ/g, ' ');
     // Remove other special tokens if any (like </s>, <pad>)
-    cleaned = cleaned.replace(/<\/?[s]>/g, '').replace(/<pad>/g, '');
+    cleaned = cleaned.replace(/\[EOS\]/g, '').replace(/\[BOS\]/g, '').replace(/\[PAD\]/g, '');
 
     // Collapse spurious whitespace around non-letter tokens:
     // Regex cleanup: \frac { x } { y } -> \frac{x}{y} (skip inside \text{...})
