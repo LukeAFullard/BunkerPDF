@@ -91,7 +91,7 @@ export function SideBySideViewerModal({ onClose, onOpenCompare }: SideBySideView
               <span className="text-sm text-gray-500">Zoom 1:</span>
               <button onClick={() => { setScale1(s => Math.max(0.5, s - 0.25)); if (isZoomLocked) setScale2(s => Math.max(0.5, s - 0.25)); }} className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded">-</button>
               <span className="text-sm w-12 text-center">{Math.round(scale1 * 100)}%</span>
-              <button onClick={() => { setScale1(s => Math.min(3.0, s + 0.25)); if (isZoomLocked) setScale2(s => Math.min(3.0, s + 0.25)); }} className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded">+</button>
+              <button onClick={() => { setScale1(s => Math.min(5.0, s + 0.25)); if (isZoomLocked) setScale2(s => Math.min(5.0, s + 0.25)); }} className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded">+</button>
             </div>
 
             <button
@@ -112,7 +112,7 @@ export function SideBySideViewerModal({ onClose, onOpenCompare }: SideBySideView
               <span className="text-sm text-gray-500">Zoom 2:</span>
               <button onClick={() => { setScale2(s => Math.max(0.5, s - 0.25)); if (isZoomLocked) setScale1(s => Math.max(0.5, s - 0.25)); }} className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded">-</button>
               <span className="text-sm w-12 text-center">{Math.round(scale2 * 100)}%</span>
-              <button onClick={() => { setScale2(s => Math.min(3.0, s + 0.25)); if (isZoomLocked) setScale1(s => Math.min(3.0, s + 0.25)); }} className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded">+</button>
+              <button onClick={() => { setScale2(s => Math.min(5.0, s + 0.25)); if (isZoomLocked) setScale1(s => Math.min(5.0, s + 0.25)); }} className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded">+</button>
             </div>
 
             {onOpenCompare && (

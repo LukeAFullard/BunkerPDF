@@ -557,7 +557,7 @@ export function SmartCropModal({ isOpen, docId, onClose, onApply }: SmartCropMod
                   <ZoomOut className="w-4 h-4 text-gray-700" />
                 </button>
                 <span className="text-sm font-medium w-12 text-center text-gray-700">{Math.round(zoomLevel * 100)}%</span>
-                <button onClick={() => setZoomLevel(z => Math.min(3.0, z + 0.25))} className="p-1 hover:bg-gray-200 rounded transition-colors">
+                <button onClick={() => setZoomLevel(z => Math.min(5.0, z + 0.25))} className="p-1 hover:bg-gray-200 rounded transition-colors">
                   <ZoomIn className="w-4 h-4 text-gray-700" />
                 </button>
                 <div className="w-px h-5 bg-gray-300 mx-1" />
