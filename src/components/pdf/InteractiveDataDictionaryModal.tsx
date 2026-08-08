@@ -243,7 +243,7 @@ export function InteractiveDataDictionaryModal({ isOpen, docId, onClose }: Inter
                   {Math.round(zoomLevel * 100)}%
                 </span>
                 <button
-                  onClick={() => setZoomLevel(prev => Math.min(3.0, prev + 0.25))}
+                  onClick={() => setZoomLevel(prev => Math.min(5.0, prev + 0.25))}
                   className="p-1.5 hover:bg-gray-100 rounded-md text-gray-600 transition-colors"
                   title="Zoom In"
                 >

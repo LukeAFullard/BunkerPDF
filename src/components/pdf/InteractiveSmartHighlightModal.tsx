@@ -398,7 +398,7 @@ export function InteractiveSmartHighlightModal({ isOpen, docId, onClose, onApply
               <div className="flex items-center gap-1 border-l pl-4 border-r pr-4">
                 <button onClick={() => setZoomLevel(z => Math.max(0.5, z - 0.25))} className="p-1 hover:bg-gray-100 rounded text-gray-600"><ZoomOut className="w-4 h-4" /></button>
                 <span className="text-xs font-medium w-12 text-center">{Math.round(zoomLevel * 100)}%</span>
-                <button onClick={() => setZoomLevel(z => Math.min(3.0, z + 0.25))} className="p-1 hover:bg-gray-100 rounded text-gray-600"><ZoomIn className="w-4 h-4" /></button>
+                <button onClick={() => setZoomLevel(z => Math.min(5.0, z + 0.25))} className="p-1 hover:bg-gray-100 rounded text-gray-600"><ZoomIn className="w-4 h-4" /></button>
               </div>
               <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage <= 1} className="px-2 py-1 bg-gray-200 rounded disabled:opacity-50">Prev</button>
               <span className="text-sm font-medium">Page {currentPage} of {totalPages}</span>

@@ -284,7 +284,7 @@ export function SmartFormGenerationModal({ isOpen, docId, onClose, onApply }: Sm
                    <ZoomOut className="w-4 h-4" />
                  </button>
                  <span className="text-xs font-medium px-2 min-w-[3rem] text-center">{Math.round(zoomLevel * 100)}%</span>
-                 <button onClick={() => setZoomLevel(z => Math.min(3.0, z + 0.2))} className="p-1.5 hover:bg-white rounded shadow-sm text-gray-600 transition-colors">
+                 <button onClick={() => setZoomLevel(z => Math.min(5.0, z + 0.2))} className="p-1.5 hover:bg-white rounded shadow-sm text-gray-600 transition-colors">
                    <ZoomIn className="w-4 h-4" />
                  </button>
               </div>

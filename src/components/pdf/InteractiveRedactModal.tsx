@@ -322,7 +322,7 @@ export function InteractiveRedactModal({ isOpen, docId, onClose, onApply }: Inte
                    {Math.round(zoomLevel * 100)}%
                  </span>
                  <button
-                   onClick={() => setZoomLevel(z => Math.min(3.0, z + 0.2))}
+                   onClick={() => setZoomLevel(z => Math.min(5.0, z + 0.2))}
                    className="p-1.5 hover:bg-white rounded shadow-sm text-gray-600 transition-colors"
                    title="Zoom In"
                  >
