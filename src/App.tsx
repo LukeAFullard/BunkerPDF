@@ -23,7 +23,6 @@ import { CrossDocumentReorder } from "./components/pdf/reorder/CrossDocumentReor
 import { InteractiveSmartHighlightModal, type HighlightBox } from "./components/pdf/InteractiveSmartHighlightModal";
 import { highlightBoxesLiteparse } from "./lib/liteparseEngine";
 import { InteractiveRedactModal, type RedactBox } from "./components/pdf/InteractiveRedactModal";
-import { InteractiveTableModal } from "./components/pdf/InteractiveTableModal";
 import { InteractiveCopyModal } from "./components/pdf/InteractiveCopyModal";
 import { InteractiveAutoLinkerModal } from "./components/pdf/InteractiveAutoLinkerModal";
 import { autoLinkBoxesLiteparse } from "./lib/liteparseEngine";
@@ -329,10 +328,6 @@ function App() {
   }>({ isOpen: false, docId: null });
 
 
-  const [interactiveTableState, setInteractiveTableState] = useState<{
-    isOpen: boolean;
-    docId: string | null;
-  }>({ isOpen: false, docId: null });
 
   const [visualWatermarkState, setVisualWatermarkState] = useState<{
     isOpen: boolean;
@@ -2113,17 +2108,21 @@ function App() {
     setInteractiveRedactState({ isOpen: true, docId: doc.id });
   };
   const handleInteractiveTable = (doc: PDFDocument) => {
-    setInteractiveTableState({ isOpen: true, docId: doc.id });
+    setInteractiveCopyState({ isOpen: true, docId: doc.id, defaultMode: 'table' });
   };
 
-  const [interactiveCopyState, setInteractiveCopyState] = useState<{isOpen: boolean, docId: string | null}>({isOpen: false, docId: null});
+  const [interactiveCopyState, setInteractiveCopyState] = useState<{
+    isOpen: boolean;
+    docId: string | null;
+    defaultMode: 'text' | 'handwriting' | 'equation' | 'table';
+  }>({ isOpen: false, docId: null, defaultMode: 'text' });
   const [flipbookState, setFlipbookState] = useState<{isOpen: boolean, docId: string | null}>({isOpen: false, docId: null});
   const handleFlipbook = (doc: PDFDocument) => {
     setFlipbookState({ isOpen: true, docId: doc.id });
   };
 
   const handleInteractiveCopy = (doc: PDFDocument) => {
-    setInteractiveCopyState({ isOpen: true, docId: doc.id });
+    setInteractiveCopyState({ isOpen: true, docId: doc.id, defaultMode: 'text' });
   };
 
 
@@ -2532,11 +2531,6 @@ function App() {
         onClose={() => setInteractiveRedactState({ isOpen: false, docId: null })}
         onApply={executeInteractiveRedact}
       />
-      <InteractiveTableModal
-        isOpen={interactiveTableState.isOpen}
-        docId={interactiveTableState.docId}
-        onClose={() => setInteractiveTableState({ isOpen: false, docId: null })}
-      />
       <FlipbookViewer
         isOpen={flipbookState.isOpen}
         docId={flipbookState.docId}
@@ -2545,7 +2539,8 @@ function App() {
       <InteractiveCopyModal
         isOpen={interactiveCopyState.isOpen}
         docId={interactiveCopyState.docId}
-        onClose={() => setInteractiveCopyState({ isOpen: false, docId: null })}
+        defaultMode={interactiveCopyState.defaultMode}
+        onClose={() => setInteractiveCopyState({ isOpen: false, docId: null, defaultMode: 'text' })}
       />
       <InteractiveAutoLinkerModal
         isOpen={interactiveAutoLinkerState.isOpen}
