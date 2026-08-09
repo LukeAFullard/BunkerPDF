@@ -447,8 +447,6 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
           throw new Error('Failed to initialize Handwriting worker');
       }
 
-      const jobId = `handwriting-${Date.now()}`;
-
 
       let aggregatedText = "";
       let totalConfidence = 0;

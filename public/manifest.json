@@ -2,7 +2,7 @@
   "name": "BunkerPDF",
   "short_name": "BunkerPDF",
   "description": "Secure, completely client-side PDF tool",
-  "start_url": "/BunkerPDF/",
+  "start_url": ".",
   "display": "standalone",
   "background_color": "#f9fafb",
   "theme_color": "#4f46e5",
