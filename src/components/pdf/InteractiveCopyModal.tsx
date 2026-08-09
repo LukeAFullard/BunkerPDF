@@ -9,7 +9,7 @@ import { cleanupPdfResources } from '../../lib/pdfCleanup';
 import { getConfiguredLiteParse, formatParagraphFromItems, formatMarkdownFromItems, recognizeTableStructure, isBackgroundColor } from '../../lib/liteparseEngine';
 import type { LineItem } from '../../lib/liteparseEngine';
 import type { PyodideWorkerMessage, PyodideWorkerResponse } from '../../workers/pyodideWorker';
-import { createWorker } from 'tesseract.js';
+import { createWorker, PSM } from 'tesseract.js';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import { toWordMathML } from '../../lib/latexOcrEngine';
@@ -62,6 +62,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
   const [extractedLatex, setExtractedLatex] = useState<string | null>(null);
   const [latexError, setLatexError] = useState<string | null>(null);
   const [equationConfidence, setEquationConfidence] = useState<number | null>(null);
+  const [handwritingConfidence, setHandwritingConfidence] = useState<number | null>(null);
   const [wasEdited, setWasEdited] = useState(false);
 
   // Table mode state (ported from InteractiveTableModal)
@@ -149,6 +150,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
       setExtractedLatex(null);
       setLatexError(null);
       setEquationConfidence(null);
+      setHandwritingConfidence(null);
       setWasEdited(false);
       setExtractedTable(null);
       setTableConfidence(null);
@@ -280,10 +282,64 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
     }
   };
 
+  const preprocessImageForHandwriting = (imageData: ImageData, targetMinDim: number = 384): HTMLCanvasElement => {
+    const { width, height, data } = imageData;
+    const numPixels = width * height;
+
+    // Grayscale and auto-invert
+    let sumIntensity = 0;
+    const grayscales = new Uint8ClampedArray(numPixels);
+    for (let i = 0; i < numPixels; i++) {
+        const r = data[i * 4];
+        const g = data[i * 4 + 1];
+        const b = data[i * 4 + 2];
+        const gray = (r * 299 + g * 587 + b * 114) / 1000;
+        grayscales[i] = gray;
+        sumIntensity += gray;
+    }
+    const avgIntensity = sumIntensity / numPixels;
+
+    if (avgIntensity < 127) {
+        for (let i = 0; i < numPixels; i++) {
+            grayscales[i] = 255 - grayscales[i];
+        }
+    }
+
+    // Scale up so minimum dimension is `targetMinDim`
+    const scale = Math.max(1, targetMinDim / Math.min(width, height));
+    const newW = Math.round(width * scale);
+    const newH = Math.round(height * scale);
+
+    const srcCanvas = document.createElement('canvas');
+    srcCanvas.width = width;
+    srcCanvas.height = height;
+    const srcCtx = srcCanvas.getContext('2d')!;
+    const processedImageData = srcCtx.createImageData(width, height);
+    for (let i = 0; i < numPixels; i++) {
+        const v = grayscales[i];
+        processedImageData.data[i * 4] = v;
+        processedImageData.data[i * 4 + 1] = v;
+        processedImageData.data[i * 4 + 2] = v;
+        processedImageData.data[i * 4 + 3] = 255;
+    }
+    srcCtx.putImageData(processedImageData, 0, 0);
+
+    const dstCanvas = document.createElement('canvas');
+    dstCanvas.width = newW;
+    dstCanvas.height = newH;
+    const dstCtx = dstCanvas.getContext('2d')!;
+    dstCtx.imageSmoothingEnabled = true;
+    dstCtx.imageSmoothingQuality = 'high';
+    dstCtx.drawImage(srcCanvas, 0, 0, width, height, 0, 0, newW, newH);
+
+    return dstCanvas;
+  };
+
   const runHandwritingOnRegion = async (x: number, y: number, w: number, h: number) => {
     if (!canvasRef.current) return;
     setIsHandwritingRunning(true);
     setExtractedText(null);
+    setHandwritingConfidence(null);
     const runId = ++handwritingRunIdRef.current;
 
     try {
@@ -306,9 +362,50 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
         0, 0, w * scaleX, h * scaleY
       );
 
-      const dataUrl = tempCanvas.toDataURL('image/png');
+      // Get preprocessed canvas for Tesseract and Handwriting
+      const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+      const preprocessedCanvas = preprocessImageForHandwriting(imageData);
 
-      // Initialize worker if not cached
+      // Initialize Tesseract worker if not cached
+      if (!tesseractWorkerRef.current && !isInitializingWorkerRef.current) {
+         isInitializingWorkerRef.current = true;
+         try {
+            const worker = await createWorker('eng');
+            if (!document.body.contains(canvasRef.current)) {
+                worker.terminate();
+            } else {
+                tesseractWorkerRef.current = worker;
+            }
+         } finally {
+            isInitializingWorkerRef.current = false;
+         }
+      }
+
+      while (isInitializingWorkerRef.current) {
+         await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      if (!tesseractWorkerRef.current) {
+          throw new Error('Failed to initialize Tesseract worker for handwriting segmentation');
+      }
+
+      // Configure Tesseract for line segmentation (SPARSE_TEXT)
+      await tesseractWorkerRef.current.setParameters({ tessedit_pageseg_mode: PSM.SPARSE_TEXT });
+      const tessResult = await tesseractWorkerRef.current.recognize(preprocessedCanvas.toDataURL('image/png'));
+
+      // Reset Tesseract to default mode for standard text OCR
+      await tesseractWorkerRef.current.setParameters({ tessedit_pageseg_mode: PSM.AUTO });
+
+      // Extract line bounding boxes
+      const lines = tessResult.data.lines || [];
+      const lineBoxes = lines.map((line: any) => line.bbox);
+
+      // Fallback if no lines found: use the whole image
+      if (lineBoxes.length === 0) {
+        lineBoxes.push({ x0: 0, y0: 0, x1: preprocessedCanvas.width, y1: preprocessedCanvas.height });
+      }
+
+      // Initialize Handwriting worker if not cached
       if (!handwritingWorkerRef.current && !isInitializingHandwritingRef.current) {
         isInitializingHandwritingRef.current = true;
         try {
@@ -352,24 +449,56 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
 
       const jobId = `handwriting-${Date.now()}`;
 
-      const result = await new Promise<string>((resolve, reject) => {
-        const handleResult = (e: MessageEvent) => {
-          if (e.data.jobId === jobId) {
-            handwritingWorkerRef.current?.removeEventListener('message', handleResult);
-            if (e.data.type === 'RESULT') {
-              resolve(e.data.text);
-            } else if (e.data.type === 'ERROR') {
-              reject(new Error(e.data.error));
-            }
-          }
-        };
-        handwritingWorkerRef.current!.addEventListener('message', handleResult);
-        handwritingWorkerRef.current!.postMessage({ type: 'RECOGNIZE', image: dataUrl, jobId });
-      });
+
+      let aggregatedText = "";
+      let totalConfidence = 0;
+      let lineCount = 0;
+
+      for (const box of lineBoxes) {
+         // Add some padding to the crop if possible
+         const pad = 4;
+         const cropX = Math.max(0, box.x0 - pad);
+         const cropY = Math.max(0, box.y0 - pad);
+         const cropW = Math.min(preprocessedCanvas.width - cropX, (box.x1 - box.x0) + pad * 2);
+         const cropH = Math.min(preprocessedCanvas.height - cropY, (box.y1 - box.y0) + pad * 2);
+
+         if (cropW <= 0 || cropH <= 0) continue;
+
+         const cropCanvas = document.createElement('canvas');
+         cropCanvas.width = cropW;
+         cropCanvas.height = cropH;
+         const cropCtx = cropCanvas.getContext('2d')!;
+         cropCtx.drawImage(preprocessedCanvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
+         const cropDataUrl = cropCanvas.toDataURL('image/png');
+         const cropJobId = `handwriting-${Date.now()}-${Math.random()}`;
+
+         const result = await new Promise<{text: string, confidence: number}>((resolve, reject) => {
+           const handleResult = (e: MessageEvent) => {
+             if (e.data.jobId === cropJobId) {
+               handwritingWorkerRef.current?.removeEventListener('message', handleResult);
+               if (e.data.type === 'RESULT') {
+                 resolve({ text: e.data.text, confidence: e.data.confidence ?? 0 });
+               } else if (e.data.type === 'ERROR') {
+                 reject(new Error(e.data.error));
+               }
+             }
+           };
+           handwritingWorkerRef.current!.addEventListener('message', handleResult);
+           handwritingWorkerRef.current!.postMessage({ type: 'RECOGNIZE', image: cropDataUrl, jobId: cropJobId });
+         });
+
+         if (result.text.trim().length > 0) {
+             aggregatedText += (aggregatedText ? "\n" : "") + result.text.trim();
+             totalConfidence += result.confidence;
+             lineCount++;
+         }
+      }
 
       // Only process result if this is the most recent run and component is mounted
       if (runId === handwritingRunIdRef.current && canvasRef.current) {
-        setExtractedText(result.trim());
+        setExtractedText(aggregatedText);
+        setHandwritingConfidence(lineCount > 0 ? totalConfidence / lineCount : 0);
       }
     } catch (err) {
       console.error("Handwriting recognition failed for the region:", err);
@@ -662,6 +791,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
       setExtractedLatex(null);
       setLatexError(null);
       setEquationConfidence(null);
+      setHandwritingConfidence(null);
       setWasEdited(false);
       setExtractedTable(null);
       setTableConfidence(null);
@@ -1480,9 +1610,16 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
                      </div>
                    </div>
                  ) : (
-                   <pre className="text-sm p-4 bg-gray-50 border border-gray-200 rounded-lg overflow-x-auto whitespace-pre-wrap font-sans text-gray-800 leading-relaxed">
-                     {extractedText}
-                   </pre>
+                   <div className="flex flex-col gap-3">
+                     {extractionMode === 'handwriting' && handwritingConfidence !== null && handwritingConfidence < 0.6 && (
+                       <div className="p-3 rounded border text-sm font-semibold bg-yellow-50 border-yellow-200 text-yellow-800">
+                         Low confidence — consider Force OCR fallback.
+                       </div>
+                     )}
+                     <pre className="text-sm p-4 bg-gray-50 border border-gray-200 rounded-lg overflow-x-auto whitespace-pre-wrap font-sans text-gray-800 leading-relaxed">
+                       {extractedText}
+                     </pre>
+                   </div>
                  )}
               </div>
             )}
