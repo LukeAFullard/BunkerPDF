@@ -58,6 +58,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
   const [isHandwritingRunning, setIsHandwritingRunning] = useState(false);
   const [isLatexRunning, setIsLatexRunning] = useState(false);
   const [latexProgress, setLatexProgress] = useState<{name: string, loaded: number, total: number} | null>(null);
+  const [handwritingProgress, setHandwritingProgress] = useState<{name: string, loaded: number, total: number} | null>(null);
   const [extractionMode, setExtractionMode] = useState<'text' | 'handwriting' | 'equation' | 'table'>(defaultMode);
   const [extractedLatex, setExtractedLatex] = useState<string | null>(null);
   const [latexError, setLatexError] = useState<string | null>(null);
@@ -436,11 +437,15 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
 
           await new Promise<void>((resolve, reject) => {
             const handleInit = (e: MessageEvent) => {
-              if (e.data.jobId === 'init') {
+              if (e.data.type === 'PROGRESS' && e.data.name && e.data.loaded !== undefined && e.data.total) {
+                setHandwritingProgress({ name: e.data.name, loaded: e.data.loaded, total: e.data.total });
+              } else if (e.data.jobId === 'init') {
                 if (e.data.type === 'READY') {
+                  setHandwritingProgress(null);
                   worker.removeEventListener('message', handleInit);
                   resolve();
                 } else if (e.data.type === 'ERROR') {
+                  setHandwritingProgress(null);
                   worker.removeEventListener('message', handleInit);
                   reject(new Error(e.data.error));
                 }
@@ -1546,6 +1551,17 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
                  {latexProgress.total > 0 && (
                     <div className="w-48 h-1.5 bg-gray-200 rounded-full mt-3 overflow-hidden">
                        <div className="h-full bg-indigo-600" style={{ width: `${(latexProgress.loaded / latexProgress.total) * 100}%` }} />
+                    </div>
+                 )}
+              </div>
+            ) : isHandwritingRunning && handwritingProgress ? (
+              <div className="text-center py-12 px-4 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 h-full flex flex-col justify-center items-center">
+                 <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mb-3" />
+                 <p className="text-sm font-medium text-gray-700 mb-1">Preparing Handwriting Model</p>
+                 <p className="text-xs text-gray-500">Downloading {handwritingProgress.name} ({Math.round(handwritingProgress.loaded / 1024 / 1024)}MB {handwritingProgress.total > 0 ? `/ ${Math.round(handwritingProgress.total / 1024 / 1024)}MB` : ''})</p>
+                 {handwritingProgress.total > 0 && (
+                    <div className="w-48 h-1.5 bg-gray-200 rounded-full mt-3 overflow-hidden">
+                       <div className="h-full bg-indigo-600" style={{ width: `${(handwritingProgress.loaded / handwritingProgress.total) * 100}%` }} />
                     </div>
                  )}
               </div>
