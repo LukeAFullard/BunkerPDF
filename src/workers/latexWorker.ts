@@ -161,9 +161,9 @@ self.onmessage = async (e: MessageEvent) => {
             const tensor = toTensor(resizedData, width, height);
 
             const context = await encode(sessions.encoder, tensor);
-            const raw = await decodeGreedy(sessions.decoder, context, tokenizer);
+            const { latex: raw, confidence } = await decodeGreedy(sessions.decoder, context, tokenizer);
 
-            self.postMessage({ type: 'RESULT', text: postProcessLatex(raw), runId: payload.runId });
+            self.postMessage({ type: 'RESULT', text: postProcessLatex(raw), confidence, runId: payload.runId });
         } catch (err) {
             self.postMessage({ type: 'ERROR', error: String(err), runId: payload.runId });
         }

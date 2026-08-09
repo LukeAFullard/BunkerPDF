@@ -59,6 +59,8 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
   const [extractionMode, setExtractionMode] = useState<'text' | 'handwriting' | 'equation'>('text');
   const [extractedLatex, setExtractedLatex] = useState<string | null>(null);
   const [latexError, setLatexError] = useState<string | null>(null);
+  const [equationConfidence, setEquationConfidence] = useState<number | null>(null);
+  const [wasEdited, setWasEdited] = useState(false);
 
   const renderTaskRef = useRef<pdfjsLib.RenderTask | null>(null);
   const pdfDocRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
@@ -79,16 +81,20 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
 
   useEffect(() => {
     if (!isOpen || !doc) return;
-    setZoomLevel(1.0);
-    setLiteparseData(null);
-    setSelectionBox(null);
-    setExtractedText(null);
-    setExtractedLatex(null);
-    setLatexError(null);
-    setCurrentPage(1);
+    setTimeout(() => {
+      setZoomLevel(1.0);
+      setLiteparseData(null);
+      setSelectionBox(null);
+      setExtractedText(null);
+      setExtractedLatex(null);
+      setLatexError(null);
+      setEquationConfidence(null);
+      setWasEdited(false);
+      setCurrentPage(1);
+    }, 0);
 
     let isMounted = true;
-    setIsLoading(true);
+    setTimeout(() => { if (isMounted) setIsLoading(true); }, 0);
 
     const loadPdfAndLiteparse = async () => {
       try {
@@ -315,6 +321,8 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
     setExtractedText(null);
     setExtractedLatex(null);
     setLatexError(null);
+    setEquationConfidence(null);
+    setWasEdited(false);
     const runId = ++latexRunIdRef.current;
 
     try {
@@ -386,12 +394,12 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
           throw new Error('Failed to initialize Latex worker');
       }
 
-      const result = await new Promise<string>((resolve, reject) => {
+      const result = await new Promise<{ text: string, confidence: number }>((resolve, reject) => {
         const handleResult = (e: MessageEvent) => {
           if (e.data.runId === runId) {
             latexWorkerRef.current?.removeEventListener('message', handleResult);
             if (e.data.type === 'RESULT') {
-              resolve(e.data.text);
+              resolve({ text: e.data.text, confidence: e.data.confidence });
             } else if (e.data.type === 'ERROR') {
               reject(new Error(e.data.error));
             }
@@ -402,8 +410,9 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
       });
 
       if (runId === latexRunIdRef.current && canvasRef.current) {
-        setExtractedLatex(result.trim());
-        setExtractedText(result.trim());
+        setExtractedLatex(result.text.trim());
+        setExtractedText(result.text.trim());
+        setEquationConfidence(result.confidence);
       }
     } catch (err) {
       console.error("Equation recognition failed for the region:", err);
@@ -512,6 +521,8 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
       setExtractedText(null);
       setExtractedLatex(null);
       setLatexError(null);
+      setEquationConfidence(null);
+      setWasEdited(false);
     }
   };
 
@@ -1094,8 +1105,35 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
                </div>
             ) : (
               <div className="flex flex-col gap-4">
-                 {extractedLatex && (
-                     <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg overflow-x-auto min-h-[100px] flex items-center justify-center">
+                 {extractionMode === 'equation' && extractedLatex ? (
+                   <div className="flex flex-col gap-3">
+                     {equationConfidence !== null && equationConfidence < 0.85 && (
+                       <div className={`p-3 rounded border text-sm font-semibold ${
+                         equationConfidence < 0.6 ? 'bg-red-50 border-red-200 text-red-800' : 'bg-yellow-50 border-yellow-200 text-yellow-800'
+                       }`}>
+                         {equationConfidence < 0.6 ? 'Low Confidence Extraction' : 'Verify Suggested'} ({(equationConfidence * 100).toFixed(0)}%)
+                       </div>
+                     )}
+                     <div className="relative">
+                       <textarea
+                         value={extractedLatex}
+                         onChange={(e) => {
+                           setExtractedLatex(e.target.value);
+                           setEquationConfidence(null);
+                           setWasEdited(true);
+                         }}
+                         className="text-xs p-4 bg-gray-50 border border-gray-200 rounded-lg font-mono text-gray-800 resize-none w-full outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                         rows={4}
+                         spellCheck={false}
+                       />
+                       {wasEdited && (
+                         <div className="absolute top-2 right-2 flex items-center gap-1 bg-white px-2 py-1 rounded shadow-sm border border-gray-200 text-[10px] font-medium text-gray-500">
+                           <Type className="w-3 h-3" />
+                           Edited
+                         </div>
+                       )}
+                     </div>
+                     <div className="p-4 bg-white border border-gray-200 rounded-lg flex justify-center overflow-x-auto min-h-[100px] items-center">
                         <div dangerouslySetInnerHTML={{
                           __html: (() => {
                             try {
@@ -1106,10 +1144,12 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
                           })()
                         }} />
                      </div>
+                   </div>
+                 ) : (
+                   <pre className="text-sm p-4 bg-gray-50 border border-gray-200 rounded-lg overflow-x-auto whitespace-pre-wrap font-sans text-gray-800 leading-relaxed">
+                     {extractedText}
+                   </pre>
                  )}
-                 <pre className="text-sm p-4 bg-gray-50 border border-gray-200 rounded-lg overflow-x-auto whitespace-pre-wrap font-sans text-gray-800 leading-relaxed">
-                   {extractedText}
-                 </pre>
               </div>
             )}
           </div>
