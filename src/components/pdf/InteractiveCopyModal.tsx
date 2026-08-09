@@ -84,7 +84,9 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
   };
   const [equationConfidence, setEquationConfidence] = useState<number | null>(null);
   const [handwritingConfidence, setHandwritingConfidence] = useState<number | null>(null);
-  const [wasEdited, setWasEdited] = useState(false);
+  const [wasEquationEdited, setWasEquationEdited] = useState(false);
+  const [wasTextEdited, setWasTextEdited] = useState(false);
+  const [wasTableEdited, setWasTableEdited] = useState(false);
 
   // Table mode state (ported from InteractiveTableModal)
   const [extractedTable, setExtractedTable] = useState<string | null>(null);
@@ -173,7 +175,9 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
       setEquationConfidence(null);
       setHandwritingConfidence(null);
       setHandwritingError(null);
-      setWasEdited(false);
+      setWasEquationEdited(false);
+      setWasTextEdited(false);
+      setWasTableEdited(false);
       setExtractedTable(null);
       setTableConfidence(null);
       setTableConfidenceReasons([]);
@@ -363,6 +367,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
     setExtractedText(null);
     setHandwritingConfidence(null);
     setHandwritingError(null);
+    setWasTextEdited(false);
     const runId = ++handwritingRunIdRef.current;
 
     try {
@@ -548,6 +553,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
 
   const runTableExtractionOnRegion = async (x: number, y: number, w: number, h: number) => {
     if (!liteparseData || overlayScale <= 0 || !pdfDocRef.current) return;
+    setWasTableEdited(false);
 
     const lpX = x / overlayScale;
     const lpY = y / overlayScale;
@@ -604,7 +610,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
   };
 
   useEffect(() => {
-    if (extractionMode === 'table' && selectionBox) {
+    if (extractionMode === 'table' && selectionBox && !wasTableEdited) {
       runTableExtractionOnRegion(selectionBox.x, selectionBox.y, selectionBox.w, selectionBox.h);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -617,7 +623,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
     setExtractedLatex(null);
     setLatexError(null);
     setEquationConfidence(null);
-    setWasEdited(false);
+    setWasEquationEdited(false);
     const runId = ++latexRunIdRef.current;
 
     try {
@@ -821,7 +827,9 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
       setEquationConfidence(null);
       setHandwritingConfidence(null);
       setHandwritingError(null);
-      setWasEdited(false);
+      setWasEquationEdited(false);
+      setWasTextEdited(false);
+      setWasTableEdited(false);
       setExtractedTable(null);
       setTableConfidence(null);
       setTableConfidenceReasons([]);
@@ -831,6 +839,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
 
   const extractRegion = async (x: number, y: number, w: number, h: number, customThreshold?: number, overrideWholeLine?: boolean, overrideFormat?: 'text' | 'markdown') => {
     if (!liteparseData || overlayScale <= 0) return;
+    setWasTextEdited(false);
 
     // Convert overlay pixels to LiteParse units (which are native PDF points usually)
     const lpX = x / overlayScale;
@@ -957,6 +966,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
     setExtractedText(null);
     setExtractedLatex(null);
     setLatexError(null);
+    setWasTextEdited(false);
     const runId = ++ocrRunIdRef.current;
 
     try {
@@ -1601,9 +1611,26 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
                        )}
                     </div>
                   )}
-                  <pre className="text-xs p-4 bg-gray-50 border border-gray-200 rounded-lg overflow-x-auto whitespace-pre-wrap font-mono text-gray-800">
-                     {extractedTable}
-                  </pre>
+                  <div className="relative">
+                    <textarea
+                      value={extractedTable ?? ''}
+                      onChange={(e) => {
+                        setExtractedTable(e.target.value);
+                        setWasTableEdited(true);
+                        setTableConfidence(null);
+                        setTableConfidenceReasons([]);
+                      }}
+                      className="text-xs p-4 bg-gray-50 border border-gray-200 rounded-lg font-mono text-gray-800 resize-none w-full outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      rows={10}
+                      spellCheck={false}
+                    />
+                    {wasTableEdited && (
+                      <div className="absolute top-2 right-2 flex items-center gap-1 bg-white px-2 py-1 rounded shadow-sm border border-gray-200 text-[10px] font-medium text-gray-500">
+                        <Type className="w-3 h-3" />
+                        Edited
+                      </div>
+                    )}
+                  </div>
                </div>
             ) : handwritingError ? (
                <div className="text-center py-12 px-4 border-2 border-dashed border-red-300 rounded-xl bg-red-50 h-full flex flex-col justify-center text-red-600 text-sm">
@@ -1630,13 +1657,13 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
                          onChange={(e) => {
                            setExtractedLatex(e.target.value);
                            setEquationConfidence(null);
-                           setWasEdited(true);
+                           setWasEquationEdited(true);
                          }}
                          className="text-xs p-4 bg-gray-50 border border-gray-200 rounded-lg font-mono text-gray-800 resize-none w-full outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                          rows={4}
                          spellCheck={false}
                        />
-                       {wasEdited && (
+                       {wasEquationEdited && (
                          <div className="absolute top-2 right-2 flex items-center gap-1 bg-white px-2 py-1 rounded shadow-sm border border-gray-200 text-[10px] font-medium text-gray-500">
                            <Type className="w-3 h-3" />
                            Edited
@@ -1662,9 +1689,25 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
                          Low confidence — consider Force OCR fallback.
                        </div>
                      )}
-                     <pre className="text-sm p-4 bg-gray-50 border border-gray-200 rounded-lg overflow-x-auto whitespace-pre-wrap font-sans text-gray-800 leading-relaxed">
-                       {extractedText}
-                     </pre>
+                     <div className="relative">
+                       <textarea
+                         value={extractedText ?? ''}
+                         onChange={(e) => {
+                           setExtractedText(e.target.value);
+                           setWasTextEdited(true);
+                           if (extractionMode === 'handwriting') setHandwritingConfidence(null);
+                         }}
+                         className="text-sm p-4 bg-gray-50 border border-gray-200 rounded-lg font-sans text-gray-800 leading-relaxed resize-none w-full outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                         rows={8}
+                         spellCheck={extractionMode === 'handwriting'}
+                       />
+                       {wasTextEdited && (
+                         <div className="absolute top-2 right-2 flex items-center gap-1 bg-white px-2 py-1 rounded shadow-sm border border-gray-200 text-[10px] font-medium text-gray-500">
+                           <Type className="w-3 h-3" />
+                           Edited
+                         </div>
+                       )}
+                     </div>
                    </div>
                  )}
               </div>
