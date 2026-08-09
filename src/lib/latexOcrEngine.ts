@@ -190,11 +190,12 @@ export async function decodeGreedy(
     context: ort.Tensor,
     tokenizer: Tokenizer,
     maxSeqLen = 512,
-): Promise<string> {
+): Promise<{ latex: string; confidence: number }> {
     // Try to find actual token ids from tokenizer vocab if possible, but 0 and 2 are typical for RoBERTa/BART-based.
 
     // Start with BOS
     let tokenStr = "";
+    const tokenProbs: number[] = [];
 
     // Invert vocab for decoding
     const idToToken: Record<number, string> = {};
@@ -245,17 +246,29 @@ export async function decodeGreedy(
             }
         }
 
+        // Softmax probability of the chosen token (numerically stable: subtract maxVal first)
+        let sumExp = 0;
+        for (let i = 0; i < vocabSize; i++) {
+            sumExp += Math.exp(logits[lastTokenLogitsOffset + i] - maxVal);
+        }
+        const chosenProb = 1 / sumExp; // exp(maxVal - maxVal) / sumExp = 1 / sumExp
+
         if (nextToken === realEos) {
             break;
         }
 
         currentTokens.push(nextToken);
+        tokenProbs.push(chosenProb);
 
         const tokenText = idToToken[nextToken] || "";
         tokenStr += tokenText;
     }
 
-    return tokenStr;
+    const confidence = tokenProbs.length > 0
+        ? tokenProbs.reduce((a, b) => a + b, 0) / tokenProbs.length
+        : 0;
+
+    return { latex: tokenStr, confidence };
 }
 
 export function postProcessLatex(latex: string): string {
