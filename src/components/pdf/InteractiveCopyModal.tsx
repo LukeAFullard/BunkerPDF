@@ -2,10 +2,11 @@ import { loadPdfDocument } from "../../lib/pdfHelper";
 import { useState, useEffect, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import 'pdfjs-dist/web/pdf_viewer.css';
-import { X, Type, ZoomIn, ZoomOut, Loader2, Copy, Check, Image as ImageIcon, ScanText } from 'lucide-react';
+import { X, Type, ZoomIn, ZoomOut, Loader2, Copy, Check, Image as ImageIcon, ScanText, TableProperties, Settings, ChevronDown, Download } from 'lucide-react';
 import { useFileStore } from '../../store/fileStore';
+import { useUIStore } from '../../store/uiStore';
 import { cleanupPdfResources } from '../../lib/pdfCleanup';
-import { getConfiguredLiteParse, formatParagraphFromItems, formatMarkdownFromItems } from '../../lib/liteparseEngine';
+import { getConfiguredLiteParse, formatParagraphFromItems, formatMarkdownFromItems, recognizeTableStructure, isBackgroundColor } from '../../lib/liteparseEngine';
 import type { LineItem } from '../../lib/liteparseEngine';
 import type { PyodideWorkerMessage, PyodideWorkerResponse } from '../../workers/pyodideWorker';
 import { createWorker } from 'tesseract.js';
@@ -17,9 +18,10 @@ interface InteractiveCopyModalProps {
   isOpen: boolean;
   docId: string | null;
   onClose: () => void;
+  defaultMode?: 'text' | 'handwriting' | 'equation' | 'table';
 }
 
-export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopyModalProps) {
+export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'text' }: InteractiveCopyModalProps) {
   const documents = useFileStore(state => state.documents);
   const doc = documents.find(d => d.id === docId);
 
@@ -56,11 +58,38 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
   const [isHandwritingRunning, setIsHandwritingRunning] = useState(false);
   const [isLatexRunning, setIsLatexRunning] = useState(false);
   const [latexProgress, setLatexProgress] = useState<{name: string, loaded: number, total: number} | null>(null);
-  const [extractionMode, setExtractionMode] = useState<'text' | 'handwriting' | 'equation'>('text');
+  const [extractionMode, setExtractionMode] = useState<'text' | 'handwriting' | 'equation' | 'table'>(defaultMode);
   const [extractedLatex, setExtractedLatex] = useState<string | null>(null);
   const [latexError, setLatexError] = useState<string | null>(null);
   const [equationConfidence, setEquationConfidence] = useState<number | null>(null);
   const [wasEdited, setWasEdited] = useState(false);
+
+  // Table mode state (ported from InteractiveTableModal)
+  const [extractedTable, setExtractedTable] = useState<string | null>(null);
+  const [tableFormat, setTableFormat] = useState<'csv' | 'markdown' | 'html'>('csv');
+  const [tableConfidence, setTableConfidence] = useState<number | null>(null);
+  const [tableConfidenceReasons, setTableConfidenceReasons] = useState<string[]>([]);
+  const [tableExtractionSource, setTableExtractionSource] = useState<'geometry' | 'vision-fallback' | null>(null);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const settingsRef = useRef<HTMLDivElement>(null);
+  const {
+    enableLineTracing, setEnableLineTracing,
+    enableStyledSpanningLabel, setEnableStyledSpanningLabel,
+    spanningLabelOverflowFactor, setSpanningLabelOverflowFactor,
+    spanWidthFractionRow, setSpanWidthFractionRow,
+    removeWatermarks, setRemoveWatermarks,
+  } = useUIStore();
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (settingsRef.current && !settingsRef.current.contains(event.target as Node)) {
+        setShowSettings(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const renderTaskRef = useRef<pdfjsLib.RenderTask | null>(null);
   const pdfDocRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
@@ -80,6 +109,37 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
 
 
   useEffect(() => {
+    if (isOpen && liteparseData && liteparseData.pages && liteparseData.pages[currentPage - 1]) {
+      const lines: LineItem[] = [];
+      const vectorGraphics = liteparseData.pages[currentPage - 1].vectorGraphics;
+      if (vectorGraphics && vectorGraphics.lines) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        vectorGraphics.lines.forEach((l: any) => {
+          const x0 = Math.min(l.x1, l.x2);
+          const y0 = Math.min(l.y1, l.y2);
+          const x1 = Math.max(l.x1, l.x2);
+          const y1 = Math.max(l.y1, l.y2);
+
+          const opacity = l.opacity ?? l.strokeAlpha ?? 1;
+          const strokeWidth = l.strokeWidth ?? l.width ?? 1;
+          const color = l.strokeColor ?? l.color;
+          const isNearWhite = color && isBackgroundColor(color);
+
+          if (opacity < 0.05 || isNearWhite) return;
+
+          if (Math.abs(y0 - y1) < 2) {
+            lines.push({ x0, y0: (y0 + y1) / 2, x1, y1: (y0 + y1) / 2, type: 'horizontal', strokeWidth, opacity, color });
+          } else if (Math.abs(x0 - x1) < 2) {
+            lines.push({ x0: (x0 + x1) / 2, y0, x1: (x0 + x1) / 2, y1, type: 'vertical', strokeWidth, opacity, color });
+          }
+        });
+      }
+      setExtractedLines(lines);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, currentPage, liteparseData]);
+
+  useEffect(() => {
     if (!isOpen || !doc) return;
     setTimeout(() => {
       setZoomLevel(1.0);
@@ -90,6 +150,11 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
       setLatexError(null);
       setEquationConfidence(null);
       setWasEdited(false);
+      setExtractedTable(null);
+      setTableConfidence(null);
+      setTableConfidenceReasons([]);
+      setTableExtractionSource(null);
+      setExtractionMode(defaultMode);
       setCurrentPage(1);
     }, 0);
 
@@ -100,7 +165,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
       try {
         const arrayBuffer = await doc.file.arrayBuffer();
 
-        const engine = await getConfiguredLiteParse({ outputFormat: "json" });
+        const engine = await getConfiguredLiteParse({ outputFormat: "json", extractVectorGraphics: true });
         const result = await engine.parse(new Uint8Array(arrayBuffer.slice(0)));
 
         const loadingTask = loadPdfDocument(arrayBuffer.slice(0));
@@ -315,6 +380,79 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
     }
   };
 
+  const handleLineClick = (e: React.MouseEvent, index: number) => {
+    e.stopPropagation();
+    setExtractedLines(lines => {
+      const newLines = [...lines];
+      newLines[index] = { ...newLines[index], disabled: !newLines[index].disabled };
+      return newLines;
+    });
+  };
+
+  const runTableExtractionOnRegion = async (x: number, y: number, w: number, h: number) => {
+    if (!liteparseData || overlayScale <= 0 || !pdfDocRef.current) return;
+
+    const lpX = x / overlayScale;
+    const lpY = y / overlayScale;
+    const lpW = w / overlayScale;
+    const lpH = h / overlayScale;
+    const lpRight = lpX + lpW;
+    const lpBottom = lpY + lpH;
+
+    const pageIdx = currentPage - 1;
+    const items = liteparseData.pages[pageIdx]?.textItems || [];
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const intersectingItems = items.filter((item: any) => {
+      const itemRight = item.x + item.width;
+      const itemBottom = item.y + item.height;
+      return !(lpRight < item.x || lpX > itemRight || lpBottom < item.y || lpY > itemBottom);
+    });
+
+    const intersectingLines = extractedLines.filter((line) => {
+      const lx0 = Math.min(line.x0, line.x1);
+      const ly0 = Math.min(line.y0, line.y1);
+      const lx1 = Math.max(line.x0, line.x1);
+      const ly1 = Math.max(line.y0, line.y1);
+      return !(lx1 < lpX || lx0 > lpRight || ly1 < lpY || ly0 > lpBottom);
+    });
+
+    if (intersectingItems.length > 0) {
+      setIsExtracting(true);
+      try {
+        const pageProxy = await pdfDocRef.current.getPage(currentPage);
+        const result = await recognizeTableStructure(
+          pageProxy,
+          intersectingItems,
+          tableFormat,
+          false,
+          intersectingLines
+        );
+        setExtractedTable(result.text);
+        setTableConfidence(result.confidence);
+        setTableConfidenceReasons(result.confidenceReasons);
+        setTableExtractionSource(result.source);
+      } catch (err) {
+        console.error("Table extraction error", err);
+        setExtractedTable(null);
+      } finally {
+        setIsExtracting(false);
+      }
+    } else {
+      setExtractedTable(null);
+      setTableConfidence(null);
+      setTableConfidenceReasons([]);
+      setTableExtractionSource(null);
+    }
+  };
+
+  useEffect(() => {
+    if (extractionMode === 'table' && selectionBox) {
+      runTableExtractionOnRegion(selectionBox.x, selectionBox.y, selectionBox.w, selectionBox.h);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tableFormat, extractedLines, enableLineTracing, enableStyledSpanningLabel, spanningLabelOverflowFactor, spanWidthFractionRow, removeWatermarks]);
+
   const runEquationOnRegion = async (x: number, y: number, w: number, h: number) => {
     if (!canvasRef.current) return;
     setIsLatexRunning(true);
@@ -513,6 +651,8 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
         runEquationOnRegion(x, y, w, h);
       } else if (extractionMode === 'handwriting') {
         runHandwritingOnRegion(x, y, w, h);
+      } else if (extractionMode === 'table') {
+        runTableExtractionOnRegion(x, y, w, h);
       } else {
         extractRegion(x, y, w, h);
       }
@@ -523,6 +663,10 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
       setLatexError(null);
       setEquationConfidence(null);
       setWasEdited(false);
+      setExtractedTable(null);
+      setTableConfidence(null);
+      setTableConfidenceReasons([]);
+      setTableExtractionSource(null);
     }
   };
 
@@ -730,6 +874,28 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
     }
   };
 
+  const handleTableCopy = () => {
+    if (extractedTable) {
+      navigator.clipboard.writeText(extractedTable);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleTableDownload = () => {
+    if (extractedTable && doc) {
+      const blob = new Blob([extractedTable], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${doc.name}_table_p${currentPage}.${tableFormat}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+  };
+
   const handleCopyImage = async () => {
     if (!selectionBox || !pdfDocRef.current) return;
     setIsCopyingImage(true);
@@ -854,6 +1020,39 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
                     onTouchEnd={() => handleMouseUp()}
                     onTouchCancel={() => handleMouseUp()}
                   >
+                    {extractionMode === 'table' && extractedLines.map((line, idx) => {
+                      const isHoriz = line.type === 'horizontal';
+                      let intersects = true;
+                      if (selectionBox) {
+                        const lpX = selectionBox.x / overlayScale;
+                        const lpY = selectionBox.y / overlayScale;
+                        const lpW = selectionBox.w / overlayScale;
+                        const lpH = selectionBox.h / overlayScale;
+                        const lx0 = Math.min(line.x0, line.x1);
+                        const ly0 = Math.min(line.y0, line.y1);
+                        const lx1 = Math.max(line.x0, line.x1);
+                        const ly1 = Math.max(line.y0, line.y1);
+                        intersects = !(lx1 < lpX || lx0 > lpX + lpW || ly1 < lpY || ly0 > lpY + lpH);
+                      }
+                      if (!intersects && selectionBox) return null;
+
+                      return (
+                        <div
+                          key={`line-${idx}`}
+                          onClick={(e) => handleLineClick(e, idx)}
+                          className={`absolute cursor-pointer transition-colors ${line.disabled ? 'bg-red-400 opacity-30 hover:opacity-100' : 'bg-blue-500 opacity-60 hover:opacity-100'}`}
+                          style={{
+                            left: (Math.min(line.x0, line.x1) * overlayScale) + 'px',
+                            top: (Math.min(line.y0, line.y1) * overlayScale) + 'px',
+                            width: (isHoriz ? Math.abs(line.x1 - line.x0) * overlayScale : Math.max(4, (line.strokeWidth || 1) * overlayScale)) + 'px',
+                            height: (!isHoriz ? Math.abs(line.y1 - line.y0) * overlayScale : Math.max(4, (line.strokeWidth || 1) * overlayScale)) + 'px',
+                            transform: isHoriz ? 'translateY(-50%)' : 'translateX(-50%)',
+                            zIndex: 40
+                          }}
+                          title={line.disabled ? "Click to enable line" : "Click to disable line"}
+                        />
+                      );
+                    })}
                     {isDrawing && (
                       <div
                         className="absolute border-2 border-indigo-500 bg-indigo-500/20"
@@ -912,7 +1111,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
           </div>
 
           <div className="bg-white border-t border-gray-200 p-3 flex justify-center items-center gap-4 z-10">
-            <button disabled={currentPage <= 1 || isLoading} onClick={() => { setCurrentPage(p => p - 1); setSelectionBox(null); setExtractedText(null); }} className="px-4 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 transition-colors">
+            <button disabled={currentPage <= 1 || isLoading} onClick={() => { setCurrentPage(p => p - 1); setSelectionBox(null); setExtractedText(null); setExtractedTable(null); }} className="px-4 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 transition-colors">
               Previous
             </button>
             <div className="flex items-center gap-2">
@@ -934,6 +1133,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
                     setCurrentPage(val);
                     setSelectionBox(null);
                     setExtractedText(null);
+                    setExtractedTable(null);
                   } else {
                     e.target.value = currentPage.toString();
                   }
@@ -947,7 +1147,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
               />
               <span className="text-sm font-medium text-gray-600">/ {totalPages}</span>
             </div>
-            <button disabled={currentPage >= totalPages || isLoading} onClick={() => { setCurrentPage(p => p + 1); setSelectionBox(null); setExtractedText(null); }} className="px-4 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 transition-colors">
+            <button disabled={currentPage >= totalPages || isLoading} onClick={() => { setCurrentPage(p => p + 1); setSelectionBox(null); setExtractedText(null); setExtractedTable(null); }} className="px-4 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 transition-colors">
               Next
             </button>
           </div>
@@ -971,8 +1171,108 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
                       className={`px-2 py-1 text-xs rounded font-medium ${extractionMode === 'equation' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
                       onClick={() => setExtractionMode('equation')}
                     >Equation</button>
+                    <button
+                      className={`px-2 py-1 text-xs rounded font-medium ${extractionMode === 'table' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
+                      onClick={() => setExtractionMode('table')}
+                    >Table</button>
                  </div>
              </div>
+             {extractionMode === 'table' && (
+               <div className="flex items-center justify-between">
+                 <div className="relative" ref={settingsRef}>
+                   <button
+                     onClick={() => setShowSettings(!showSettings)}
+                     className="p-1.5 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1"
+                     title="Table Extraction Settings"
+                   >
+                     <Settings className="w-4 h-4" />
+                     <ChevronDown className="w-3 h-3" />
+                   </button>
+
+                   {showSettings && (
+                     <div className="absolute left-0 mt-2 w-72 rounded-lg shadow-lg py-3 z-50 border bg-white border-gray-200 text-gray-800">
+                       <div className="px-4 pb-2 border-b border-gray-200 mb-3 font-semibold text-sm">
+                         Advanced Table Extraction
+                       </div>
+                       <div className="px-4 space-y-4">
+                         <label className="flex items-center gap-2 cursor-pointer">
+                           <input
+                             type="checkbox"
+                             checked={removeWatermarks}
+                             onChange={(e) => setRemoveWatermarks(e.target.checked)}
+                             className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                           />
+                           <span className="text-sm font-medium">Remove Watermarks</span>
+                         </label>
+                         <label className="flex items-center gap-2 cursor-pointer">
+                           <input
+                             type="checkbox"
+                             checked={enableLineTracing}
+                             onChange={(e) => setEnableLineTracing(e.target.checked)}
+                             className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                           />
+                           <span className="text-sm font-medium">Use Line Tracing</span>
+                         </label>
+                         <label className="flex items-center gap-2 cursor-pointer">
+                           <input
+                             type="checkbox"
+                             checked={enableStyledSpanningLabel}
+                             onChange={(e) => setEnableStyledSpanningLabel(e.target.checked)}
+                             className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                           />
+                           <span className="text-sm font-medium">Use Font Styles for Divider Labels</span>
+                         </label>
+                         <div>
+                           <div className="flex justify-between items-center mb-1">
+                             <span className="text-sm">Divider Label Threshold</span>
+                             <span className="text-xs text-gray-500 font-mono">{spanningLabelOverflowFactor.toFixed(2)}x</span>
+                           </div>
+                           <input
+                             type="range"
+                             min="1.0"
+                             max="3.0"
+                             step="0.1"
+                             value={spanningLabelOverflowFactor}
+                             onChange={(e) => setSpanningLabelOverflowFactor(parseFloat(e.target.value))}
+                             className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                           />
+                           <p className="text-[10px] text-gray-500 mt-1 leading-tight">Lower if wide labels are missed. Raise if long data splits.</p>
+                         </div>
+                         <div>
+                           <div className="flex justify-between items-center mb-1">
+                             <span className="text-sm">Span Width Fraction</span>
+                             <span className="text-xs text-gray-500 font-mono">{Math.round(spanWidthFractionRow * 100)}%</span>
+                           </div>
+                           <input
+                             type="range"
+                             min="0.3"
+                             max="1.0"
+                             step="0.05"
+                             value={spanWidthFractionRow}
+                             onChange={(e) => setSpanWidthFractionRow(parseFloat(e.target.value))}
+                             className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                           />
+                         </div>
+                       </div>
+                     </div>
+                   )}
+                 </div>
+                 <div className="flex bg-gray-100 p-1 rounded-lg">
+                   <button
+                     onClick={() => setTableFormat('csv')}
+                     className={`px-3 py-1 rounded text-xs font-medium transition-colors ${tableFormat === 'csv' ? 'bg-white shadow-sm text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}
+                   >CSV</button>
+                   <button
+                     onClick={() => setTableFormat('markdown')}
+                     className={`px-3 py-1 rounded text-xs font-medium transition-colors ${tableFormat === 'markdown' ? 'bg-white shadow-sm text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}
+                   >Markdown</button>
+                   <button
+                     onClick={() => setTableFormat('html')}
+                     className={`px-3 py-1 rounded text-xs font-medium transition-colors ${tableFormat === 'html' ? 'bg-white shadow-sm text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}
+                   >HTML</button>
+                 </div>
+               </div>
+             )}
 
              {extractionMode === 'text' && (
                <>
@@ -1099,6 +1399,38 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
               <div className="text-center py-12 px-4 border-2 border-dashed border-red-300 rounded-xl bg-red-50 h-full flex flex-col justify-center text-red-600 text-sm break-words">
                  Equation recognition failed: {latexError}
               </div>
+            ) : extractionMode === 'table' && isExtracting ? (
+               <div className="text-center py-12 px-4 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 h-full flex flex-col items-center justify-center text-gray-500">
+                  <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mb-2" />
+                  <p className="text-sm">Extracting table...</p>
+               </div>
+            ) : extractionMode === 'table' && !selectionBox ? (
+               <div className="text-center py-12 px-4 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 h-full flex flex-col justify-center">
+                  <TableProperties className="w-8 h-8 text-gray-400 mx-auto mb-3" />
+                  <p className="text-sm text-gray-500">Draw a box around a table on the PDF to extract it instantly.</p>
+               </div>
+            ) : extractionMode === 'table' && !extractedTable ? (
+               <div className="text-center py-12 px-4 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 h-full flex flex-col justify-center text-gray-500 text-sm">
+                  No text found in that region.
+               </div>
+            ) : extractionMode === 'table' ? (
+               <div className="flex flex-col gap-4">
+                  {tableConfidence !== null && tableConfidence < 0.85 && (
+                    <div className={`p-3 rounded border text-sm flex flex-col gap-1 ${tableConfidence < 0.6 && tableExtractionSource !== 'vision-fallback' ? 'bg-red-50 border-red-200 text-red-800' : 'bg-yellow-50 border-yellow-200 text-yellow-800'}`}>
+                       <div className="font-semibold">
+                          {tableConfidence < 0.6 && tableExtractionSource !== 'vision-fallback' ? "Low Confidence Extraction" : "Extraction verify suggested"} ({(tableConfidence * 100).toFixed(0)}%)
+                       </div>
+                       {tableConfidenceReasons.length > 0 && (
+                         <ul className="list-disc list-inside text-xs mt-1">
+                           {tableConfidenceReasons.map((r, i) => <li key={i}>{r}</li>)}
+                         </ul>
+                       )}
+                    </div>
+                  )}
+                  <pre className="text-xs p-4 bg-gray-50 border border-gray-200 rounded-lg overflow-x-auto whitespace-pre-wrap font-mono text-gray-800">
+                     {extractedTable}
+                  </pre>
+               </div>
             ) : !extractedText && !extractedLatex ? (
                <div className="text-center py-12 px-4 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 h-full flex flex-col justify-center text-gray-500 text-sm">
                   No text found in that region.
@@ -1188,7 +1520,24 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
                  </div>
              )}
              <div className="flex gap-3">
-               {extractionMode === 'equation' && extractedLatex ? (
+               {extractionMode === 'table' && extractedTable ? (
+                 <>
+                   <button
+                     onClick={handleTableCopy}
+                     className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors shadow-sm text-sm"
+                   >
+                     {copied ? <Check className="w-4 h-4 text-green-300" /> : <Copy className="w-4 h-4" />}
+                     {copied ? 'Copied!' : 'Copy'}
+                   </button>
+                   <button
+                     onClick={handleTableDownload}
+                     className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-gray-100 text-gray-700 border border-gray-300 rounded-xl font-medium hover:bg-gray-200 transition-colors shadow-sm text-sm"
+                   >
+                     <Download className="w-4 h-4" />
+                     Save
+                   </button>
+                 </>
+               ) : extractionMode === 'equation' && extractedLatex ? (
                  <>
                    <button
                      onClick={() => {
@@ -1221,14 +1570,16 @@ export function InteractiveCopyModal({ isOpen, docId, onClose }: InteractiveCopy
                    {copied ? 'Text Copied!' : 'Copy Text'}
                  </button>
                )}
-               <button
-                 onClick={handleCopyImage}
-                 disabled={!selectionBox || isCopyingImage}
-                 className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-gray-600 text-white rounded-xl font-medium hover:bg-gray-700 disabled:opacity-50 transition-colors shadow-sm text-sm"
-               >
-                 {copiedImage ? <Check className="w-4 h-4 text-green-300" /> : isCopyingImage ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImageIcon className="w-4 h-4" />}
-                 {copiedImage ? 'Image Copied!' : isCopyingImage ? 'Copying...' : 'Copy Image'}
-               </button>
+               {extractionMode !== 'table' && (
+                 <button
+                   onClick={handleCopyImage}
+                   disabled={!selectionBox || isCopyingImage}
+                   className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-gray-600 text-white rounded-xl font-medium hover:bg-gray-700 disabled:opacity-50 transition-colors shadow-sm text-sm"
+                 >
+                   {copiedImage ? <Check className="w-4 h-4 text-green-300" /> : isCopyingImage ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImageIcon className="w-4 h-4" />}
+                   {copiedImage ? 'Image Copied!' : isCopyingImage ? 'Copying...' : 'Copy Image'}
+                 </button>
+               )}
              </div>
 
           </div>
