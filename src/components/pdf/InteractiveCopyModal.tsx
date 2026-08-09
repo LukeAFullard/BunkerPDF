@@ -1373,10 +1373,17 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
 
           <div className="flex-1 overflow-y-auto p-4 bg-white">
             {!selectionBox ? (
-              <div className="text-center py-12 px-4 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 h-full flex flex-col justify-center">
-                <Type className="w-8 h-8 text-gray-400 mx-auto mb-3" />
-                <p className="text-sm text-gray-500">Draw a box around a paragraph or equation to copy it.</p>
-              </div>
+              extractionMode === 'table' ? (
+                <div className="text-center py-12 px-4 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 h-full flex flex-col justify-center">
+                  <TableProperties className="w-8 h-8 text-gray-400 mx-auto mb-3" />
+                  <p className="text-sm text-gray-500">Draw a box around a table on the PDF to extract it instantly.</p>
+                </div>
+              ) : (
+                <div className="text-center py-12 px-4 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 h-full flex flex-col justify-center">
+                  <Type className="w-8 h-8 text-gray-400 mx-auto mb-3" />
+                  <p className="text-sm text-gray-500">Draw a box around a paragraph or equation to copy it.</p>
+                </div>
+              )
             ) : isLatexRunning && latexProgress ? (
               <div className="text-center py-12 px-4 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 h-full flex flex-col justify-center items-center">
                  <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mb-3" />
@@ -1403,11 +1410,6 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
                <div className="text-center py-12 px-4 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 h-full flex flex-col items-center justify-center text-gray-500">
                   <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mb-2" />
                   <p className="text-sm">Extracting table...</p>
-               </div>
-            ) : extractionMode === 'table' && !selectionBox ? (
-               <div className="text-center py-12 px-4 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 h-full flex flex-col justify-center">
-                  <TableProperties className="w-8 h-8 text-gray-400 mx-auto mb-3" />
-                  <p className="text-sm text-gray-500">Draw a box around a table on the PDF to extract it instantly.</p>
                </div>
             ) : extractionMode === 'table' && !extractedTable ? (
                <div className="text-center py-12 px-4 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 h-full flex flex-col justify-center text-gray-500 text-sm">
