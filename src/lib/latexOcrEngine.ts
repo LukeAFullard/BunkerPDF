@@ -190,6 +190,7 @@ export async function decodeGreedy(
     context: ort.Tensor,
     tokenizer: Tokenizer,
     maxSeqLen = 512,
+    signal?: AbortSignal
 ): Promise<{ latex: string; confidence: number }> {
     // Try to find actual token ids from tokenizer vocab if possible, but 0 and 2 are typical for RoBERTa/BART-based.
 
@@ -214,6 +215,10 @@ export async function decodeGreedy(
     const currentTokens = [realBos];
 
     for (let step = 0; step < maxSeqLen; step++) {
+        if (signal?.aborted) {
+            throw new Error('Aborted');
+        }
+
         // Prepare inputs for decoder
         // The decoder in RapidLatexOCR takes input_ids, mask, and encoder_hidden_states
         const seqLen = currentTokens.length;

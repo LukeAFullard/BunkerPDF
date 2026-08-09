@@ -21,6 +21,7 @@ const MODEL_URLS = {
 let sessions: { encoder: ort.InferenceSession; decoder: ort.InferenceSession; resizer: ort.InferenceSession } | null = null;
 let tokenizer: Tokenizer | null = null;
 let initPromise: Promise<void> | null = null;
+const activeRequests = new Map<number, AbortController>();
 
 async function fetchWithProgress(url: string, name: string): Promise<ArrayBuffer> {
     const cacheKey = `latex-ocr-model-${name}-${HF_REVISION}`;
@@ -142,7 +143,18 @@ self.onmessage = async (e: MessageEvent) => {
         return;
     }
 
+    if (type === 'CANCEL') {
+        for (const [runId, controller] of activeRequests.entries()) {
+            controller.abort();
+            activeRequests.delete(runId);
+        }
+        return;
+    }
+
     if (type === 'RECOGNIZE') {
+        const controller = new AbortController();
+        activeRequests.set(payload.runId, controller);
+
         try {
             if (!initPromise) {
                 initPromise = init();
@@ -161,11 +173,17 @@ self.onmessage = async (e: MessageEvent) => {
             const tensor = toTensor(resizedData, width, height);
 
             const context = await encode(sessions.encoder, tensor);
-            const { latex: raw, confidence } = await decodeGreedy(sessions.decoder, context, tokenizer);
+            const { latex: raw, confidence } = await decodeGreedy(sessions.decoder, context, tokenizer, 512, controller.signal);
 
             self.postMessage({ type: 'RESULT', text: postProcessLatex(raw), confidence, runId: payload.runId });
         } catch (err) {
+            if (err instanceof Error && err.message === 'Aborted') {
+                 // Do not send error message if aborted
+                 return;
+            }
             self.postMessage({ type: 'ERROR', error: String(err), runId: payload.runId });
+        } finally {
+            activeRequests.delete(payload.runId);
         }
     }
 };

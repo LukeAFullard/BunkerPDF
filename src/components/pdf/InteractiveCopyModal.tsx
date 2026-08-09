@@ -61,6 +61,25 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
   const [extractionMode, setExtractionMode] = useState<'text' | 'handwriting' | 'equation' | 'table'>(defaultMode);
   const [extractedLatex, setExtractedLatex] = useState<string | null>(null);
   const [latexError, setLatexError] = useState<string | null>(null);
+
+  const handleModeChange = (newMode: 'text' | 'handwriting' | 'equation' | 'table') => {
+    setExtractionMode(newMode);
+
+    // Bump run IDs to invalidate stale responses
+    ocrRunIdRef.current++;
+    handwritingRunIdRef.current++;
+    latexRunIdRef.current++;
+
+    // Unblock UI immediately
+    setIsOcrRunning(false);
+    setIsHandwritingRunning(false);
+    setIsLatexRunning(false);
+
+    // Cancel in-flight worker tasks
+    if (latexWorkerRef.current) {
+        latexWorkerRef.current.postMessage({ type: 'CANCEL' });
+    }
+  };
   const [equationConfidence, setEquationConfidence] = useState<number | null>(null);
   const [handwritingConfidence, setHandwritingConfidence] = useState<number | null>(null);
   const [wasEdited, setWasEdited] = useState(false);
@@ -1289,19 +1308,19 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
                  <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
                     <button
                       className={`px-2 py-1 text-xs rounded font-medium ${extractionMode === 'text' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
-                      onClick={() => setExtractionMode('text')}
+                      onClick={() => handleModeChange('text')}
                     >Text</button>
                     <button
                       className={`px-2 py-1 text-xs rounded font-medium ${extractionMode === 'handwriting' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
-                      onClick={() => setExtractionMode('handwriting')}
+                      onClick={() => handleModeChange('handwriting')}
                     >Handwriting</button>
                     <button
                       className={`px-2 py-1 text-xs rounded font-medium ${extractionMode === 'equation' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
-                      onClick={() => setExtractionMode('equation')}
+                      onClick={() => handleModeChange('equation')}
                     >Equation</button>
                     <button
                       className={`px-2 py-1 text-xs rounded font-medium ${extractionMode === 'table' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
-                      onClick={() => setExtractionMode('table')}
+                      onClick={() => handleModeChange('table')}
                     >Table</button>
                  </div>
              </div>
@@ -1523,7 +1542,9 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
                     </div>
                  )}
               </div>
-            ) : isOcrRunning || isHandwritingRunning || isLatexRunning ? (
+            ) : (extractionMode === 'equation' && isLatexRunning) ||
+                (extractionMode === 'handwriting' && isHandwritingRunning) ||
+                (extractionMode === 'text' && isOcrRunning) ? (
               <div className="text-center py-12 px-4 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 h-full flex flex-col justify-center items-center">
                  <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mb-3" />
                  <p className="text-sm text-gray-500">
@@ -1632,7 +1653,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
                          runOcrOnRegion(selectionBox.x, selectionBox.y, selectionBox.w, selectionBox.h);
                        }
                      }}
-                     disabled={!selectionBox || isOcrRunning || isHandwritingRunning || isLatexRunning}
+                     disabled={!selectionBox || isOcrRunning}
                      className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-gray-100 text-gray-700 border border-gray-300 rounded-xl font-medium hover:bg-gray-200 disabled:opacity-50 transition-colors shadow-sm text-sm"
                    >
                      <ScanText className="w-4 h-4" />
@@ -1648,7 +1669,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
                          runEquationOnRegion(selectionBox.x, selectionBox.y, selectionBox.w, selectionBox.h);
                        }
                      }}
-                     disabled={!selectionBox || isOcrRunning || isHandwritingRunning || isLatexRunning}
+                     disabled={!selectionBox || isLatexRunning}
                      className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-gray-100 text-gray-700 border border-gray-300 rounded-xl font-medium hover:bg-gray-200 disabled:opacity-50 transition-colors shadow-sm text-sm"
                    >
                      <ScanText className="w-4 h-4" />
