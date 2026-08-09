@@ -61,6 +61,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
   const [extractionMode, setExtractionMode] = useState<'text' | 'handwriting' | 'equation' | 'table'>(defaultMode);
   const [extractedLatex, setExtractedLatex] = useState<string | null>(null);
   const [latexError, setLatexError] = useState<string | null>(null);
+  const [handwritingError, setHandwritingError] = useState<string | null>(null);
 
   const handleModeChange = (newMode: 'text' | 'handwriting' | 'equation' | 'table') => {
     setExtractionMode(newMode);
@@ -170,6 +171,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
       setLatexError(null);
       setEquationConfidence(null);
       setHandwritingConfidence(null);
+      setHandwritingError(null);
       setWasEdited(false);
       setExtractedTable(null);
       setTableConfidence(null);
@@ -359,6 +361,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
     setIsHandwritingRunning(true);
     setExtractedText(null);
     setHandwritingConfidence(null);
+    setHandwritingError(null);
     const runId = ++handwritingRunIdRef.current;
 
     try {
@@ -519,6 +522,9 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
       }
     } catch (err) {
       console.error("Handwriting recognition failed for the region:", err);
+      if (runId === handwritingRunIdRef.current) {
+        setHandwritingError(err instanceof Error ? err.message : String(err));
+      }
     } finally {
       if (runId === handwritingRunIdRef.current) {
          setIsHandwritingRunning(false);
@@ -809,6 +815,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
       setLatexError(null);
       setEquationConfidence(null);
       setHandwritingConfidence(null);
+      setHandwritingError(null);
       setWasEdited(false);
       setExtractedTable(null);
       setTableConfidence(null);
@@ -1581,6 +1588,10 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
                   <pre className="text-xs p-4 bg-gray-50 border border-gray-200 rounded-lg overflow-x-auto whitespace-pre-wrap font-mono text-gray-800">
                      {extractedTable}
                   </pre>
+               </div>
+            ) : handwritingError ? (
+               <div className="text-center py-12 px-4 border-2 border-dashed border-red-300 rounded-xl bg-red-50 h-full flex flex-col justify-center text-red-600 text-sm">
+                  Handwriting recognition failed: {handwritingError}
                </div>
             ) : !extractedText && !extractedLatex ? (
                <div className="text-center py-12 px-4 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 h-full flex flex-col justify-center text-gray-500 text-sm">

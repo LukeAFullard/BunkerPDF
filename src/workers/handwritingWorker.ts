@@ -28,7 +28,7 @@ self.onmessage = async (e: MessageEvent<HandwritingWorkerMessage>) => {
     if (type === 'INIT') {
       if (!initPromise) {
         initPromise = pipeline('image-to-text', 'Xenova/trocr-base-handwritten', {
-          quantized: true,
+          dtype: 'fp32',
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } as any).then(pipe => {
           handwritingPipeline = pipe;
