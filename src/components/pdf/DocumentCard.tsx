@@ -13,7 +13,7 @@ import { DocumentHealthPanel } from './DocumentHealthPanel';
 import { analyzeDocumentHealth } from '../../lib/healthChecks';
 import { TableExtractionModal } from './TableExtractionModal';
 import { ToolsModal } from './ToolsModal';
-import { ChevronLeft, ChevronRight, TableProperties, Copy, BookOpen, Crop } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Copy, BookOpen, Crop } from 'lucide-react';
 
 interface DocumentCardProps {
   onResizePages?: (doc: PDFDocument) => void;
@@ -53,7 +53,6 @@ interface DocumentCardProps {
   onScanPii?: (doc: PDFDocument) => void;
   onInteractiveRedact?: (doc: PDFDocument) => void;
   onAutoRedactLayout?: (doc: PDFDocument) => void;
-  onInteractiveTable?: (doc: PDFDocument) => void;
   onInteractiveCopy?: (doc: PDFDocument) => void;
   onFlipbook?: (doc: PDFDocument) => void;
   onInteractiveAutoLinker?: (doc: PDFDocument) => void;
@@ -123,7 +122,6 @@ export function DocumentCard({
   exportPdfToDark,
   onInteractiveRedact,
   onAutoRedactLayout,
-  onInteractiveTable,
   onInteractiveCopy,
   onFlipbook,
   onInteractiveAutoLinker,
@@ -921,7 +919,6 @@ export function DocumentCard({
     { category: "Extract & Export", label: "Extract Images (~10s)", onClick: handleExtractImages, complexity: "simple" },
     { category: "Extract & Export", label: "Extract Links (CSV) (~2s)", onClick: handleExtractLinks, complexity: "professional" },
     { category: "Extract & Export", label: "Extract Annotations (CSV) (~2s)", onClick: handleExtractAnnotations, complexity: "professional" },
-    { category: "Interactive Tools", label: "Magic Table (~Instant)", onClick: () => onInteractiveTable?.(doc), complexity: "professional" },
     { category: "Interactive Tools", label: "Magic Copy (~Instant)", onClick: () => onInteractiveCopy?.(doc), complexity: "professional" },
     { category: "Interactive Tools", label: "Flipbook Viewer (~Instant)", onClick: () => onFlipbook?.(doc), complexity: "professional" },
     { category: "Interactive Tools", label: "Auto-Linker (~Instant)", onClick: () => onInteractiveAutoLinker?.(doc), complexity: "professional" },
@@ -1056,13 +1053,6 @@ export function DocumentCard({
 
           <div className="mt-4">
             <div className="grid grid-cols-2 gap-2 mb-2">
-              <button
-                onClick={() => onInteractiveTable?.(doc)}
-                className="flex flex-col items-center justify-center bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 hover:border-emerald-300 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-800/30 dark:text-emerald-400 dark:hover:bg-emerald-900/40 py-3 rounded-lg transition-colors gap-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-              >
-                <TableProperties className="w-5 h-5" />
-                Magic Table
-              </button>
               <button
                 onClick={() => onInteractiveCopy?.(doc)}
                 className="flex flex-col items-center justify-center bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 hover:border-indigo-300 text-indigo-700 dark:bg-indigo-900/20 dark:border-indigo-800/30 dark:text-indigo-400 dark:hover:bg-indigo-900/40 py-3 rounded-lg transition-colors gap-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"

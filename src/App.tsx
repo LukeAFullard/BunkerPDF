@@ -2107,9 +2107,6 @@ function App() {
   const handleInteractiveRedact = (doc: PDFDocument) => {
     setInteractiveRedactState({ isOpen: true, docId: doc.id });
   };
-  const handleInteractiveTable = (doc: PDFDocument) => {
-    setInteractiveCopyState({ isOpen: true, docId: doc.id, defaultMode: 'table' });
-  };
 
   const [interactiveCopyState, setInteractiveCopyState] = useState<{
     isOpen: boolean;
@@ -2782,7 +2779,6 @@ function App() {
                       onOcr={handleOcr}
                       onInteractiveRedact={handleInteractiveRedact}
                       onAutoRedactLayout={autoRedactLayout}
-                      onInteractiveTable={handleInteractiveTable}
                       onInteractiveCopy={handleInteractiveCopy}
                       onFlipbook={handleFlipbook}
                       onInteractiveAutoLinker={handleInteractiveAutoLinker}
