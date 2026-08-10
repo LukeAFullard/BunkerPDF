@@ -7,6 +7,39 @@ let handwritingPipeline: any = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let initPromise: Promise<any> | null = null;
 
+// Progressively smaller-to-larger dtypes to try. `q8` is much smaller
+// (~338MB total) but is the export that previously hit a MatMulNBits
+// session-creation bug on some onnxruntime-web versions. `fp16` (~668MB)
+// is a safe middle ground if q8 fails. `fp32` (~1.33GB) is the last
+// resort, previously confirmed working.
+const DTYPE_FALLBACK_CHAIN: Array<'q8' | 'fp16' | 'fp32'> = ['q8', 'fp16', 'fp32'];
+
+async function loadHandwritingPipeline() {
+  let lastError: unknown = null;
+  for (const dtype of DTYPE_FALLBACK_CHAIN) {
+    try {
+      const pipe = await pipeline('image-to-text', 'Xenova/trocr-base-handwritten', {
+        dtype,
+        progress_callback: (p: any) => {
+          if (p.status === 'progress') {
+            self.postMessage({
+              type: 'PROGRESS',
+              name: p.file,
+              loaded: p.loaded,
+              total: p.total,
+            } satisfies HandwritingWorkerResponse);
+          }
+        },
+      } as any);
+      return pipe;
+    } catch (err) {
+      console.warn(`[handwritingWorker] Failed to load dtype "${dtype}", trying next fallback.`, err);
+      lastError = err;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('Failed to load handwriting model in any dtype');
+}
+
 export type HandwritingWorkerMessage = {
   type: 'INIT' | 'RECOGNIZE';
   image?: string; // Data URL
@@ -30,15 +63,7 @@ self.onmessage = async (e: MessageEvent<HandwritingWorkerMessage>) => {
   try {
     if (type === 'INIT') {
       if (!initPromise) {
-        initPromise = pipeline('image-to-text', 'Xenova/trocr-base-handwritten', {
-          dtype: 'fp32',
-          progress_callback: (p: { status: string, file: string, loaded: number, total: number }) => {
-            if (p.status === 'progress') {
-              self.postMessage({ type: 'PROGRESS', name: p.file, loaded: p.loaded, total: p.total } satisfies HandwritingWorkerResponse);
-            }
-          }
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        } as any).then(pipe => {
+        initPromise = loadHandwritingPipeline().then(pipe => {
           handwritingPipeline = pipe;
           return pipe;
         });
