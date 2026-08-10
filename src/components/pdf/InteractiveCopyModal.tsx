@@ -103,6 +103,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
     spanningLabelOverflowFactor, setSpanningLabelOverflowFactor,
     spanWidthFractionRow, setSpanWidthFractionRow,
     removeWatermarks, setRemoveWatermarks,
+    handwritingModelPrecision, setHandwritingModelPrecision,
   } = useUIStore();
 
   useEffect(() => {
@@ -125,7 +126,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
 
   const handwritingWorkerRef = useRef<Worker | null>(null);
   const isInitializingHandwritingRef = useRef<boolean>(false);
-  const workingHandwritingDtypeRef = useRef<'q8' | 'fp16' | 'fp32' | null>(null);
+  const handwritingInitAbortControllerRef = useRef<AbortController | null>(null);
   const handwritingRunIdRef = useRef<number>(0);
 
   const latexWorkerRef = useRef<Worker | null>(null);
@@ -252,6 +253,16 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
        }
     };
   }, []);
+
+  useEffect(() => {
+    if (handwritingWorkerRef.current) {
+      handwritingWorkerRef.current.terminate();
+      handwritingWorkerRef.current = null;
+    }
+    if (isInitializingHandwritingRef.current && handwritingInitAbortControllerRef.current) {
+       handwritingInitAbortControllerRef.current.abort();
+    }
+  }, [handwritingModelPrecision]);
 
   const renderPage = async (pageNum: number, pdf: pdfjsLib.PDFDocumentProxy) => {
     if (!canvasRef.current || !overlayRef.current) return;
@@ -460,62 +471,60 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
       // Initialize Handwriting worker if not cached
       if (!handwritingWorkerRef.current && !isInitializingHandwritingRef.current) {
         isInitializingHandwritingRef.current = true;
+        handwritingInitAbortControllerRef.current = new AbortController();
+        const signal = handwritingInitAbortControllerRef.current.signal;
+
         try {
-          // Once we know a dtype works, skip straight to it next time.
-          const dtypesToTry: Array<'q8' | 'fp16' | 'fp32'> = workingHandwritingDtypeRef.current
-            ? [workingHandwritingDtypeRef.current]
-            : ['q8', 'fp16', 'fp32'];
+          // Model precision is now an explicit user choice (see the selector in the
+          // handwriting settings panel), so we load exactly what they picked — no
+          // automatic fallback to a different dtype. If it fails, the error surfaces
+          // via handwritingError so the user can see what happened and switch
+          // precision themselves if needed.
+          const worker = new Worker(new URL('../../workers/handwritingWorker.ts', import.meta.url), { type: 'module' });
 
-          let lastError: unknown = null;
-          for (const dtype of dtypesToTry) {
-            const worker = new Worker(new URL('../../workers/handwritingWorker.ts', import.meta.url), { type: 'module' });
+          worker.addEventListener('message', (e) => {
+            if (e.data.type === 'PROGRESS') {
+              setHandwritingProgress({ name: e.data.name, loaded: e.data.loaded, total: e.data.total });
+            }
+          });
 
-            worker.addEventListener('message', (e) => {
-              if (e.data.type === 'PROGRESS') {
-                setHandwritingProgress({ name: e.data.name, loaded: e.data.loaded, total: e.data.total });
-              }
+          worker.postMessage({ type: 'INIT', jobId: 'init', dtype: handwritingModelPrecision });
+
+          try {
+            await new Promise<void>((resolve, reject) => {
+              const handleInit = (e: MessageEvent) => {
+                if (e.data.jobId === 'init') {
+                  if (e.data.type === 'READY') {
+                    worker.removeEventListener('message', handleInit);
+                    resolve();
+                  } else if (e.data.type === 'ERROR') {
+                    worker.removeEventListener('message', handleInit);
+                    reject(new Error(e.data.error));
+                  }
+                }
+              };
+              worker.addEventListener('message', handleInit);
             });
 
-            worker.postMessage({ type: 'INIT', jobId: 'init', dtype });
-
-            try {
-              await new Promise<void>((resolve, reject) => {
-                const handleInit = (e: MessageEvent) => {
-                  if (e.data.jobId === 'init') {
-                    if (e.data.type === 'READY') {
-                      worker.removeEventListener('message', handleInit);
-                      resolve();
-                    } else if (e.data.type === 'ERROR') {
-                      worker.removeEventListener('message', handleInit);
-                      reject(new Error(e.data.error));
-                    }
-                  }
-                };
-                worker.addEventListener('message', handleInit);
-              });
-
-              setHandwritingProgress(null);
-              if (!document.body.contains(canvasRef.current)) {
-                worker.terminate();
-              } else {
-                handwritingWorkerRef.current = worker;
-                workingHandwritingDtypeRef.current = dtype;
-              }
-              lastError = null;
-              break; // success, stop trying further dtypes
-            } catch (err) {
-              console.warn(`[handwriting] dtype "${dtype}" failed, trying next fallback.`, err);
-              worker.terminate(); // fresh WASM instance for the next attempt
-              setHandwritingProgress(null);
-              lastError = err;
+            if (signal.aborted) {
+               worker.terminate();
+               throw new Error('Handwriting initialization aborted due to precision change');
             }
-          }
 
-          if (lastError) {
-            throw lastError instanceof Error ? lastError : new Error('Failed to load handwriting model in any dtype');
+            setHandwritingProgress(null);
+            if (!document.body.contains(canvasRef.current)) {
+              worker.terminate();
+            } else {
+              handwritingWorkerRef.current = worker;
+            }
+          } catch (err) {
+            worker.terminate();
+            setHandwritingProgress(null);
+            throw err; // surfaces via handwritingError - no silent fallback
           }
         } finally {
           isInitializingHandwritingRef.current = false;
+          handwritingInitAbortControllerRef.current = null;
         }
       }
 
@@ -1396,6 +1405,27 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
                     >Table</button>
                  </div>
              </div>
+             {extractionMode === 'handwriting' && (
+               <div className="flex flex-col gap-1">
+                 <div className="flex items-center justify-between">
+                   <span className="text-xs font-medium text-gray-600">Model:</span>
+                   <div className="flex bg-gray-100 p-1 rounded-lg" title="Smaller models download faster but may not be supported on all devices.">
+                     <button
+                       onClick={() => setHandwritingModelPrecision('q8')}
+                       className={`px-3 py-1 rounded text-xs font-medium transition-colors ${handwritingModelPrecision === 'q8' ? 'bg-white shadow-sm text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}
+                     >Quantized</button>
+                     <button
+                       onClick={() => setHandwritingModelPrecision('fp16')}
+                       className={`px-3 py-1 rounded text-xs font-medium transition-colors ${handwritingModelPrecision === 'fp16' ? 'bg-white shadow-sm text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}
+                     >FP16</button>
+                     <button
+                       onClick={() => setHandwritingModelPrecision('fp32')}
+                       className={`px-3 py-1 rounded text-xs font-medium transition-colors ${handwritingModelPrecision === 'fp32' ? 'bg-white shadow-sm text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}
+                     >FP32</button>
+                   </div>
+                 </div>
+               </div>
+             )}
              {extractionMode === 'table' && (
                <div className="flex items-center justify-between">
                  <div className="relative" ref={settingsRef}>

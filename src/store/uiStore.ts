@@ -32,6 +32,8 @@ interface UIState {
   setConfidenceThreshold: (threshold: number) => void;
   removeWatermarks: boolean;
   setRemoveWatermarks: (enabled: boolean) => void;
+  handwritingModelPrecision: 'q8' | 'fp16' | 'fp32';
+  setHandwritingModelPrecision: (precision: 'q8' | 'fp16' | 'fp32') => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -62,6 +64,8 @@ export const useUIStore = create<UIState>()(
   setConfidenceThreshold: (threshold) => set({ confidenceThreshold: threshold }),
   removeWatermarks: false,
   setRemoveWatermarks: (enabled) => set({ removeWatermarks: enabled }),
+  handwritingModelPrecision: 'fp16',
+  setHandwritingModelPrecision: (precision) => set({ handwritingModelPrecision: precision }),
     }),
     {
       name: 'bunkerpdf-ui-storage',
@@ -75,7 +79,8 @@ export const useUIStore = create<UIState>()(
         enableStyledSpanningLabel: state.enableStyledSpanningLabel,
         tier2Enabled: state.tier2Enabled,
         confidenceThreshold: state.confidenceThreshold,
-        removeWatermarks: state.removeWatermarks
+        removeWatermarks: state.removeWatermarks,
+        handwritingModelPrecision: state.handwritingModelPrecision,
       }),
     }
   )
