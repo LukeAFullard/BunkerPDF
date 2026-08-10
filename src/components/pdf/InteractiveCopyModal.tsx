@@ -9,7 +9,7 @@ import { cleanupPdfResources } from '../../lib/pdfCleanup';
 import { getConfiguredLiteParse, formatParagraphFromItems, formatMarkdownFromItems, recognizeTableStructure, isBackgroundColor } from '../../lib/liteparseEngine';
 import type { LineItem } from '../../lib/liteparseEngine';
 import type { PyodideWorkerMessage, PyodideWorkerResponse } from '../../workers/pyodideWorker';
-import { createWorker, PSM } from 'tesseract.js';
+import { createWorker } from 'tesseract.js';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import { toWordMathML } from '../../lib/latexOcrEngine';
@@ -308,6 +308,65 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
     }
   };
 
+  // Segments a preprocessed (light background, dark ink) canvas into horizontal
+  // text-line bands using a row-wise ink-density projection profile. Unlike
+  // Tesseract's SPARSE_TEXT line finder (tuned for printed glyph shapes/baselines),
+  // this only looks for rows containing visible ink separated by whitespace gaps,
+  // so it works regardless of how legible or well-aligned the handwriting is.
+  const segmentHandwritingLines = (
+    canvas: HTMLCanvasElement,
+  ): { x0: number; y0: number; x1: number; y1: number }[] => {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return [{ x0: 0, y0: 0, x1: canvas.width, y1: canvas.height }];
+    const { width, height } = canvas;
+    const { data } = ctx.getImageData(0, 0, width, height);
+
+    const rowDarkness = new Float32Array(height);
+    for (let y = 0; y < height; y++) {
+      let sum = 0;
+      const rowStart = y * width * 4;
+      for (let x = 0; x < width; x++) {
+        sum += 255 - data[rowStart + x * 4]; // grayscale, R=G=B
+      }
+      rowDarkness[y] = sum / width;
+    }
+
+    const maxDarkness = Math.max(...rowDarkness, 1);
+    const inkThreshold = maxDarkness * 0.04;
+    const minGapPx = Math.max(4, Math.round(height * 0.012));
+    const minLineHeightPx = Math.max(6, Math.round(height * 0.02));
+
+    const bands: { start: number; end: number }[] = [];
+    let curStart = -1;
+    let gapRun = 0;
+    for (let y = 0; y < height; y++) {
+      if (rowDarkness[y] > inkThreshold) {
+        if (curStart === -1) curStart = y;
+        gapRun = 0;
+      } else if (curStart !== -1) {
+        gapRun++;
+        if (gapRun > minGapPx) {
+          bands.push({ start: curStart, end: y - gapRun });
+          curStart = -1;
+          gapRun = 0;
+        }
+      }
+    }
+    if (curStart !== -1) bands.push({ start: curStart, end: height - 1 });
+
+    const pad = Math.max(3, Math.round(height * 0.01));
+    const lines = bands
+      .filter((b) => b.end - b.start >= minLineHeightPx)
+      .map((b) => ({
+        x0: 0,
+        y0: Math.max(0, b.start - pad),
+        x1: width,
+        y1: Math.min(height, b.end + pad),
+      }));
+
+    return lines.length > 0 ? lines : [{ x0: 0, y0: 0, x1: width, y1: height }];
+  };
+
   const preprocessImageForHandwriting = (imageData: ImageData, targetMinDim: number = 384): HTMLCanvasElement => {
     const { width, height, data } = imageData;
     const numPixels = width * height;
@@ -394,44 +453,8 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
       const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
       const preprocessedCanvas = preprocessImageForHandwriting(imageData);
 
-      // Initialize Tesseract worker if not cached
-      if (!tesseractWorkerRef.current && !isInitializingWorkerRef.current) {
-         isInitializingWorkerRef.current = true;
-         try {
-            const worker = await createWorker('eng');
-            if (!document.body.contains(canvasRef.current)) {
-                worker.terminate();
-            } else {
-                tesseractWorkerRef.current = worker;
-            }
-         } finally {
-            isInitializingWorkerRef.current = false;
-         }
-      }
-
-      while (isInitializingWorkerRef.current) {
-         await new Promise(resolve => setTimeout(resolve, 100));
-      }
-
-      if (!tesseractWorkerRef.current) {
-          throw new Error('Failed to initialize Tesseract worker for handwriting segmentation');
-      }
-
-      // Configure Tesseract for line segmentation (SPARSE_TEXT)
-      await tesseractWorkerRef.current.setParameters({ tessedit_pageseg_mode: PSM.SPARSE_TEXT });
-      const tessResult = await tesseractWorkerRef.current.recognize(preprocessedCanvas.toDataURL('image/png'));
-
-      // Reset Tesseract to default mode for standard text OCR
-      await tesseractWorkerRef.current.setParameters({ tessedit_pageseg_mode: PSM.AUTO });
-
-      // Extract line bounding boxes
-      const lines = tessResult.data.lines || [];
-      const lineBoxes = lines.map((line: any) => line.bbox);
-
-      // Fallback if no lines found: use the whole image
-      if (lineBoxes.length === 0) {
-        lineBoxes.push({ x0: 0, y0: 0, x1: preprocessedCanvas.width, y1: preprocessedCanvas.height });
-      }
+      const MAX_HANDWRITING_LINES = 40; // safety cap for very large regions
+      const lineBoxes = segmentHandwritingLines(preprocessedCanvas).slice(0, MAX_HANDWRITING_LINES);
 
       // Initialize Handwriting worker if not cached
       if (!handwritingWorkerRef.current && !isInitializingHandwritingRef.current) {
