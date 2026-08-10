@@ -7,43 +7,11 @@ let handwritingPipeline: any = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let initPromise: Promise<any> | null = null;
 
-// Progressively smaller-to-larger dtypes to try. `q8` is much smaller
-// (~338MB total) but is the export that previously hit a MatMulNBits
-// session-creation bug on some onnxruntime-web versions. `fp16` (~668MB)
-// is a safe middle ground if q8 fails. `fp32` (~1.33GB) is the last
-// resort, previously confirmed working.
-const DTYPE_FALLBACK_CHAIN: Array<'q8' | 'fp16' | 'fp32'> = ['q8', 'fp16', 'fp32'];
-
-async function loadHandwritingPipeline() {
-  let lastError: unknown = null;
-  for (const dtype of DTYPE_FALLBACK_CHAIN) {
-    try {
-      const pipe = await pipeline('image-to-text', 'Xenova/trocr-base-handwritten', {
-        dtype,
-        progress_callback: (p: any) => {
-          if (p.status === 'progress') {
-            self.postMessage({
-              type: 'PROGRESS',
-              name: p.file,
-              loaded: p.loaded,
-              total: p.total,
-            } satisfies HandwritingWorkerResponse);
-          }
-        },
-      } as any);
-      return pipe;
-    } catch (err) {
-      console.warn(`[handwritingWorker] Failed to load dtype "${dtype}", trying next fallback.`, err);
-      lastError = err;
-    }
-  }
-  throw lastError instanceof Error ? lastError : new Error('Failed to load handwriting model in any dtype');
-}
-
 export type HandwritingWorkerMessage = {
   type: 'INIT' | 'RECOGNIZE';
   image?: string; // Data URL
   jobId?: string;
+  dtype?: 'q8' | 'fp16' | 'fp32';
 };
 
 export type HandwritingWorkerResponse = {
@@ -58,12 +26,25 @@ export type HandwritingWorkerResponse = {
 };
 
 self.onmessage = async (e: MessageEvent<HandwritingWorkerMessage>) => {
-  const { type, image, jobId } = e.data;
+  const { type, image, jobId, dtype } = e.data;
 
   try {
     if (type === 'INIT') {
       if (!initPromise) {
-        initPromise = loadHandwritingPipeline().then(pipe => {
+        initPromise = pipeline('image-to-text', 'Xenova/trocr-base-handwritten', {
+          // Caller picks the dtype per attempt. This worker makes exactly ONE
+          // attempt — multi-dtype fallback is handled by the caller spawning a
+          // new Worker per attempt (see InteractiveCopyModal.tsx), not by
+          // retrying here, since retrying in the same worker after a failed
+          // session creation causes subsequent attempts to fail identically.
+          dtype: dtype ?? 'fp32',
+          progress_callback: (p: { status: string, file: string, loaded: number, total: number }) => {
+            if (p.status === 'progress') {
+              self.postMessage({ type: 'PROGRESS', name: p.file, loaded: p.loaded, total: p.total } satisfies HandwritingWorkerResponse);
+            }
+          }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any).then(pipe => {
           handwritingPipeline = pipe;
           return pipe;
         });
