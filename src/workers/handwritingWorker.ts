@@ -11,7 +11,7 @@ export type HandwritingWorkerMessage = {
   type: 'INIT' | 'RECOGNIZE';
   image?: string; // Data URL
   jobId?: string;
-  dtype?: 'q8' | 'fp16' | 'fp32';
+  dtype?: 'int8' | 'fp16' | 'fp32';
 };
 
 export type HandwritingWorkerResponse = {
@@ -31,7 +31,7 @@ self.onmessage = async (e: MessageEvent<HandwritingWorkerMessage>) => {
   try {
     if (type === 'INIT') {
       if (!initPromise) {
-        initPromise = pipeline('image-to-text', 'Xenova/trocr-base-handwritten', {
+        initPromise = pipeline('image-to-text', 'onnx-community/trocr-base-handwritten-ONNX', {
           // Caller picks the dtype per attempt. This worker makes exactly ONE
           // attempt — multi-dtype fallback is handled by the caller spawning a
           // new Worker per attempt (see InteractiveCopyModal.tsx), not by
@@ -39,13 +39,9 @@ self.onmessage = async (e: MessageEvent<HandwritingWorkerMessage>) => {
           // session creation causes subsequent attempts to fail identically.
           dtype: dtype ?? 'fp32',
           session_options: {
-            // 'q8' fails with "Missing required scale ... MatMulNBits" and 'fp16'
-            // fails with a SimplifiedLayerNormFusion node-lookup error. Both are
-            // ONNX Runtime "extended"-tier graph FUSION passes trying to rewrite
-            // QDQ-quantized / fp16-precision-cast patterns that these ~2-year-old
-            // exports don't structurally match. 'basic' keeps safe optimizations
-            // (constant folding, dead-node elimination) but skips the fusion tier
-            // both errors come from, letting the unfused (but still correct) graph
+            // 'fp16' fails with a SimplifiedLayerNormFusion node-lookup error with optimization level 'all'.
+            // 'basic' keeps safe optimizations (constant folding, dead-node elimination) but skips the fusion tier
+            // the error comes from, letting the unfused (but still correct) graph
             // load directly instead of crashing on rewrite.
             graphOptimizationLevel: 'basic',
           },

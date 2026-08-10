@@ -32,8 +32,8 @@ interface UIState {
   setConfidenceThreshold: (threshold: number) => void;
   removeWatermarks: boolean;
   setRemoveWatermarks: (enabled: boolean) => void;
-  handwritingModelPrecision: 'q8' | 'fp16' | 'fp32';
-  setHandwritingModelPrecision: (precision: 'q8' | 'fp16' | 'fp32') => void;
+  handwritingModelPrecision: 'int8' | 'fp16' | 'fp32';
+  setHandwritingModelPrecision: (precision: 'int8' | 'fp16' | 'fp32') => void;
 }
 
 export const useUIStore = create<UIState>()(
