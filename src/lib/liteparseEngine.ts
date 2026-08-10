@@ -1351,6 +1351,11 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
                     hasContentInCol(targetRow, startIndex) && hasContentInCol(targetRow, endIndex);
 
                 if (hasStructuralSubColumns(prevRow) || hasStructuralSubColumns(nextRow)) {
+                    // Before fully deferring, check if there's a highly plausible interior line split point.
+                    const splitResult = splitItemAtInteriorLine(item, verticalLines);
+                    if (splitResult.length > 1) {
+                        return splitResult; // the gap lines up perfectly with a known column gutter, allow split
+                    }
                     return [item];
                 }
             }
