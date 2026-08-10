@@ -90,7 +90,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
 
   // Table mode state (ported from InteractiveTableModal)
   const [extractedTable, setExtractedTable] = useState<string | null>(null);
-  const [tableFormat, setTableFormat] = useState<'csv' | 'markdown' | 'html'>('csv');
+  const [tableFormat, setTableFormat] = useState<'csv' | 'markdown' | 'latex' | 'html'>('csv');
   const [tableConfidence, setTableConfidence] = useState<number | null>(null);
   const [tableConfidenceReasons, setTableConfidenceReasons] = useState<string[]>([]);
   const [tableExtractionSource, setTableExtractionSource] = useState<'geometry' | 'vision-fallback' | null>(null);
@@ -1057,7 +1057,8 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${doc.name}_table_p${currentPage}.${tableFormat}`;
+      const ext = tableFormat === 'latex' ? 'tex' : tableFormat;
+      a.download = `${doc.name}_table_p${currentPage}.${ext}`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -1435,6 +1436,10 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
                      onClick={() => setTableFormat('markdown')}
                      className={`px-3 py-1 rounded text-xs font-medium transition-colors ${tableFormat === 'markdown' ? 'bg-white shadow-sm text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}
                    >Markdown</button>
+                   <button
+                     onClick={() => setTableFormat('latex')}
+                     className={`px-3 py-1 rounded text-xs font-medium transition-colors ${tableFormat === 'latex' ? 'bg-white shadow-sm text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}
+                   >LaTeX</button>
                    <button
                      onClick={() => setTableFormat('html')}
                      className={`px-3 py-1 rounded text-xs font-medium transition-colors ${tableFormat === 'html' ? 'bg-white shadow-sm text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}

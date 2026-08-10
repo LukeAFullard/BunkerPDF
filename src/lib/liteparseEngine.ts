@@ -703,6 +703,13 @@ const mapVisionStructureToGrid = (detections: any[], textItems: any[], format: '
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
+const escapeLatex = (s: string): string =>
+  s.replace(/\\/g, '\\textbackslash{}')
+   .replace(/([&%$#_{}])/g, '\\$1')
+   .replace(/~/g, '\\textasciitilde{}')
+   .replace(/\^/g, '\\textasciicircum{}');
+
 export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown' | 'latex' | 'html', requiresMultipleColumns = true, explicitLines?: LineItem[]): { text: string; confidence: number; confidenceReasons: string[] } => {
   if (!textItems || textItems.length === 0) return { text: "", confidence: 1, confidenceReasons: [] };
 
@@ -1602,7 +1609,7 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
 
         for (let j = 0; j < row.length; j++) {
            const isHeader = (i === 0 && hasHeader);
-           let content = row[j];
+           let content = escapeLatex(row[j] || '');
            if (isHeader) content = `\\textbf{${content}}`;
 
            if (spans[j] > 1) {
