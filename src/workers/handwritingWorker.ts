@@ -11,7 +11,7 @@ export type HandwritingWorkerMessage = {
   type: 'INIT' | 'RECOGNIZE';
   image?: string; // Data URL
   jobId?: string;
-  dtype?: 'int8' | 'fp16' | 'fp32';
+  dtype?: 'q4f16' | 'fp16' | 'fp32';
 };
 
 export type HandwritingWorkerResponse = {
@@ -31,13 +31,17 @@ self.onmessage = async (e: MessageEvent<HandwritingWorkerMessage>) => {
   try {
     if (type === 'INIT') {
       if (!initPromise) {
+        // For q4f16, we explicitly pair an fp16 encoder with the q4f16 decoder
+        // for better performance and memory usage.
+        const pipelineDtype = dtype === 'q4f16' ? { encoder: 'fp16', decoder: 'q4f16' } : (dtype ?? 'fp32');
+
         initPromise = pipeline('image-to-text', 'onnx-community/trocr-base-handwritten-ONNX', {
           // Caller picks the dtype per attempt. This worker makes exactly ONE
           // attempt — multi-dtype fallback is handled by the caller spawning a
           // new Worker per attempt (see InteractiveCopyModal.tsx), not by
           // retrying here, since retrying in the same worker after a failed
           // session creation causes subsequent attempts to fail identically.
-          dtype: dtype ?? 'fp32',
+          dtype: pipelineDtype,
           session_options: {
             // 'fp16' fails with a SimplifiedLayerNormFusion node-lookup error with optimization level 'all'.
             // 'basic' keeps safe optimizations (constant folding, dead-node elimination) but skips the fusion tier
@@ -67,8 +71,9 @@ self.onmessage = async (e: MessageEvent<HandwritingWorkerMessage>) => {
 
       const out = await handwritingPipeline(image, {
         num_beams: 4,
-        max_new_tokens: 128,
+        max_new_tokens: 64,
         no_repeat_ngram_size: 3,
+        repetition_penalty: 1.2,
       });
 
       const result = Array.isArray(out) ? out[0] : out;
