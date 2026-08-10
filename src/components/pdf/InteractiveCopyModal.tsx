@@ -125,6 +125,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
 
   const handwritingWorkerRef = useRef<Worker | null>(null);
   const isInitializingHandwritingRef = useRef<boolean>(false);
+  const workingHandwritingDtypeRef = useRef<'q8' | 'fp16' | 'fp32' | null>(null);
   const handwritingRunIdRef = useRef<number>(0);
 
   const latexWorkerRef = useRef<Worker | null>(null);
@@ -460,33 +461,58 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
       if (!handwritingWorkerRef.current && !isInitializingHandwritingRef.current) {
         isInitializingHandwritingRef.current = true;
         try {
-          const worker = new Worker(new URL('../../workers/handwritingWorker.ts', import.meta.url), { type: 'module' });
-          worker.postMessage({ type: 'INIT', jobId: 'init' });
+          // Once we know a dtype works, skip straight to it next time.
+          const dtypesToTry: Array<'q8' | 'fp16' | 'fp32'> = workingHandwritingDtypeRef.current
+            ? [workingHandwritingDtypeRef.current]
+            : ['q8', 'fp16', 'fp32'];
 
-          await new Promise<void>((resolve, reject) => {
-            const handleInit = (e: MessageEvent) => {
-              if (e.data.type === 'PROGRESS' && e.data.name && e.data.loaded !== undefined && e.data.total) {
+          let lastError: unknown = null;
+          for (const dtype of dtypesToTry) {
+            const worker = new Worker(new URL('../../workers/handwritingWorker.ts', import.meta.url), { type: 'module' });
+
+            worker.addEventListener('message', (e) => {
+              if (e.data.type === 'PROGRESS') {
                 setHandwritingProgress({ name: e.data.name, loaded: e.data.loaded, total: e.data.total });
-              } else if (e.data.jobId === 'init') {
-                if (e.data.type === 'READY') {
-                  setHandwritingProgress(null);
-                  worker.removeEventListener('message', handleInit);
-                  resolve();
-                } else if (e.data.type === 'ERROR') {
-                  setHandwritingProgress(null);
-                  worker.removeEventListener('message', handleInit);
-                  reject(new Error(e.data.error));
-                }
               }
-            };
-            worker.addEventListener('message', handleInit);
-          });
+            });
 
-          // Check if unmounted during initialization
-          if (!document.body.contains(canvasRef.current)) {
-              worker.terminate();
-          } else {
-              handwritingWorkerRef.current = worker;
+            worker.postMessage({ type: 'INIT', jobId: 'init', dtype });
+
+            try {
+              await new Promise<void>((resolve, reject) => {
+                const handleInit = (e: MessageEvent) => {
+                  if (e.data.jobId === 'init') {
+                    if (e.data.type === 'READY') {
+                      worker.removeEventListener('message', handleInit);
+                      resolve();
+                    } else if (e.data.type === 'ERROR') {
+                      worker.removeEventListener('message', handleInit);
+                      reject(new Error(e.data.error));
+                    }
+                  }
+                };
+                worker.addEventListener('message', handleInit);
+              });
+
+              setHandwritingProgress(null);
+              if (!document.body.contains(canvasRef.current)) {
+                worker.terminate();
+              } else {
+                handwritingWorkerRef.current = worker;
+                workingHandwritingDtypeRef.current = dtype;
+              }
+              lastError = null;
+              break; // success, stop trying further dtypes
+            } catch (err) {
+              console.warn(`[handwriting] dtype "${dtype}" failed, trying next fallback.`, err);
+              worker.terminate(); // fresh WASM instance for the next attempt
+              setHandwritingProgress(null);
+              lastError = err;
+            }
+          }
+
+          if (lastError) {
+            throw lastError instanceof Error ? lastError : new Error('Failed to load handwriting model in any dtype');
           }
         } finally {
           isInitializingHandwritingRef.current = false;
