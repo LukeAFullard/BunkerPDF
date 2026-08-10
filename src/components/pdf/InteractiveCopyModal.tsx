@@ -1411,8 +1411,8 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
                    <span className="text-xs font-medium text-gray-600">Model:</span>
                    <div className="flex bg-gray-100 p-1 rounded-lg" title="Smaller models download faster but may not be supported on all devices.">
                      <button
-                       onClick={() => setHandwritingModelPrecision('int8')}
-                       className={`px-3 py-1 rounded text-xs font-medium transition-colors ${handwritingModelPrecision === 'int8' ? 'bg-white shadow-sm text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}
+                       onClick={() => setHandwritingModelPrecision('q4f16')}
+                       className={`px-3 py-1 rounded text-xs font-medium transition-colors ${handwritingModelPrecision === 'q4f16' ? 'bg-white shadow-sm text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}
                      >Quantized</button>
                      <button
                        onClick={() => setHandwritingModelPrecision('fp16')}
