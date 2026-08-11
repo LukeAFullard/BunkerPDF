@@ -13,6 +13,7 @@ import { createWorker } from 'tesseract.js';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import { toWordMathML } from '../../lib/latexOcrEngine';
+import { segmentHandwritingLines } from '../../lib/handwritingLineSegmentation';
 
 interface InteractiveCopyModalProps {
   isOpen: boolean;
@@ -321,65 +322,6 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
     }
   };
 
-  // Segments a preprocessed (light background, dark ink) canvas into horizontal
-  // text-line bands using a row-wise ink-density projection profile. Unlike
-  // Tesseract's SPARSE_TEXT line finder (tuned for printed glyph shapes/baselines),
-  // this only looks for rows containing visible ink separated by whitespace gaps,
-  // so it works regardless of how legible or well-aligned the handwriting is.
-  const segmentHandwritingLines = (
-    canvas: HTMLCanvasElement,
-  ): { x0: number; y0: number; x1: number; y1: number }[] => {
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return [{ x0: 0, y0: 0, x1: canvas.width, y1: canvas.height }];
-    const { width, height } = canvas;
-    const { data } = ctx.getImageData(0, 0, width, height);
-
-    const rowDarkness = new Float32Array(height);
-    for (let y = 0; y < height; y++) {
-      let sum = 0;
-      const rowStart = y * width * 4;
-      for (let x = 0; x < width; x++) {
-        sum += 255 - data[rowStart + x * 4]; // grayscale, R=G=B
-      }
-      rowDarkness[y] = sum / width;
-    }
-
-    const maxDarkness = Math.max(...rowDarkness, 1);
-    const inkThreshold = maxDarkness * 0.04;
-    const minGapPx = Math.max(4, Math.round(height * 0.012));
-    const minLineHeightPx = Math.max(6, Math.round(height * 0.02));
-
-    const bands: { start: number; end: number }[] = [];
-    let curStart = -1;
-    let gapRun = 0;
-    for (let y = 0; y < height; y++) {
-      if (rowDarkness[y] > inkThreshold) {
-        if (curStart === -1) curStart = y;
-        gapRun = 0;
-      } else if (curStart !== -1) {
-        gapRun++;
-        if (gapRun > minGapPx) {
-          bands.push({ start: curStart, end: y - gapRun });
-          curStart = -1;
-          gapRun = 0;
-        }
-      }
-    }
-    if (curStart !== -1) bands.push({ start: curStart, end: height - 1 });
-
-    const pad = Math.max(3, Math.round(height * 0.01));
-    const lines = bands
-      .filter((b) => b.end - b.start >= minLineHeightPx)
-      .map((b) => ({
-        x0: 0,
-        y0: Math.max(0, b.start - pad),
-        x1: width,
-        y1: Math.min(height, b.end + pad),
-      }));
-
-    return lines.length > 0 ? lines : [{ x0: 0, y0: 0, x1: width, y1: height }];
-  };
-
   const preprocessImageForHandwriting = (imageData: ImageData, targetMinDim: number = 384): HTMLCanvasElement => {
     const { width, height, data } = imageData;
     const numPixels = width * height;
@@ -467,7 +409,11 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
       const preprocessedCanvas = preprocessImageForHandwriting(imageData);
 
       const MAX_HANDWRITING_LINES = 40; // safety cap for very large regions
-      const lineBoxes = segmentHandwritingLines(preprocessedCanvas).slice(0, MAX_HANDWRITING_LINES);
+      const ctx = preprocessedCanvas.getContext('2d');
+      const cw = preprocessedCanvas.width;
+      const ch = preprocessedCanvas.height;
+      const hwImageData = ctx ? ctx.getImageData(0, 0, cw, ch) : { data: new Uint8ClampedArray(), width: 0, height: 0 };
+      const lineBoxes = segmentHandwritingLines(hwImageData).slice(0, MAX_HANDWRITING_LINES);
 
       // Initialize Handwriting worker if not cached
       if (!handwritingWorkerRef.current && !isInitializingHandwritingRef.current) {
@@ -567,7 +513,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
              if (e.data.jobId === cropJobId) {
                handwritingWorkerRef.current?.removeEventListener('message', handleResult);
                if (e.data.type === 'RESULT') {
-                 resolve({ text: e.data.text, confidence: e.data.confidence ?? 0 });
+                 resolve({ text: e.data.text, confidence: undefined });
                } else if (e.data.type === 'ERROR') {
                  reject(new Error(e.data.error));
                }
@@ -1822,11 +1768,6 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
                    </div>
                  ) : (
                    <div className="flex flex-col gap-3">
-                     {extractionMode === 'handwriting' && handwritingConfidence !== null && handwritingConfidence < 0.6 && (
-                       <div className="p-3 rounded border text-sm font-semibold bg-yellow-50 border-yellow-200 text-yellow-800">
-                         Low confidence — consider Force OCR fallback.
-                       </div>
-                     )}
                      <div className="relative">
                        <textarea
                          value={extractedText ?? ''}
