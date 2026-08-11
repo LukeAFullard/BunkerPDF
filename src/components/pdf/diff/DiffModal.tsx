@@ -1,26 +1,22 @@
 import { useState } from 'react';
 import { useFileStore } from '../../../store/fileStore';
 import { FileDiff, X } from 'lucide-react';
-import * as diff from 'diff';
+import { extractTokens, diffTokens, highlightDiff, mergeHighlighted, type DiffChunk } from '../../../lib/diffEngine';
 
 interface DiffModalProps {
   onClose: () => void;
   initialDoc1Id?: string;
   initialDoc2Id?: string;
-  extractParagraphs: (bytes: Uint8Array) => Promise<string[]>;
-  diffHighlightPdf: (bytes: Uint8Array, highlights: string[], color: [number, number, number]) => Promise<Uint8Array>;
-  diffMergedHighlightPdf: (bytes1: Uint8Array, bytes2: Uint8Array, removedHighlights: string[], addedHighlights: string[]) => Promise<Uint8Array>;
 }
 
-export function DiffModal({ onClose, extractParagraphs, diffMergedHighlightPdf, initialDoc1Id, initialDoc2Id }: DiffModalProps) {
+export function DiffModal({ onClose, initialDoc1Id, initialDoc2Id }: DiffModalProps) {
   const documents = useFileStore(state => state.documents);
 
-  const [diffResult, setDiffResult] = useState<diff.Change[] | null>(null);
+  const [diffChunks, setDiffChunks] = useState<DiffChunk[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [progressMsg, setProgressMsg] = useState<string | null>(null);
 
-  // Use state initialization for default values to avoid useEffect setState cascading renders
   const [doc1Id, setDoc1Id] = useState<string>(initialDoc1Id || (documents.length >= 1 ? documents[0].id : ''));
   const [doc2Id, setDoc2Id] = useState<string>(initialDoc2Id || (documents.length >= 2 ? documents[1].id : ''));
 
@@ -44,65 +40,28 @@ export function DiffModal({ onClose, extractParagraphs, diffMergedHighlightPdf, 
 
     setIsLoading(true);
     setError(null);
-    setDiffResult(null);
+    setDiffChunks(null);
     setProgressMsg("Starting comparison...");
 
     try {
-      setProgressMsg("Extracting layout from original document...");
+      setProgressMsg("Extracting tokens from original document...");
       const buffer1 = await doc1.file.arrayBuffer();
-      const blocks1 = await extractParagraphs(new Uint8Array(buffer1));
+      const tokens1 = await extractTokens(new Uint8Array(buffer1));
 
-      setProgressMsg("Extracting layout from modified document...");
+      setProgressMsg("Extracting tokens from modified document...");
       const buffer2 = await doc2.file.arrayBuffer();
-      const blocks2 = await extractParagraphs(new Uint8Array(buffer2));
+      const tokens2 = await extractTokens(new Uint8Array(buffer2));
 
       setProgressMsg("Computing structural differences...");
-      const normalizeText = (text: string) => text.trim().replace(/\s+/g, ' ');
-      const blockChanges = diff.diffArrays(blocks1, blocks2, { comparator: (a, b) => normalizeText(a) === normalizeText(b) });
+      // Yield to the event loop
+      await new Promise(resolve => setTimeout(resolve, 10));
 
-      const finalChanges: diff.Change[] = [];
+      const chunks = diffTokens(tokens1, tokens2);
 
-      for (let i = 0; i < blockChanges.length; i++) {
-        if (i % 10 === 0) {
-          setProgressMsg(`Processing paragraph ${i + 1} of ${blockChanges.length}...`);
-          await new Promise(resolve => setTimeout(resolve, 0));
-        }
-
-        const block = blockChanges[i];
-
-        if (i < blockChanges.length - 1 &&
-            ((block.removed && blockChanges[i + 1].added) ||
-             (block.added && blockChanges[i + 1].removed))) {
-
-          // Inline modification within a paragraph
-          const removedBlock = block.removed ? block : blockChanges[i + 1];
-          const addedBlock = block.added ? block : blockChanges[i + 1];
-
-          const inlineChanges = diff.diffWords(removedBlock.value.join("\n\n"), addedBlock.value.join("\n\n"));
-
-          // Ensure we append the paragraph separator as an unchanged block
-          // so it aligns correctly in both the left and right panes.
-          inlineChanges.push({ value: "\n\n" } as any);
-          finalChanges.push(...inlineChanges);
-          i++; // Skip the next block since we processed it
-        } else {
-          // Pure addition, removal, or unchanged
-          finalChanges.push({
-            ...block,
-            value: block.value.join("\n\n") + "\n\n"
-          });
-        }
-
-        if (i % 5 === 0) {
-          setDiffResult([...finalChanges]);
-        }
-      }
-
-      setDiffResult([...finalChanges]);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (err: any) {
+      setDiffChunks(chunks);
+    } catch (err) {
       console.error(err);
-      setError(err.message || 'Failed to compare documents.');
+      setError(err instanceof Error ? err.message : 'Failed to compare documents.');
     } finally {
       setIsLoading(false);
       setProgressMsg(null);
@@ -112,7 +71,7 @@ export function DiffModal({ onClose, extractParagraphs, diffMergedHighlightPdf, 
   const [isGeneratingMerged, setIsGeneratingMerged] = useState(false);
 
   const handleGenerateMergedHighlight = async () => {
-    if (!diffResult || !doc1Id || !doc2Id) return;
+    if (!diffChunks || !doc1Id || !doc2Id) return;
     setIsGeneratingMerged(true);
     try {
       const doc1 = documents.find(d => d.id === doc1Id);
@@ -121,27 +80,26 @@ export function DiffModal({ onClose, extractParagraphs, diffMergedHighlightPdf, 
       const buffer1 = await doc1.file.arrayBuffer();
       const buffer2 = await doc2.file.arrayBuffer();
 
-      // We no longer need to pass the diff arrays to the Python worker for PDF highlight generation.
-      // The worker uses its own \`difflib.SequenceMatcher\` internally against the actual PDF coordinates,
-      // avoiding all text search ambiguities.
-
-      // Yield to the event loop so the UI can render the "Generating..." state
       await new Promise(resolve => setTimeout(resolve, 10));
 
-      const newPdfBytes = await diffMergedHighlightPdf(new Uint8Array(buffer1), new Uint8Array(buffer2), [], []);
-      const standardBuffer = new Uint8Array(newPdfBytes.length);
-      standardBuffer.set(newPdfBytes);
-      const blob = new Blob([standardBuffer], { type: 'application/zip' });
+      const { doc1: highlighted1, doc2: highlighted2 } = await highlightDiff(
+        new Uint8Array(buffer1),
+        new Uint8Array(buffer2),
+        diffChunks
+      );
+
+      const mergedPdfBytes = await mergeHighlighted(highlighted1, highlighted2);
+
+      const blob = new Blob([mergedPdfBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = "diff-highlighted.zip";
+      a.download = "diff-highlighted.pdf";
       a.click();
       URL.revokeObjectURL(url);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      setError(err.message || "Failed to generate highlighted PDFs");
+      setError(err instanceof Error ? err.message : 'Failed to generate highlighted PDF');
     } finally {
       setIsGeneratingMerged(false);
     }
@@ -150,7 +108,6 @@ export function DiffModal({ onClose, extractParagraphs, diffMergedHighlightPdf, 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
-
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-100 dark:border-gray-700">
           <div className="flex items-center gap-3">
@@ -228,18 +185,18 @@ export function DiffModal({ onClose, extractParagraphs, diffMergedHighlightPdf, 
             </div>
           )}
 
-          {diffResult && (
+          {diffChunks && (
             <div className="flex-1 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden flex flex-col bg-gray-50 dark:bg-gray-900 min-h-[300px]">
               <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <h3 className="text-sm font-medium text-gray-900 dark:text-white">Comparison Results</h3>
                   <button
                     onClick={handleGenerateMergedHighlight}
-                    disabled={isGeneratingMerged || diffResult.filter(p => p.added || p.removed).length === 0}
+                    disabled={isGeneratingMerged || diffChunks.filter(p => p.type === 'added' || p.type === 'removed').length === 0}
                     className="text-xs bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-3 py-1.5 rounded transition-colors disabled:opacity-50 font-medium"
-                    title="Download ZIP containing PDFs with red/green highlights"
+                    title="Download merged PDF with red/green highlights"
                   >
-                    {isGeneratingMerged ? 'Generating...' : 'Export Highlighted PDFs (ZIP)'}
+                    {isGeneratingMerged ? 'Generating...' : 'Export Highlighted PDF'}
                   </button>
                 </div>
                 <div className="flex items-center gap-4 text-xs">
@@ -255,18 +212,18 @@ export function DiffModal({ onClose, extractParagraphs, diffMergedHighlightPdf, 
                     <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Original</h4>
                   </div>
                   <div className="flex-1 overflow-y-auto">
-                  {diffResult.map((part, index) => {
-                    if (part.added) return null; // Don't show added parts in the original document
-
-                    const colorClass = part.removed
-                      ? 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 line-through'
-                      : 'text-gray-700 dark:text-gray-300';
-                    return (
-                      <span key={`orig-${index}`} className={colorClass}>
-                        {part.value}
-                      </span>
-                    );
-                  })}
+                    {diffChunks.map((chunk, index) => {
+                      if (chunk.type === 'added') return null;
+                      const text = chunk.tokens.map(t => t.text).join(' ') + ' ';
+                      const colorClass = chunk.type === 'removed'
+                        ? 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 line-through'
+                        : 'text-gray-700 dark:text-gray-300';
+                      return (
+                        <span key={`orig-${index}`} className={colorClass}>
+                          {text}
+                        </span>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -276,22 +233,21 @@ export function DiffModal({ onClose, extractParagraphs, diffMergedHighlightPdf, 
                     <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Modified</h4>
                   </div>
                   <div className="flex-1 overflow-y-auto">
-                  {diffResult.map((part, index) => {
-                    if (part.removed) return null; // Don't show removed parts in the modified document
-
-                    const colorClass = part.added
-                      ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300'
-                      : 'text-gray-700 dark:text-gray-300';
-                    return (
-                      <span key={`mod-${index}`} className={colorClass}>
-                        {part.value}
-                      </span>
-                    );
-                  })}
+                    {diffChunks.map((chunk, index) => {
+                      if (chunk.type === 'removed') return null;
+                      const text = chunk.tokens.map(t => t.text).join(' ') + ' ';
+                      const colorClass = chunk.type === 'added'
+                        ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300'
+                        : 'text-gray-700 dark:text-gray-300';
+                      return (
+                        <span key={`mod-${index}`} className={colorClass}>
+                          {text}
+                        </span>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
-
             </div>
           )}
         </div>

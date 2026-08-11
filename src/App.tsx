@@ -54,7 +54,7 @@ import type {
 } from "./workers/pyodideWorker";
 import { convertImagesToPdf } from "./lib/engineA";
 import { SettingsDropdown } from "./components/ui/SettingsDropdown";
-import { extractParagraphsLiteparse, extractTextLiteparse, extractAllPagesTextLiteparse, extractMarkdownLiteparse, extractHtmlLiteparse, editParagraphLiteparse, extractTablesLiteparse, redactDocumentLiteparse, redactBoxesLiteparse, diffMergedHighlightPdfLiteparse, diffHighlightPdfLiteparse, autoRedactLayoutLiteparse, extractImagesLiteparse, extractAnnotationsLiteparse } from "./lib/liteparseEngine";
+import { extractTextLiteparse, extractAllPagesTextLiteparse, extractMarkdownLiteparse, extractHtmlLiteparse, editParagraphLiteparse, extractTablesLiteparse, redactDocumentLiteparse, redactBoxesLiteparse, autoRedactLayoutLiteparse, extractImagesLiteparse, extractAnnotationsLiteparse } from "./lib/liteparseEngine";
 
 function App() {
   const documents = useFileStore((state) => state.documents);
@@ -789,9 +789,6 @@ function App() {
     });
   };
 
-  const extractParagraphs = (bytes: Uint8Array): Promise<string[]> => {
-    return extractParagraphsLiteparse(bytes);
-  };
 
   const editParagraph = async (bytes: Uint8Array, searchText: string, replacementText: string): Promise<Uint8Array> => {
     return editParagraphLiteparse(bytes, searchText, replacementText);
@@ -2166,86 +2163,6 @@ function App() {
       console.error(error);
     }
   };
-
-  const diffHighlightPdf = (bytes: Uint8Array, highlights: string[], color: [number, number, number]): Promise<Uint8Array> => {
-    const method = useUIStore.getState().extractionMethod;
-    if (method === 'liteparse') {
-      return diffHighlightPdfLiteparse(bytes, highlights, color);
-    }
-    return new Promise((resolve, reject) => {
-      if (!pyodideWorkerRef.current)
-        return reject(new Error("Worker not initialized"));
-
-      const jobId = Math.random().toString(36).substring(7);
-
-      const handleMessage = (e: MessageEvent) => {
-        if (e.data.jobId !== jobId) return;
-        if (e.data.type === "RESULT" && e.data.result) {
-          pyodideWorkerRef.current?.removeEventListener(
-            "message",
-            handleMessage,
-          );
-          resolve(e.data.result as Uint8Array);
-        } else if (e.data.type === "ERROR") {
-          pyodideWorkerRef.current?.removeEventListener(
-            "message",
-            handleMessage,
-          );
-          reject(new Error(e.data.error));
-        }
-      };
-
-      pyodideWorkerRef.current.addEventListener("message", handleMessage);
-      pyodideWorkerRef.current.postMessage({
-        type: "DIFF_HIGHLIGHT_DOCUMENT",
-        jobId,
-        pdfBytes: bytes,
-        highlights,
-        color,
-      } satisfies PyodideWorkerMessage);
-    });
-  };
-
-  const diffMergedHighlightPdf = (bytes1: Uint8Array, bytes2: Uint8Array, removedHighlights: string[], addedHighlights: string[]): Promise<Uint8Array> => {
-    const method = useUIStore.getState().extractionMethod;
-    if (method === 'liteparse') {
-      return diffMergedHighlightPdfLiteparse(bytes1, bytes2);
-    }
-    return new Promise((resolve, reject) => {
-      if (!pyodideWorkerRef.current)
-        return reject(new Error("Worker not initialized"));
-
-      const jobId = Math.random().toString(36).substring(7);
-
-      const handleMessage = (e: MessageEvent) => {
-        if (e.data.jobId !== jobId) return;
-        if (e.data.type === "RESULT" && e.data.result) {
-          pyodideWorkerRef.current?.removeEventListener(
-            "message",
-            handleMessage,
-          );
-          resolve(e.data.result as Uint8Array);
-        } else if (e.data.type === "ERROR") {
-          pyodideWorkerRef.current?.removeEventListener(
-            "message",
-            handleMessage,
-          );
-          reject(new Error(e.data.error));
-        }
-      };
-
-      pyodideWorkerRef.current.addEventListener("message", handleMessage);
-      pyodideWorkerRef.current.postMessage({
-        type: "DIFF_MERGED_HIGHLIGHT_DOCUMENT",
-        jobId,
-        pdfBytes: bytes1,
-        pdfBytes2: bytes2,
-        removedHighlights,
-        addedHighlights,
-      } satisfies PyodideWorkerMessage);
-    });
-  };
-
   const executeHighlight = async (boxes: HighlightBox[]) => {
     const docId = interactiveHighlightState.docId;
     if (!docId) return;
@@ -2459,7 +2376,7 @@ function App() {
         isOpen={isAuditModalOpen}
         onClose={() => setIsAuditModalOpen(false)}
       />
-      {isDiffModalOpen && <DiffModal onClose={() => { setIsDiffModalOpen(false); setDiffInitialDoc1Id(undefined); setDiffInitialDoc2Id(undefined); }} extractParagraphs={extractParagraphs} diffHighlightPdf={diffHighlightPdf} diffMergedHighlightPdf={diffMergedHighlightPdf} initialDoc1Id={diffInitialDoc1Id} initialDoc2Id={diffInitialDoc2Id} />}
+      {isDiffModalOpen && <DiffModal onClose={() => { setIsDiffModalOpen(false); setDiffInitialDoc1Id(undefined); setDiffInitialDoc2Id(undefined); }} initialDoc1Id={diffInitialDoc1Id} initialDoc2Id={diffInitialDoc2Id} />}
       {isSideBySideModalOpen && <SideBySideViewerModal onClose={() => setIsSideBySideModalOpen(false)} onOpenCompare={(doc1Id, doc2Id) => { setIsSideBySideModalOpen(false); setDiffInitialDoc1Id(doc1Id); setDiffInitialDoc2Id(doc2Id); setIsDiffModalOpen(true); }} />}
       <ProcessingModal />
       <FeedbackPrompt />
