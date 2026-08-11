@@ -85,7 +85,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
     }
   };
   const [equationConfidence, setEquationConfidence] = useState<number | null>(null);
-  const [handwritingConfidence, setHandwritingConfidence] = useState<number | null>(null);
+
   const [wasEquationEdited, setWasEquationEdited] = useState(false);
   const [wasTextEdited, setWasTextEdited] = useState(false);
   const [wasTableEdited, setWasTableEdited] = useState(false);
@@ -177,7 +177,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
       setExtractedLatex(null);
       setLatexError(null);
       setEquationConfidence(null);
-      setHandwritingConfidence(null);
+
       setHandwritingError(null);
       setWasEquationEdited(false);
       setWasTextEdited(false);
@@ -379,7 +379,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
     if (!canvasRef.current) return;
     setIsHandwritingRunning(true);
     setExtractedText(null);
-    setHandwritingConfidence(null);
+
     setHandwritingError(null);
     setWasTextEdited(false);
     const runId = ++handwritingRunIdRef.current;
@@ -486,7 +486,6 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
 
 
       let aggregatedText = "";
-      let totalConfidence = 0;
       let lineCount = 0;
 
       for (const box of lineBoxes) {
@@ -513,7 +512,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
              if (e.data.jobId === cropJobId) {
                handwritingWorkerRef.current?.removeEventListener('message', handleResult);
                if (e.data.type === 'RESULT') {
-                 resolve({ text: e.data.text, confidence: undefined });
+                 resolve({ text: e.data.text, confidence: 0 });
                } else if (e.data.type === 'ERROR') {
                  reject(new Error(e.data.error));
                }
@@ -525,7 +524,6 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
 
          if (result.text.trim().length > 0) {
              aggregatedText += (aggregatedText ? "\n" : "") + result.text.trim();
-             totalConfidence += result.confidence;
              lineCount++;
          }
       }
@@ -533,7 +531,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
       // Only process result if this is the most recent run and component is mounted
       if (runId === handwritingRunIdRef.current && canvasRef.current) {
         setExtractedText(aggregatedText);
-        setHandwritingConfidence(lineCount > 0 ? totalConfidence / lineCount : 0);
+
       }
     } catch (err) {
       console.error("Handwriting recognition failed for the region:", err);
@@ -832,7 +830,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
       setExtractedLatex(null);
       setLatexError(null);
       setEquationConfidence(null);
-      setHandwritingConfidence(null);
+
       setHandwritingError(null);
       setWasEquationEdited(false);
       setWasTextEdited(false);
@@ -1774,7 +1772,6 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
                          onChange={(e) => {
                            setExtractedText(e.target.value);
                            setWasTextEdited(true);
-                           if (extractionMode === 'handwriting') setHandwritingConfidence(null);
                          }}
                          className="text-sm p-4 bg-gray-50 border border-gray-200 rounded-lg font-sans text-gray-800 leading-relaxed resize-none w-full outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                          rows={8}
