@@ -31,7 +31,8 @@ self.onmessage = async (e: MessageEvent<HandwritingWorkerMessage>) => {
   try {
     if (type === 'INIT') {
       if (!initPromise) {
-        initPromise = pipeline('image-to-text', 'onnx-community/trocr-base-handwritten-ONNX', {
+        initPromise = pipeline('image-to-text', 'inYourOwnBrowser/trocr-base-handwritten-ONNX', {
+          revision: '59e0798044900d35a8de4c4ba763fe65e8514448',
           // Caller picks the dtype per attempt. This worker makes exactly ONE
           // attempt — multi-dtype fallback is handled by the caller spawning a
           // new Worker per attempt (see InteractiveCopyModal.tsx), not by
