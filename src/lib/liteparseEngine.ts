@@ -1639,6 +1639,117 @@ export const formatTableFromItems = (textItems: any[], format: 'csv' | 'markdown
 };
 
 /**
+ * Parses a single CSV line respecting double-quoted fields (matching the quoting
+ * style produced by formatTableFromItems' 'csv' branch, where every cell is
+ * wrapped in double quotes and internal quotes are doubled).
+ */
+const parseCsvLine = (line: string): string[] => {
+  const cells: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') { current += '"'; i++; }
+        else { inQuotes = false; }
+      } else {
+        current += ch;
+      }
+    } else {
+      if (ch === '"') { inQuotes = true; }
+      else if (ch === ',') { cells.push(current); current = ''; }
+      else { current += ch; }
+    }
+  }
+  cells.push(current);
+  return cells;
+};
+
+const escapeHtml = (s: string): string =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+const wrapHtmlTable = (rowsHtml: string): string =>
+  `<html><head><meta charset="utf-8"></head><body>` +
+  `<table style="border-collapse:collapse;">\n${rowsHtml}</table>` +
+  `</body></html>`;
+
+const cellStyle = 'border:1px solid #000;padding:4px 8px;';
+
+/**
+ * Converts the (possibly user-edited) text currently shown for an extracted table —
+ * in csv, markdown, latex, or html format — into a clean, styled HTML <table> string
+ * suitable for writing to the clipboard's 'text/html' slot. Word, Google Docs, and
+ * other rich-text editors read that clipboard format and paste a native, editable
+ * table instead of literal source text.
+ */
+export const tableTextToClipboardHtml = (text: string, format: 'csv' | 'markdown' | 'latex' | 'html'): string => {
+  const trimmed = text.trim();
+  if (!trimmed) return wrapHtmlTable('');
+
+  // Multiple tables may be separated by the '---' divider used elsewhere in this file.
+  const blocks = trimmed.split(/\n\s*---\s*\n/).map(b => b.trim()).filter(Boolean);
+
+  const blockToRowsHtml = (block: string): string => {
+    if (format === 'html') {
+      // Already HTML - just make sure it's wrapped in <table>...</table>.
+      return /<table/i.test(block) ? block.replace(/<\/?table[^>]*>/gi, '') : block;
+    }
+
+    if (format === 'csv') {
+      const lines = block.split('\n').filter(l => l.trim().length > 0);
+      return lines.map((line, i) => {
+        const cells = parseCsvLine(line);
+        const tag = i === 0 ? 'th' : 'td';
+        const cellsHtml = cells.map(c => `<${tag} style="${cellStyle}${i === 0 ? 'font-weight:bold;' : ''}">${escapeHtml(c)}</${tag}>`).join('');
+        return `  <tr>${cellsHtml}</tr>\n`;
+      }).join('');
+    }
+
+    if (format === 'markdown') {
+      const lines = block.split('\n').filter(l => l.trim().length > 0 && l.includes('|'));
+      // Drop the '---|---|---' alignment row if present.
+      const dataLines = lines.filter(l => !/^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/.test(l));
+      return dataLines.map((line, i) => {
+        const cells = line.split('|').map(c => c.trim()).filter((_, idx, arr) => !(idx === 0 && arr[0] === '') && !(idx === arr.length - 1 && arr[arr.length - 1] === ''));
+        const tag = i === 0 ? 'th' : 'td';
+        const cellsHtml = cells.map(c => `<${tag} style="${cellStyle}${i === 0 ? 'font-weight:bold;' : ''}">${escapeHtml(c)}</${tag}>`).join('');
+        return `  <tr>${cellsHtml}</tr>\n`;
+      }).join('');
+    }
+
+    // latex: best-effort parse of a \begin{tabular}...\end{tabular} block.
+    const inner = block.replace(/\\begin\{tabular\}(\{[^}]*\})?/g, '').replace(/\\end\{tabular\}/g, '');
+    const rowStrings = inner.split('\\\\').map(r => r.replace(/\\hline/g, '').trim()).filter(Boolean);
+    return rowStrings.map((row, i) => {
+      const rawCells = row.split('&').map(c => c.trim());
+      const tag = i === 0 ? 'th' : 'td';
+      const cellsHtml = rawCells.map(c => {
+        const multi = c.match(/\\multicolumn\{(\d+)\}\{[^}]*\}\{(.*)\}/);
+        const colspan = multi ? ` colspan="${multi[1]}"` : '';
+        let content = multi ? multi[2] : c;
+        content = content.replace(/\\textbf\{(.*?)\}/g, '$1')
+          .replace(/\\textbackslash\{\}/g, '\\')
+          .replace(/\\([&%$#_{}])/g, '$1')
+          .replace(/\\textasciitilde\{\}/g, '~')
+          .replace(/\\textasciicircum\{\}/g, '^');
+        return `<${tag}${colspan} style="${cellStyle}${i === 0 ? 'font-weight:bold;' : ''}">${escapeHtml(content)}</${tag}>`;
+      }).join('');
+      return `  <tr>${cellsHtml}</tr>\n`;
+    }).join('');
+  };
+
+  const tables = blocks.map(blockToRowsHtml);
+  // If there were multiple selections, stack them as separate tables.
+  if (tables.length > 1) {
+    return `<html><head><meta charset="utf-8"></head><body>` +
+      tables.map(t => `<table style="border-collapse:collapse;margin-bottom:12px;">\n${t}</table>`).join('\n') +
+      `</body></html>`;
+  }
+  return wrapHtmlTable(tables[0] ?? '');
+};
+
+/**
  * Unified layout analysis function that returns JSON structure with optional native link extraction.
  * Handles OCR pre-processing automatically.
  */
