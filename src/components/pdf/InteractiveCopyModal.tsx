@@ -1537,6 +1537,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
                  <div className="flex bg-gray-100 p-1 rounded-lg">
                    <button
                      onClick={() => {
+                        if (tableFormat === 'csv') return;
                         if (wasTableEdited && !window.confirm("Switching format will discard your manual edits — continue?")) return;
                         setWasTableEdited(false);
                         setTableFormat('csv');
@@ -1545,6 +1546,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
                    >CSV</button>
                    <button
                      onClick={() => {
+                        if (tableFormat === 'markdown') return;
                         if (wasTableEdited && !window.confirm("Switching format will discard your manual edits — continue?")) return;
                         setWasTableEdited(false);
                         setTableFormat('markdown');
@@ -1553,6 +1555,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
                    >Markdown</button>
                    <button
                      onClick={() => {
+                        if (tableFormat === 'latex') return;
                         if (wasTableEdited && !window.confirm("Switching format will discard your manual edits — continue?")) return;
                         setWasTableEdited(false);
                         setTableFormat('latex');
@@ -1561,6 +1564,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
                    >LaTeX</button>
                    <button
                      onClick={() => {
+                        if (tableFormat === 'html') return;
                         if (wasTableEdited && !window.confirm("Switching format will discard your manual edits — continue?")) return;
                         setWasTableEdited(false);
                         setTableFormat('html');
