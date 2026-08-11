@@ -603,6 +603,8 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
 
   const handleLineClick = (e: React.MouseEvent, index: number) => {
     e.stopPropagation();
+    if (wasTableEdited && !window.confirm("Changing lines will discard your manual edits — continue?")) return;
+    setWasTableEdited(false);
     setExtractedLines(lines => {
       const newLines = [...lines];
       newLines[index] = { ...newLines[index], disabled: !newLines[index].disabled };
@@ -1464,37 +1466,40 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
                        <div className="px-4 pb-2 border-b border-gray-200 mb-3 font-semibold text-sm">
                          Advanced Table Extraction
                        </div>
-                       <div className="px-4 space-y-4">
+                       <div className="px-4 space-y-4" title={wasTableEdited ? "Settings are locked after manual edits. Clear edits to change settings." : ""}>
                          <label className="flex items-center gap-2 cursor-pointer">
                            <input
                              type="checkbox"
                              checked={removeWatermarks}
+                             disabled={wasTableEdited}
                              onChange={(e) => setRemoveWatermarks(e.target.checked)}
-                             className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                             className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                            />
-                           <span className="text-sm font-medium">Remove Watermarks</span>
+                           <span className={`text-sm font-medium ${wasTableEdited ? 'text-gray-400' : ''}`}>Remove Watermarks</span>
                          </label>
                          <label className="flex items-center gap-2 cursor-pointer">
                            <input
                              type="checkbox"
                              checked={enableLineTracing}
+                             disabled={wasTableEdited}
                              onChange={(e) => setEnableLineTracing(e.target.checked)}
-                             className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                             className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                            />
-                           <span className="text-sm font-medium">Use Line Tracing</span>
+                           <span className={`text-sm font-medium ${wasTableEdited ? 'text-gray-400' : ''}`}>Use Line Tracing</span>
                          </label>
                          <label className="flex items-center gap-2 cursor-pointer">
                            <input
                              type="checkbox"
                              checked={enableStyledSpanningLabel}
+                             disabled={wasTableEdited}
                              onChange={(e) => setEnableStyledSpanningLabel(e.target.checked)}
-                             className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                             className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                            />
-                           <span className="text-sm font-medium">Use Font Styles for Divider Labels</span>
+                           <span className={`text-sm font-medium ${wasTableEdited ? 'text-gray-400' : ''}`}>Use Font Styles for Divider Labels</span>
                          </label>
                          <div>
                            <div className="flex justify-between items-center mb-1">
-                             <span className="text-sm">Divider Label Threshold</span>
+                             <span className={`text-sm ${wasTableEdited ? 'text-gray-400' : ''}`}>Divider Label Threshold</span>
                              <span className="text-xs text-gray-500 font-mono">{spanningLabelOverflowFactor.toFixed(2)}x</span>
                            </div>
                            <input
@@ -1503,14 +1508,15 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
                              max="3.0"
                              step="0.1"
                              value={spanningLabelOverflowFactor}
+                             disabled={wasTableEdited}
                              onChange={(e) => setSpanningLabelOverflowFactor(parseFloat(e.target.value))}
-                             className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                             className={`w-full h-2 bg-gray-200 rounded-lg appearance-none ${wasTableEdited ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
                            />
                            <p className="text-[10px] text-gray-500 mt-1 leading-tight">Lower if wide labels are missed. Raise if long data splits.</p>
                          </div>
                          <div>
                            <div className="flex justify-between items-center mb-1">
-                             <span className="text-sm">Span Width Fraction</span>
+                             <span className={`text-sm ${wasTableEdited ? 'text-gray-400' : ''}`}>Span Width Fraction</span>
                              <span className="text-xs text-gray-500 font-mono">{Math.round(spanWidthFractionRow * 100)}%</span>
                            </div>
                            <input
@@ -1519,8 +1525,9 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
                              max="1.0"
                              step="0.05"
                              value={spanWidthFractionRow}
+                             disabled={wasTableEdited}
                              onChange={(e) => setSpanWidthFractionRow(parseFloat(e.target.value))}
-                             className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                             className={`w-full h-2 bg-gray-200 rounded-lg appearance-none ${wasTableEdited ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
                            />
                          </div>
                        </div>
@@ -1529,19 +1536,35 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
                  </div>
                  <div className="flex bg-gray-100 p-1 rounded-lg">
                    <button
-                     onClick={() => setTableFormat('csv')}
+                     onClick={() => {
+                        if (wasTableEdited && !window.confirm("Switching format will discard your manual edits — continue?")) return;
+                        setWasTableEdited(false);
+                        setTableFormat('csv');
+                     }}
                      className={`px-3 py-1 rounded text-xs font-medium transition-colors ${tableFormat === 'csv' ? 'bg-white shadow-sm text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}
                    >CSV</button>
                    <button
-                     onClick={() => setTableFormat('markdown')}
+                     onClick={() => {
+                        if (wasTableEdited && !window.confirm("Switching format will discard your manual edits — continue?")) return;
+                        setWasTableEdited(false);
+                        setTableFormat('markdown');
+                     }}
                      className={`px-3 py-1 rounded text-xs font-medium transition-colors ${tableFormat === 'markdown' ? 'bg-white shadow-sm text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}
                    >Markdown</button>
                    <button
-                     onClick={() => setTableFormat('latex')}
+                     onClick={() => {
+                        if (wasTableEdited && !window.confirm("Switching format will discard your manual edits — continue?")) return;
+                        setWasTableEdited(false);
+                        setTableFormat('latex');
+                     }}
                      className={`px-3 py-1 rounded text-xs font-medium transition-colors ${tableFormat === 'latex' ? 'bg-white shadow-sm text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}
                    >LaTeX</button>
                    <button
-                     onClick={() => setTableFormat('html')}
+                     onClick={() => {
+                        if (wasTableEdited && !window.confirm("Switching format will discard your manual edits — continue?")) return;
+                        setWasTableEdited(false);
+                        setTableFormat('html');
+                     }}
                      className={`px-3 py-1 rounded text-xs font-medium transition-colors ${tableFormat === 'html' ? 'bg-white shadow-sm text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}
                    >HTML</button>
                  </div>
@@ -1571,6 +1594,8 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
                  max="30"
                  value={marginThresholdPercent}
                  onChange={(e) => {
+                   if (wasTextEdited && !window.confirm("Changing margin will discard your manual edits — continue?")) return;
+                   setWasTextEdited(false);
                    const val = parseInt(e.target.value);
                    setMarginThresholdPercent(val);
                    if (selectionBox) {
@@ -1587,6 +1612,8 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
                   id="wholeLineToggle"
                   checked={selectWholeLine}
                   onChange={(e) => {
+                    if (wasTextEdited && !window.confirm("Toggling whole line selection will discard your manual edits — continue?")) return;
+                    setWasTextEdited(false);
                     const checked = e.target.checked;
                     setSelectWholeLine(checked);
                     if (selectionBox) {
@@ -1605,6 +1632,8 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
                   id="markdownToggle"
                   checked={copyFormat === 'markdown'}
                   onChange={(e) => {
+                    if (wasTextEdited && !window.confirm("Switching format will discard your manual edits — continue?")) return;
+                    setWasTextEdited(false);
                     const format = e.target.checked ? 'markdown' : 'text';
                     setCopyFormat(format);
                     if (selectionBox) {
