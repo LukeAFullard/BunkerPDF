@@ -71,7 +71,7 @@ export const useUIStore = create<UIState>()(
       name: 'bunkerpdf-ui-storage',
       partialize: (state) => ({
         complexityMode: state.complexityMode,
-        extractionMethod: state.extractionMethod,
+
         liteparseOcrEnabled: state.liteparseOcrEnabled,
         enableLineTracing: state.enableLineTracing,
         spanningLabelOverflowFactor: state.spanningLabelOverflowFactor,

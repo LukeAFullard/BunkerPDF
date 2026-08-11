@@ -1,5 +1,5 @@
 import * as diff from 'diff';
-import { PDFDocument, rgb } from 'pdf-lib';
+import { PDFDocument, PDFPage, rgb } from 'pdf-lib';
 import { getConfiguredLiteParse } from './liteparseEngine';
 
 export interface Token {
@@ -80,7 +80,7 @@ export const highlightDiff = async (
   const pages1 = pdf1.getPages();
   const pages2 = pdf2.getPages();
 
-  const draw = (token: Token, page: unknown, color: [number, number, number]) => {
+  const draw = (token: Token, page: PDFPage, color: [number, number, number]) => {
     const { height } = page.getSize();
     page.drawRectangle({
       x: token.x,

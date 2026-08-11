@@ -7,7 +7,7 @@ import { twMerge } from 'tailwind-merge';
 export function SettingsDropdown() {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const { extractionMethod, setExtractionMethod, complexityMode, setComplexityMode } = useUIStore();
+  const { complexityMode, setComplexityMode } = useUIStore();
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -46,27 +46,7 @@ export function SettingsDropdown() {
             Settings
           </div>
           <div className="px-4 py-3">
-            <label className="block text-sm font-medium mb-2">Text Extraction Engine</label>
-            <select
-              value={extractionMethod}
-              onChange={(e) => setExtractionMethod(e.target.value as 'pyodide' | 'liteparse')}
-              className={twMerge(
-                clsx(
-                  "w-full rounded-md border text-sm py-1.5 px-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
-                  "bg-gray-50 border-gray-300"
-                )
-              )}
-            >
-              <option value="pyodide">Standard (Pyodide)</option>
-              <option value="liteparse">Preserves Layout (LiteParse)</option>
-            </select>
-            <p className="text-xs mt-2 text-gray-500 dark:text-gray-400">
-              {extractionMethod === 'pyodide'
-                ? 'Faster initial loads, but may lose multi-column layouts.'
-                : 'Better layout preservation for complex documents.'}
-            </p>
-
-            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+            <div>
               <label className="block text-sm font-medium mb-2">Complexity Mode</label>
               <select
                 value={complexityMode}

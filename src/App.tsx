@@ -789,9 +789,6 @@ function App() {
     });
   };
 
-  const extractParagraphs = (bytes: Uint8Array): Promise<string[]> => {
-    return extractParagraphsLiteparse(bytes);
-  };
 
   const editParagraph = async (bytes: Uint8Array, searchText: string, replacementText: string): Promise<Uint8Array> => {
     return editParagraphLiteparse(bytes, searchText, replacementText);

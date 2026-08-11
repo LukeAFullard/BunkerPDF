@@ -59,9 +59,9 @@ export function DiffModal({ onClose, initialDoc1Id, initialDoc2Id }: DiffModalPr
       const chunks = diffTokens(tokens1, tokens2);
 
       setDiffChunks(chunks);
-    } catch (err: unknown) {
+    } catch (err) {
       console.error(err);
-      setError(err.message || 'Failed to compare documents.');
+      setError(err instanceof Error ? err.message : 'Failed to compare documents.');
     } finally {
       setIsLoading(false);
       setProgressMsg(null);
@@ -90,16 +90,16 @@ export function DiffModal({ onClose, initialDoc1Id, initialDoc2Id }: DiffModalPr
 
       const mergedPdfBytes = await mergeHighlighted(highlighted1, highlighted2);
 
-      const blob = new Blob([mergedPdfBytes], { type: 'application/pdf' });
+      const blob = new Blob([mergedPdfBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = "diff-highlighted.pdf";
       a.click();
       URL.revokeObjectURL(url);
-    } catch (err: unknown) {
+    } catch (err) {
       console.error(err);
-      setError(err.message || "Failed to generate highlighted PDF");
+      setError(err instanceof Error ? err.message : 'Failed to generate highlighted PDF');
     } finally {
       setIsGeneratingMerged(false);
     }
