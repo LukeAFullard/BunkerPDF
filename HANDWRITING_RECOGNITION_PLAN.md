@@ -63,3 +63,4 @@ Since BunkerPDF already utilizes `@huggingface/transformers` for other features,
 1.  Evaluate the size and performance of `Xenova/trocr-small-handwritten` (or similar quantized models available on the Hugging Face Hub for Transformers.js).
 2.  Create an experimental Web Worker (e.g., `handwritingWorker.ts`) to isolate the model loading and inference logic, preventing main thread blocking.
 3.  Add a "Recognize Handwriting" option in the UI (e.g., as a fallback or a specific toggle in Magic Copy) that routes the extracted image blob to the new worker.
+4.  Note: The handwriting OCR model is now self-hosted and pinned to a specific revision (`inYourOwnBrowser/trocr-base-handwritten-ONNX`), matching the setup used for the LaTeX model to ensure stability and version control.
