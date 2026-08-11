@@ -6,7 +6,7 @@ import { X, Type, ZoomIn, ZoomOut, Loader2, Copy, Check, Image as ImageIcon, Sca
 import { useFileStore } from '../../store/fileStore';
 import { useUIStore } from '../../store/uiStore';
 import { cleanupPdfResources } from '../../lib/pdfCleanup';
-import { getConfiguredLiteParse, formatParagraphFromItems, formatMarkdownFromItems, recognizeTableStructure, isBackgroundColor } from '../../lib/liteparseEngine';
+import { getConfiguredLiteParse, formatParagraphFromItems, formatMarkdownFromItems, recognizeTableStructure, isBackgroundColor, tableTextToClipboardHtml } from '../../lib/liteparseEngine';
 import type { LineItem } from '../../lib/liteparseEngine';
 import type { PyodideWorkerMessage, PyodideWorkerResponse } from '../../workers/pyodideWorker';
 import { createWorker } from 'tesseract.js';
@@ -45,6 +45,7 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
 
   const [extractedText, setExtractedText] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [isWordCopied, setIsWordCopied] = useState(false);
   const [copiedImage, setCopiedImage] = useState(false);
   const [imageCopyQuality, setImageCopyQuality] = useState(2);
   const [isCopyingImage, setIsCopyingImage] = useState(false);
@@ -1109,6 +1110,30 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
     }
   };
 
+  const handleTableCopyForWord = async () => {
+    if (!extractedTable) return;
+    try {
+      const html = tableTextToClipboardHtml(extractedTable, tableFormat);
+      const canWriteRich = typeof ClipboardItem !== 'undefined' && !!navigator.clipboard?.write;
+      if (canWriteRich) {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'text/html': new Blob([html], { type: 'text/html' }),
+            'text/plain': new Blob([extractedTable], { type: 'text/plain' }),
+          }),
+        ]);
+      } else {
+        // Fallback for browsers without rich clipboard support.
+        await navigator.clipboard.writeText(extractedTable);
+      }
+      setIsWordCopied(true);
+      setTimeout(() => setIsWordCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy table for Word:', err);
+      navigator.clipboard.writeText(extractedTable);
+    }
+  };
+
   const handleTableDownload = () => {
     if (extractedTable && doc) {
       const blob = new Blob([extractedTable], { type: 'text/plain' });
@@ -1836,6 +1861,13 @@ export function InteractiveCopyModal({ isOpen, docId, onClose, defaultMode = 'te
                    >
                      {copied ? <Check className="w-4 h-4 text-green-300" /> : <Copy className="w-4 h-4" />}
                      {copied ? 'Copied!' : 'Copy'}
+                   </button>
+                   <button
+                     onClick={handleTableCopyForWord}
+                     className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-gray-100 text-gray-700 border border-gray-300 rounded-xl font-medium hover:bg-gray-200 transition-colors shadow-sm text-sm"
+                   >
+                     {isWordCopied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                     {isWordCopied ? 'Copied!' : 'Copy for Word'}
                    </button>
                    <button
                      onClick={handleTableDownload}
