@@ -5,6 +5,11 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./tests/setup.ts'],
-    include: ['scripts/**/*.test.ts']
+    include: ['tests/**/*.spec.ts', 'tests/**/*.test.ts', 'scripts/**/*.test.ts'],
+    server: {
+      deps: {
+        inline: [/@llamaindex\/liteparse-wasm/]
+      }
+    }
   },
 });
