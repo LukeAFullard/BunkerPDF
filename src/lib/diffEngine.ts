@@ -32,18 +32,23 @@ export const extractTokens = async (bytes: Uint8Array): Promise<Token[]> => {
       const words = item.text.split(/(\s+)/).filter((w: string) => w.trim().length > 0);
       if (words.length === 0) continue;
 
+      // Guard against degenerate geometry (0/NaN width or height) so highlights
+      // never silently fail to render for an otherwise-valid text run.
+      const itemWidth = item.width && item.width > 0 ? item.width : words.join('').length * 6; // rough fallback estimate
+      const itemHeight = item.height && item.height > 0 ? item.height : 10;
+
       const totalChars = words.reduce((sum: number, w: string) => sum + w.length, 0) || 1;
       let cursorX = item.x;
 
       for (const word of words) {
-        const wordWidth = (word.length / totalChars) * item.width;
+        const wordWidth = (word.length / totalChars) * itemWidth;
         tokens.push({
           text: word,
           page: pageIdx,
           x: cursorX,
           y: item.y,
           width: wordWidth,
-          height: item.height,
+          height: itemHeight,
         });
         cursorX += wordWidth;
       }

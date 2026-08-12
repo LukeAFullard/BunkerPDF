@@ -167,4 +167,36 @@ describe('Diff Engine Attribution Tests', () => {
       ]
     `);
   });
+
+  it('should fallback to estimated dimensions for degenerate bounding boxes', async () => {
+    const bytes1 = fs.readFileSync(getFixturePath('missing_highlight', 1));
+    const tokens1 = await extractTokens(bytes1);
+
+    // We already know some tokens will have fallback width because this is generated with a fallback guard now,
+    // or we can test using our fallback directly. Wait! `extractTokens` has the fallback logic.
+    // Let's assert that there are no NaN/0 widths.
+    const hasZeroOrNaN = tokens1.some(t => !t.width || t.width === 0 || Number.isNaN(t.width) || !t.height || t.height === 0 || Number.isNaN(t.height));
+    expect(hasZeroOrNaN).toBe(false);
+
+    // It should contain the text from the missing highlight fixture
+    const foundTokens = tokens1.filter(t => t.text.includes('4th') || t.text.includes('step') || t.text.includes('Reconstruction'));
+    expect(foundTokens.length).toBeGreaterThan(0);
+
+    const bytes2 = fs.readFileSync(getFixturePath('missing_highlight', 2));
+    const tokens2 = await extractTokens(bytes2);
+
+    // Make sure the diff Engine picks up the changes
+    const diffChunks = diffTokens(tokens1, tokens2);
+
+    // Verify that the chunk containing 'Reconstruction' is 'removed'
+    const removedChunk = diffChunks.find(c => c.type === 'removed' && c.tokens.some(t => t.text.includes('Reconstruction')));
+    expect(removedChunk).toBeDefined();
+
+    // Verify coordinates of the token in the chunk are valid
+    const targetToken = removedChunk!.tokens.find(t => t.text.includes('Reconstruction'));
+    expect(targetToken!.width).toBeGreaterThan(0);
+    expect(targetToken!.height).toBeGreaterThan(0);
+    expect(Number.isNaN(targetToken!.x)).toBe(false);
+    expect(Number.isNaN(targetToken!.y)).toBe(false);
+  });
 });
